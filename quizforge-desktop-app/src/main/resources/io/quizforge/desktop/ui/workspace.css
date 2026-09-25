@@ -176,3 +176,14 @@
 .dialog-pane > .button-bar { -fx-padding: 18 0 0 0; }
 .dialog-pane > .content.label { -fx-padding: 10 0; }
 .tooltip { -fx-background-color: #44413b; -fx-text-fill: #faf9f6; -fx-font-size: 12px; -fx-padding: 7 10; }
+.tree-view { -fx-background-color: #f3f1eb; -fx-border-color: #e3e0d9; -fx-border-width: 0 1 0 0; }
+.tree-cell { -fx-background-color: transparent; -fx-padding: 7 8; -fx-font-size: 12px; }
+.tree-cell:filled:selected { -fx-background-color: #e7e0ef; -fx-text-fill: #554174; }
+.tree-cell:filled:hover { -fx-background-color: #eae7e0; }
+.file-viewer-page { -fx-padding: 28 34; -fx-spacing: 11; }
+.markdown-preview { -fx-padding: 20 28; -fx-spacing: 12; }
+.preview-heading-1 { -fx-font-size: 27px; -fx-font-weight: bold; }
+.preview-heading-2 { -fx-font-size: 21px; -fx-font-weight: bold; }
+.preview-heading-3 { -fx-font-size: 17px; -fx-font-weight: bold; }
+.preview-paragraph { -fx-font-size: 14px; -fx-line-spacing: 4; }
+.preview-code { -fx-font-family: "Consolas", monospace; -fx-font-size: 13px; -fx-background-color: #eeeae3; -fx-padding: 12; }

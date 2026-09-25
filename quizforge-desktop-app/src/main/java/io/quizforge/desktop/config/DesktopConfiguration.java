@@ -23,9 +23,11 @@ import io.quizforge.core.port.QuestionBankRepository;
 import io.quizforge.core.port.FormalDocumentReader;
 import io.quizforge.core.port.QuestionBankFileCodec;
 import io.quizforge.core.port.QuestionBankFileStorage;
+import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.question.FileQuestionBankGenerationService;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankV1Assembler;
+import io.quizforge.core.workspace.WorkspaceFileService;
 import io.quizforge.core.question.QuestionGenerationService;
 import io.quizforge.core.question.QuestionValidator;
 import io.quizforge.core.workspace.WorkspaceService;
@@ -49,6 +51,7 @@ import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
 import io.quizforge.infrastructure.filesystem.FormalMarkdownDocumentReader;
 import io.quizforge.infrastructure.filesystem.LocalQuestionBankFileStorage;
 import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
+import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileCatalog;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteAiProviderConfigRepository;
 import io.quizforge.infrastructure.persistence.SqliteMaterialRepository;
@@ -225,6 +228,18 @@ public class DesktopConfiguration {
     }
 
     @Bean
+    public WorkspaceFileCatalog workspaceFileCatalog(QuizForgeDataDirectory directory,
+            QuestionBankFileCodec banks) {
+        return new LocalWorkspaceFileCatalog(new WorkspacePathResolver(directory), banks);
+    }
+
+    @Bean
+    public WorkspaceFileService workspaceFileService(WorkspaceService workspaces,
+            WorkspaceAssetScanner scanner, WorkspaceFileCatalog catalog, QuestionBankFileCodec banks) {
+        return new WorkspaceFileService(workspaces, scanner, catalog, banks);
+    }
+
+    @Bean
     public QuestionBankReferenceResolver questionBankReferenceResolver(WorkspaceAssetScanner scanner) {
         return new QuestionBankReferenceResolver(scanner);
     }
@@ -275,8 +290,9 @@ public class DesktopConfiguration {
             io.quizforge.core.document.FileStandardDocumentGenerationService fileDocuments,
             AiSettingsService settings,
             AiConnectionService connections, QuestionGenerationService questions,
-            FileQuestionBankGenerationService fileQuestions, QuestionBankReferenceResolver references) {
+            FileQuestionBankGenerationService fileQuestions, QuestionBankReferenceResolver references,
+            WorkspaceFileService workspaceFiles) {
         return new DesktopView(workspaces, materials, documents, fileDocuments,
-                settings, connections, questions, fileQuestions, references);
+                settings, connections, questions, fileQuestions, references, workspaceFiles);
     }
 }

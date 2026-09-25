@@ -15,6 +15,7 @@ import io.quizforge.core.question.FileQuestionBankGenerationService;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceService;
+import io.quizforge.core.workspace.WorkspaceFileService;
 import io.quizforge.extensions.ai.deepseek.DeepSeekAiProvider;
 import java.io.File;
 import java.util.ArrayList;
@@ -59,6 +60,7 @@ public final class DesktopView {
     private final QuestionGenerationService questions;
     private final FileQuestionBankGenerationService fileQuestions;
     private final QuestionBankReferenceResolver references;
+    private final WorkspaceFileService workspaceFiles;
     private FileQuestionBankPage questionBankPage;
     private BorderPane root;
     private Stage stage;
@@ -75,7 +77,8 @@ public final class DesktopView {
             DocumentNormalizationService documents, FileStandardDocumentGenerationService fileDocuments,
             AiSettingsService settings,
             AiConnectionService connections, QuestionGenerationService questions,
-            FileQuestionBankGenerationService fileQuestions, QuestionBankReferenceResolver references) {
+            FileQuestionBankGenerationService fileQuestions, QuestionBankReferenceResolver references,
+            WorkspaceFileService workspaceFiles) {
         this.workspaces = workspaces;
         this.materials = materials;
         this.documents = documents;
@@ -85,6 +88,7 @@ public final class DesktopView {
         this.questions = questions;
         this.fileQuestions = fileQuestions;
         this.references = references;
+        this.workspaceFiles = workspaceFiles;
     }
 
     public Scene createScene(Stage stage) {
@@ -189,8 +193,8 @@ public final class DesktopView {
                     open.getStyleClass().add("active-workspace");
                     VBox children = new VBox(3);
                     children.getStyleClass().add("workspace-tree");
-                    String[] titles = {"Materials", "Standard document", "Question bank"};
-                    String[] icons = {"folder", "file", "book"};
+                    String[] titles = {"Files", "Materials", "Standard document", "Question bank"};
+                    String[] icons = {"folder", "upload", "file", "book"};
                     for (int i = 0; i < titles.length; i++) {
                         final int index = i;
                         Button item = UiTheme.button(titles[i], icons[i], "nav-item", () -> {
@@ -262,25 +266,32 @@ public final class DesktopView {
     }
 
     private void showWorkspace(Workspace workspace, boolean selectDocument) {
-        showWorkspace(workspace, selectDocument ? 1 : 0);
+        showWorkspace(workspace, selectDocument ? 2 : 0);
     }
 
     private void showWorkspace(Workspace workspace, int selectedTab) {
         activeWorkspace = workspace;
+        WorkspaceFilesPage filesPage = new WorkspaceFilesPage(workspace, workspaceFiles,
+                references, this::showSettings);
+        Tab filesTab = new Tab("Files", filesPage.content());
         Tab materialsTab = new Tab("Materials", UiTheme.scroll(materialsPage(workspace)));
         Tab documentTab = new Tab("Standard Document", standardDocumentPage(workspace));
         Tab questionTab = new Tab("Question Bank",
-                questionBankPage.content(workspace, () -> showWorkspace(workspace, 2)));
-        TabPane tabs = new TabPane(materialsTab, documentTab, questionTab);
+                questionBankPage.content(workspace, () -> showWorkspace(workspace, 3)));
+        TabPane tabs = new TabPane(filesTab, materialsTab, documentTab, questionTab);
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getStyleClass().add("workspace-tabs");
         tabs.setId("workspace-tabs");
+        filesTab.setGraphic(UiTheme.icon("folder"));
         materialsTab.setGraphic(UiTheme.icon("folder"));
         documentTab.setGraphic(UiTheme.icon("file"));
         questionTab.setGraphic(UiTheme.icon("book"));
         tabs.getSelectionModel().select(selectedTab);
         workspaceTabs = tabs;
-        tabs.getSelectionModel().selectedIndexProperty().addListener((obs, before, after) -> updateSectionSelection());
+        tabs.getSelectionModel().selectedIndexProperty().addListener((obs, before, after) -> {
+            updateSectionSelection();
+            if (after.intValue() == 0 && before.intValue() != 0) filesPage.refresh();
+        });
         refreshSidebar();
         showContent(workspace.name(), tabs);
         statusContext.setText(materials.listMaterials(workspace.id()).size() + " materials  ·  " + workspace.name());
