@@ -7,7 +7,7 @@ Independent Java 21 Maven desktop project. It does not use QuizForge V1 code or 
 | Module | Responsibility | Direct project dependencies |
 | --- | --- | --- |
 | `quizforge-extension-api` | Vendor neutral AI, document structure and question generation contracts | None |
-| `quizforge-core` | Workspace, Material, StandardDocument and QuestionBank models, services and ports | `quizforge-extension-api` |
+| `quizforge-core` | Workspace, Asset, Material, StandardDocument and QuestionBank models, services and ports | `quizforge-extension-api` |
 | `quizforge-default-extensions` | DeepSeek, Standard Markdown v1 and choice question generation | `quizforge-extension-api` |
 | `quizforge-infrastructure` | SQLite, Flyway, local files and Windows DPAPI credentials | `quizforge-core` |
 | `quizforge-desktop-app` | JavaFX UI and Spring composition root | All four modules |
@@ -27,6 +27,44 @@ under `workspaces\{workspace-id}\materials\`. Validated Standard Documents are s
 at `workspaces\{workspace-id}\document\study.md`. SQLite stores metadata and Material
 provenance. AI provider settings contain a credential reference; API keys are encrypted
 with Windows DPAPI in `secrets\` and never stored in SQLite.
+
+## File-first workspace foundation
+
+New workspaces are real directories under `%USERPROFILE%\.quizforge\workspaces\{workspace-id}\`
+(or under the overridden data directory). Each new root includes `sources/`, `documents/`,
+`question-banks/`, and `.quizforge/`. The internal directory contains `workspace.json`
+with a stable workspace UUID and `workspace.db` with the rebuildable `asset_registry` table.
+The old `materials/` and `document/` paths remain in use by the existing generation flow.
+The global `quizforge.db` remains in use by the current MVP.
+Existing workspaces receive the missing directories and internal metadata when loaded;
+their legacy materials and generated documents stay in place.
+
+The workspace scanner recursively checks arbitrary folders except `.quizforge/`.
+The default folders are optional categories, never asset-type rules. A valid file-backed
+Standard Knowledge Document is a `.md` file with `quizforge_format: study-document`,
+`schema_version: "1.0"`, a stable `quizforge_id`, `title`, and `language` in YAML Front Matter.
+Its body has exactly one H1, at least one H2 with a `<!-- qf:id=chapter_x -->` comment,
+and at least one H3 with a `<!-- qf:id=section_x -->` comment and nonempty body per chapter.
+IDs must be unique in the document. The former AI-generated Draft is still stored and used
+by the existing generation pipeline, but is not recognized as a file-backed v1 asset.
+
+The document `contentId` is `qfd:v1:` plus lowercase SHA-256 over a canonical sequence:
+UTF-8 domain separator `quizforge-study-document-canonical-v1` plus NUL, then four
+length-prefixed UTF-8 fields in order: schema version, title, language, complete Markdown
+body. Each length is a 32-bit big-endian byte count. Line endings become LF and Unicode is
+NFC normalized; title and language are trimmed. The body includes headings, chapter and
+section ID comments, prose, lists, and code. Front Matter `quizforge_id`, file path/name,
+mtime, UI state, cache, and database values are excluded. The hash is computed on scan and
+is never written into Markdown.
+
+A `.qbank` is recognized by top-level JSON `format: quizforge-question-bank`,
+`schemaVersion: "1.0"`, stable `id`, and `title`; its `contentId` is currently null.
+The registry records only normalized workspace-relative paths. A rescan updates paths for
+moved or renamed assets, updates content IDs after edits, and removes entries for deleted
+files. Duplicate asset IDs are reported as `DUPLICATE_ASSET_ID` and neither conflicting file
+is indexed. Invalid files are reported and skipped. Removing `workspace.db` and scanning
+again rebuilds the registry from files.
+The scanner indexes files; this step does not write `.qbank` files or move existing assets.
 
 The Question Bank tab generates 1–50 single and/or multiple choice questions from the whole
 Standard Document, one chapter or one section. The dialog populates chapter and section

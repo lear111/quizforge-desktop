@@ -26,14 +26,18 @@ public final class WorkspaceService {
         }
         Instant now = clock.instant();
         Workspace workspace = new Workspace(WorkspaceId.newId(), trimmed, now, now);
-        directories.create(workspace.id());
+        boolean directoryCreated = false;
         try {
+            directories.create(workspace);
+            directoryCreated = true;
             repository.save(workspace);
         } catch (RuntimeException failure) {
-            try {
-                directories.deleteIfEmpty(workspace.id());
-            } catch (RuntimeException cleanupFailure) {
-                failure.addSuppressed(cleanupFailure);
+            if (directoryCreated) {
+                try {
+                    directories.deleteIfEmpty(workspace.id());
+                } catch (RuntimeException cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
             }
             throw failure;
         }
@@ -41,11 +45,15 @@ public final class WorkspaceService {
     }
 
     public List<Workspace> listWorkspaces() {
-        return repository.list();
+        List<Workspace> workspaces = repository.list();
+        workspaces.forEach(directories::ensure);
+        return workspaces;
     }
 
     public Workspace getWorkspace(WorkspaceId id) {
-        return repository.findById(id).orElseThrow(() ->
+        Workspace workspace = repository.findById(id).orElseThrow(() ->
                 new QuizForgeException(ErrorCode.WORKSPACE_NOT_FOUND, "Workspace was not found."));
+        directories.ensure(workspace);
+        return workspace;
     }
 }

@@ -15,6 +15,8 @@ import io.quizforge.core.port.StandardDocumentFileStorage;
 import io.quizforge.core.port.StandardDocumentRepository;
 import io.quizforge.core.port.WorkspaceRepository;
 import io.quizforge.core.port.WorkspaceDirectoryStorage;
+import io.quizforge.core.port.AssetIndexRepository;
+import io.quizforge.core.port.WorkspaceAssetScanner;
 import io.quizforge.core.port.QuestionBankRepository;
 import io.quizforge.core.question.QuestionGenerationService;
 import io.quizforge.core.question.QuestionValidator;
@@ -32,12 +34,14 @@ import io.quizforge.infrastructure.filesystem.LocalMaterialFileStorage;
 import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
+import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteAiProviderConfigRepository;
 import io.quizforge.infrastructure.persistence.SqliteMaterialRepository;
 import io.quizforge.infrastructure.persistence.SqliteStandardDocumentRepository;
 import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
 import io.quizforge.infrastructure.persistence.SqliteQuestionBankRepository;
+import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
 import io.quizforge.infrastructure.security.WindowsDpapiCredentialStore;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
@@ -81,6 +85,17 @@ public class DesktopConfiguration {
     @Bean
     public WorkspaceDirectoryStorage workspaceDirectoryStorage(QuizForgeDataDirectory directory) {
         return new WorkspacePathResolver(directory);
+    }
+
+    @Bean
+    public AssetIndexRepository assetIndexRepository(QuizForgeDataDirectory directory) {
+        return new SqliteAssetIndexRepository(new WorkspacePathResolver(directory));
+    }
+
+    @Bean
+    public WorkspaceAssetScanner workspaceAssetScanner(QuizForgeDataDirectory directory,
+            AssetIndexRepository index, Clock clock) {
+        return new FileSystemWorkspaceAssetScanner(new WorkspacePathResolver(directory), index, clock);
     }
 
     @Bean

@@ -2,6 +2,7 @@ package io.quizforge.core;
 
 public enum ErrorCode {
     WORKSPACE_NOT_FOUND,
+    WORKSPACE_STORAGE_FAILED,
     INVALID_WORKSPACE_NAME,
     UNSUPPORTED_MATERIAL_FORMAT,
     EMPTY_MATERIAL,
