@@ -275,7 +275,7 @@ class WorkspaceMaterialIntegrationTest {
         try (Connection connection = database.openConnection(); Statement statement = connection.createStatement()) {
             try (var result = statement.executeQuery("SELECT count(*) FROM flyway_schema_history WHERE success = 1")) {
                 assertTrue(result.next());
-                assertEquals(2, result.getInt(1));
+                assertEquals(3, result.getInt(1));
             }
             try (var result = statement.executeQuery("PRAGMA foreign_keys")) {
                 assertTrue(result.next());

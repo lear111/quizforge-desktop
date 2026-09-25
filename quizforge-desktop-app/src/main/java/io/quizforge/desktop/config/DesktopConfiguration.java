@@ -15,13 +15,19 @@ import io.quizforge.core.port.StandardDocumentFileStorage;
 import io.quizforge.core.port.StandardDocumentRepository;
 import io.quizforge.core.port.WorkspaceRepository;
 import io.quizforge.core.port.WorkspaceDirectoryStorage;
+import io.quizforge.core.port.QuestionBankRepository;
+import io.quizforge.core.question.QuestionGenerationService;
+import io.quizforge.core.question.QuestionValidator;
 import io.quizforge.core.workspace.WorkspaceService;
 import io.quizforge.desktop.ui.DesktopView;
 import io.quizforge.extension.document.DocumentProcessor;
 import io.quizforge.extension.document.DocumentValidator;
+import io.quizforge.extension.document.DocumentStructureParser;
+import io.quizforge.extension.question.QuestionGenerator;
 import io.quizforge.extensions.ai.deepseek.DeepSeekAiProvider;
 import io.quizforge.extensions.document.standardmd.StandardMarkdownV1Processor;
 import io.quizforge.extensions.document.standardmd.StandardMarkdownV1Validator;
+import io.quizforge.extensions.question.choice.DefaultChoiceQuestionGenerator;
 import io.quizforge.infrastructure.filesystem.LocalMaterialFileStorage;
 import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
@@ -31,6 +37,7 @@ import io.quizforge.infrastructure.persistence.SqliteAiProviderConfigRepository;
 import io.quizforge.infrastructure.persistence.SqliteMaterialRepository;
 import io.quizforge.infrastructure.persistence.SqliteStandardDocumentRepository;
 import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
+import io.quizforge.infrastructure.persistence.SqliteQuestionBankRepository;
 import io.quizforge.infrastructure.security.WindowsDpapiCredentialStore;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
@@ -144,8 +151,32 @@ public class DesktopConfiguration {
     }
 
     @Bean
-    public DocumentValidator documentValidator() {
+    public StandardMarkdownV1Validator documentValidator() {
         return new StandardMarkdownV1Validator();
+    }
+
+    @Bean
+    public QuestionGenerator questionGenerator(AiProviderResolver providers) {
+        return new DefaultChoiceQuestionGenerator(providers::resolve);
+    }
+
+    @Bean
+    public QuestionValidator questionValidator() {
+        return new QuestionValidator();
+    }
+
+    @Bean
+    public QuestionBankRepository questionBankRepository(SqliteDatabase database) {
+        return new SqliteQuestionBankRepository(database);
+    }
+
+    @Bean
+    public QuestionGenerationService questionGenerationService(WorkspaceService workspaces,
+            DocumentNormalizationService documents, DocumentStructureParser structureParser,
+            QuestionGenerator generator, QuestionValidator validator, QuestionBankRepository banks,
+            Clock clock) {
+        return new QuestionGenerationService(workspaces, documents, structureParser,
+                generator, validator, banks, clock);
     }
 
     @Bean
@@ -163,7 +194,7 @@ public class DesktopConfiguration {
     @Bean
     public DesktopView desktopView(WorkspaceService workspaces, MaterialService materials,
             DocumentNormalizationService documents, AiSettingsService settings,
-            AiConnectionService connections) {
-        return new DesktopView(workspaces, materials, documents, settings, connections);
+            AiConnectionService connections, QuestionGenerationService questions) {
+        return new DesktopView(workspaces, materials, documents, settings, connections, questions);
     }
 }

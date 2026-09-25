@@ -76,6 +76,12 @@ public final class DeepSeekAiProvider implements AiProvider {
             ObjectNode payload = JSON.createObjectNode();
             payload.put("model", model);
             payload.put("temperature", request.options().temperature());
+            if (request.options().jsonObject()) {
+                payload.putObject("response_format").put("type", "json_object");
+            }
+            if (request.options().maxTokens() != null) {
+                payload.put("max_tokens", request.options().maxTokens());
+            }
             ArrayNode messages = payload.putArray("messages");
             for (AiMessage message : request.messages()) {
                 ObjectNode item = messages.addObject();

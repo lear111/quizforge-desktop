@@ -6,9 +6,9 @@ Independent Java 21 Maven desktop project. It does not use QuizForge V1 code or 
 
 | Module | Responsibility | Direct project dependencies |
 | --- | --- | --- |
-| `quizforge-extension-api` | Vendor neutral AI and document contracts | None |
-| `quizforge-core` | Workspace, Material and StandardDocument models, services and ports | `quizforge-extension-api` |
-| `quizforge-default-extensions` | DeepSeek and Standard Markdown v1 processing and validation | `quizforge-extension-api` |
+| `quizforge-extension-api` | Vendor neutral AI, document structure and question generation contracts | None |
+| `quizforge-core` | Workspace, Material, StandardDocument and QuestionBank models, services and ports | `quizforge-extension-api` |
+| `quizforge-default-extensions` | DeepSeek, Standard Markdown v1 and choice question generation | `quizforge-extension-api` |
 | `quizforge-infrastructure` | SQLite, Flyway, local files and Windows DPAPI credentials | `quizforge-core` |
 | `quizforge-desktop-app` | JavaFX UI and Spring composition root | All four modules |
 
@@ -27,6 +27,14 @@ under `workspaces\{workspace-id}\materials\`. Validated Standard Documents are s
 at `workspaces\{workspace-id}\document\study.md`. SQLite stores metadata and Material
 provenance. AI provider settings contain a credential reference; API keys are encrypted
 with Windows DPAPI in `secrets\` and never stored in SQLite.
+
+The Question Bank tab generates 1–50 single and/or multiple choice questions from the whole
+Standard Document, one chapter or one section. The dialog populates chapter and section
+choices from CommonMark headings. AI output must be JSON. The local validator accepts only
+questions with valid options, correct answers and source labels. Invalid candidates are
+discarded; at least one valid question is required. SQLite V3 stores one current bank per
+workspace and replaces it in one transaction after generation completes. A failed generation
+or save retains the previous bank. The page warns when its source document has changed.
 
 Override the data directory for an isolated run with the JVM property `quizforge.dataDir`.
 For example, in PowerShell:

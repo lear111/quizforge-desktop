@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.quizforge.extension.document.DocumentValidationResult;
 import io.quizforge.extension.document.DocumentValidator;
+import io.quizforge.extension.document.DocumentStructureParser;
+import io.quizforge.extension.document.StandardDocumentStructure;
 import java.util.ArrayList;
 import java.util.List;
 import org.commonmark.node.Code;
@@ -15,10 +17,87 @@ import org.commonmark.node.IndentedCodeBlock;
 import org.commonmark.node.Node;
 import org.commonmark.node.Text;
 import org.commonmark.parser.Parser;
+import org.commonmark.parser.IncludeSourceSpans;
 
-public final class StandardMarkdownV1Validator implements DocumentValidator {
+public final class StandardMarkdownV1Validator implements DocumentValidator, DocumentStructureParser {
     private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
-    private final Parser parser = Parser.builder().build();
+    private final Parser parser = Parser.builder().includeSourceSpans(IncludeSourceSpans.BLOCKS).build();
+
+    @Override
+    public StandardDocumentStructure parse(String candidateContent) {
+        DocumentValidationResult validation = validate(candidateContent);
+        if (!validation.valid()) {
+            throw new IllegalArgumentException("Invalid standard document: " + String.join(", ", validation.errors()));
+        }
+        String content = candidateContent.replace("\r\n", "\n");
+        int frontEnd = content.indexOf("\n---\n", 4);
+        if (frontEnd < 0) {
+            frontEnd = content.length() - 4;
+        }
+        String body = content.substring(Math.min(content.length(), frontEnd + 5));
+        int[] starts = lineStarts(body);
+        Node root = parser.parse(body);
+        List<StandardDocumentStructure.Chapter> chapters = new ArrayList<>();
+        List<StandardDocumentStructure.Section> sections = new ArrayList<>();
+        String chapterTitle = null;
+        String chapterId = null;
+        String sectionTitle = null;
+        String sectionId = null;
+        int chapterStart = 0;
+        int sectionStart = 0;
+        int chapterNumber = 0;
+        int sectionNumber = 0;
+        for (Node node = root.getFirstChild(); node != null; node = node.getNext()) {
+            if (!(node instanceof Heading heading) || heading.getLevel() < 2 || heading.getLevel() > 3) {
+                continue;
+            }
+            int start = starts[heading.getSourceSpans().getFirst().getLineIndex()];
+            if (sectionTitle != null) {
+                sections.add(new StandardDocumentStructure.Section(sectionId, sectionTitle,
+                        body.substring(sectionStart, start).stripTrailing()));
+                sectionTitle = null;
+            }
+            if (heading.getLevel() == 2) {
+                if (chapterTitle != null) {
+                    chapters.add(new StandardDocumentStructure.Chapter(chapterId, chapterTitle,
+                            body.substring(chapterStart, start).stripTrailing(), sections));
+                    sections = new ArrayList<>();
+                }
+                chapterNumber++;
+                sectionNumber = 0;
+                chapterId = "chapter-" + chapterNumber;
+                chapterTitle = textOf(heading).trim();
+                chapterStart = start;
+            } else {
+                sectionNumber++;
+                sectionId = chapterId + "-section-" + sectionNumber;
+                sectionTitle = textOf(heading).trim();
+                sectionStart = start;
+            }
+        }
+        if (sectionTitle != null) {
+            sections.add(new StandardDocumentStructure.Section(sectionId, sectionTitle,
+                    body.substring(sectionStart).stripTrailing()));
+        }
+        if (chapterTitle != null) {
+            chapters.add(new StandardDocumentStructure.Chapter(chapterId, chapterTitle,
+                    body.substring(chapterStart).stripTrailing(), sections));
+        }
+        return new StandardDocumentStructure(validation.title(), content, chapters);
+    }
+
+    private int[] lineStarts(String body) {
+        int count = 1;
+        for (int i = 0; i < body.length(); i++) {
+            if (body.charAt(i) == '\n') count++;
+        }
+        int[] starts = new int[count];
+        int line = 1;
+        for (int i = 0; i < body.length(); i++) {
+            if (body.charAt(i) == '\n' && line < count) starts[line++] = i + 1;
+        }
+        return starts;
+    }
 
     @Override
     public String formatId() {

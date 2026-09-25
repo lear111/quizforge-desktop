@@ -50,6 +50,18 @@ class DeepSeekAiProviderTest {
     }
 
     @Test
+    void requestsJsonObjectWithBoundedTokens() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        start(200, "{\"choices\":[{\"message\":{\"content\":\"{\\\"questions\\\":[]}\"}}]}",
+                new AtomicReference<>(), requestBody, 0);
+        provider(Duration.ofSeconds(2)).generate(new AiRequest(
+                List.of(new AiMessage(AiRole.USER, "Generate json")),
+                new AiGenerationOptions(0.3, true, 8192)));
+        assertTrue(requestBody.get().contains("\"response_format\":{\"type\":\"json_object\"}"));
+        assertTrue(requestBody.get().contains("\"max_tokens\":8192"));
+    }
+
+    @Test
     void mapsAuthenticationErrorsWithoutSecret() throws Exception {
         assertFailure(401, AiFailureKind.AUTHENTICATION_FAILED);
         assertFailure(403, AiFailureKind.AUTHENTICATION_FAILED);

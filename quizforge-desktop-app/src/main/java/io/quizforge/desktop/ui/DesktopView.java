@@ -7,6 +7,7 @@ import io.quizforge.core.document.DocumentNormalizationService;
 import io.quizforge.core.document.StandardDocumentView;
 import io.quizforge.core.material.Material;
 import io.quizforge.core.material.MaterialService;
+import io.quizforge.core.question.QuestionGenerationService;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceService;
 import io.quizforge.extensions.ai.deepseek.DeepSeekAiProvider;
@@ -19,6 +20,7 @@ import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
@@ -27,6 +29,7 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
@@ -36,6 +39,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -46,65 +50,193 @@ public final class DesktopView {
     private final DocumentNormalizationService documents;
     private final AiSettingsService settings;
     private final AiConnectionService connections;
+    private final QuestionGenerationService questions;
+    private QuestionBankPage questionBankPage;
     private BorderPane root;
     private Stage stage;
     private boolean generationRunning;
+    private VBox sidebar;
+    private Label location;
+    private Label statusContext;
+    private Workspace activeWorkspace;
+    private TabPane workspaceTabs;
+    private final List<Button> sectionButtons = new ArrayList<>();
 
     public DesktopView(WorkspaceService workspaces, MaterialService materials,
             DocumentNormalizationService documents, AiSettingsService settings,
-            AiConnectionService connections) {
+            AiConnectionService connections, QuestionGenerationService questions) {
         this.workspaces = workspaces;
         this.materials = materials;
         this.documents = documents;
         this.settings = settings;
         this.connections = connections;
+        this.questions = questions;
     }
 
     public Scene createScene(Stage stage) {
         this.stage = stage;
+        questionBankPage = new QuestionBankPage(questions, settings, stage);
         root = new BorderPane();
-        root.setPadding(new Insets(24));
+        root.getStyleClass().add("workspace-shell");
+        sidebar = new VBox(14);
+        sidebar.getStyleClass().add("sidebar");
+        sidebar.setPrefWidth(232);
+        sidebar.setMinWidth(232);
+        VBox rail = new VBox(10);
+        rail.getStyleClass().add("ribbon");
+        Button home = UiTheme.iconButton("grid", "All workspaces", this::showHome);
+        home.setId("home-button");
+        Button toggle = UiTheme.iconButton("panel", "Toggle sidebar", () -> {
+            sidebar.setVisible(!sidebar.isVisible());
+            sidebar.setManaged(sidebar.isVisible());
+        });
+        toggle.setId("sidebar-toggle");
+        Region verticalSpace = new Region();
+        VBox.setVgrow(verticalSpace, Priority.ALWAYS);
+        Button settingsButton = UiTheme.iconButton("settings", "AI settings", this::showSettings);
+        settingsButton.setId("settings-button");
+        rail.getChildren().addAll(home, toggle, verticalSpace, settingsButton);
+        root.setLeft(new HBox(rail, sidebar));
+        location = UiTheme.label("", "muted");
+        statusContext = UiTheme.label("", "muted");
+        HBox status = new HBox(8, UiTheme.label("●", "local-dot"),
+                UiTheme.label("Local workspace", "muted"), spacer(), statusContext);
+        status.getStyleClass().add("status-bar");
+        status.setAlignment(Pos.CENTER_LEFT);
+        root.setBottom(status);
         showHome();
-        return new Scene(root, 820, 600);
+        Scene scene = new Scene(root, 1180, 780);
+        UiTheme.apply(scene);
+        stage.setMinWidth(880);
+        stage.setMinHeight(600);
+        return scene;
     }
 
     private void showHome() {
-        Label title = heading("QuizForge");
-        Label section = new Label("Workspaces");
-        Button settingsButton = new Button("AI Settings");
-        settingsButton.setOnAction(event -> showSettings());
-        Button create = new Button("+ New Workspace");
-        create.setOnAction(event -> createWorkspace());
-        HBox header = new HBox(16, section, spacer(), settingsButton, create);
+        activeWorkspace = null;
+        workspaceTabs = null;
+        refreshSidebar();
+        VBox body = new VBox(18, UiTheme.label("YOUR LEARNING WORKSPACE", "eyebrow"),
+                heading("A little space to think."),
+                UiTheme.label("Bring your materials together. Turn what you read into what you know.", "intro"));
+        body.getStyleClass().add("home-content");
+        body.setMaxWidth(650);
+        Button create = UiTheme.button("New workspace", "plus", "primary", this::createWorkspace);
+        create.setId("create-workspace");
+        HBox header = new HBox(12, UiTheme.label("Workspaces", "section-title"), spacer(), create);
         header.setAlignment(Pos.CENTER_LEFT);
-
-        VBox body = new VBox(14, title, header);
-        body.setPadding(new Insets(8));
+        header.setPadding(new Insets(24, 0, 0, 0));
+        body.getChildren().add(header);
         List<Workspace> entries = workspaces.listWorkspaces();
         if (entries.isEmpty()) {
-            body.getChildren().add(new Label("No workspaces yet. Create one to begin."));
+            body.getChildren().add(UiTheme.emptyState("folder", "Make room for your next idea",
+                    "Create a workspace, then import your Markdown materials."));
         } else {
             for (Workspace workspace : entries) {
-                Button open = new Button(workspace.name());
+                Button open = UiTheme.button(workspace.name(), "folder", "workspace-row",
+                        () -> showWorkspace(workspace));
                 open.setMaxWidth(Double.MAX_VALUE);
                 open.setAlignment(Pos.CENTER_LEFT);
-                open.setOnAction(event -> showWorkspace(workspace));
                 body.getChildren().add(open);
             }
         }
-        root.setCenter(body);
+        body.getChildren().add(UiTheme.label("Stored on your device. Use your own AI provider when you need it.", "muted"));
+        StackPane centered = new StackPane(body);
+        centered.setPadding(new Insets(48, 40, 48, 40));
+        StackPane.setAlignment(body, Pos.TOP_CENTER);
+        showContent("Welcome", UiTheme.scroll(centered));
+        statusContext.setText(entries.size() + " workspaces");
+    }
+
+    private void refreshSidebar() {
+        sidebar.getChildren().clear();
+        sectionButtons.clear();
+        HBox brand = new HBox(8, UiTheme.icon("book"), UiTheme.label("QuizForge", "brand"));
+        brand.setAlignment(Pos.CENTER_LEFT);
+        HBox header = new HBox(UiTheme.label("WORKSPACES", "eyebrow"), spacer(),
+                UiTheme.iconButton("plus", "New workspace", this::createWorkspace));
+        header.setAlignment(Pos.CENTER_LEFT);
+        TextField search = new TextField();
+        search.setPromptText("Find a workspace…");
+        search.setId("workspace-search");
+        search.getStyleClass().add("sidebar-search");
+        VBox entries = new VBox(4);
+        Runnable populate = () -> {
+            entries.getChildren().clear();
+            sectionButtons.clear();
+            String query = search.getText().strip().toLowerCase(Locale.ROOT);
+            for (Workspace workspace : workspaces.listWorkspaces()) {
+                if (!workspace.name().toLowerCase(Locale.ROOT).contains(query)) continue;
+                Button open = UiTheme.button(workspace.name(), "folder", "nav-item", () -> showWorkspace(workspace));
+                open.setMaxWidth(Double.MAX_VALUE);
+                open.setAlignment(Pos.CENTER_LEFT);
+                entries.getChildren().add(open);
+                if (activeWorkspace != null && activeWorkspace.id().equals(workspace.id())) {
+                    open.getStyleClass().add("active-workspace");
+                    VBox children = new VBox(3);
+                    children.getStyleClass().add("workspace-tree");
+                    String[] titles = {"Materials", "Standard document", "Question bank"};
+                    String[] icons = {"folder", "file", "book"};
+                    for (int i = 0; i < titles.length; i++) {
+                        final int index = i;
+                        Button item = UiTheme.button(titles[i], icons[i], "nav-item", () -> {
+                            if (workspaceTabs != null) workspaceTabs.getSelectionModel().select(index);
+                            else showWorkspace(workspace, index);
+                        });
+                        item.setAlignment(Pos.CENTER_LEFT);
+                        item.setMaxWidth(Double.MAX_VALUE);
+                        children.getChildren().add(item);
+                        sectionButtons.add(item);
+                    }
+                    entries.getChildren().add(children);
+                }
+            }
+            if (entries.getChildren().isEmpty()) {
+                entries.getChildren().add(UiTheme.label(query.isEmpty()
+                        ? "Your workspaces will appear here." : "No matching workspaces", "muted"));
+            }
+            updateSectionSelection();
+        };
+        search.textProperty().addListener((obs, oldValue, newValue) -> populate.run());
+        populate.run();
+        ScrollPane list = UiTheme.scroll(entries);
+        list.getStyleClass().add("sidebar-scroll");
+        VBox.setVgrow(list, Priority.ALWAYS);
+        sidebar.getChildren().addAll(brand, header, search, list,
+                UiTheme.label("A quieter place to learn.", "sidebar-footer"));
+    }
+
+    private void updateSectionSelection() {
+        for (int i = 0; i < sectionButtons.size(); i++) {
+            Button button = sectionButtons.get(i);
+            button.getStyleClass().remove("selected");
+            if (workspaceTabs != null && workspaceTabs.getSelectionModel().getSelectedIndex() == i) {
+                button.getStyleClass().add("selected");
+            }
+        }
+    }
+
+    private void showContent(String title, Node content) {
+        location.setText(title);
+        HBox breadcrumb = new HBox(10, UiTheme.label("QuizForge", "muted"),
+                UiTheme.label("/", "muted"), location);
+        breadcrumb.setAlignment(Pos.CENTER_LEFT);
+        breadcrumb.getStyleClass().add("breadcrumb");
+        BorderPane main = new BorderPane(content);
+        main.setTop(breadcrumb);
+        root.setCenter(main);
     }
 
     private void createWorkspace() {
         TextInputDialog dialog = new TextInputDialog();
         dialog.initOwner(stage);
+        UiTheme.apply(dialog);
         dialog.setTitle("New Workspace");
         dialog.setHeaderText("Create a workspace");
         dialog.setContentText("Workspace Name:");
         dialog.showAndWait().ifPresent(name -> {
             try {
-                workspaces.createWorkspace(name);
-                showHome();
+                showWorkspace(workspaces.createWorkspace(name));
             } catch (QuizForgeException e) {
                 showError(e);
             }
@@ -112,45 +244,48 @@ public final class DesktopView {
     }
 
     private void showWorkspace(Workspace workspace) {
-        showWorkspace(workspace, false);
+        showWorkspace(workspace, 0);
     }
 
     private void showWorkspace(Workspace workspace, boolean selectDocument) {
-        Button back = new Button("← Workspaces");
-        back.setOnAction(event -> showHome());
-        Label title = heading("Workspace: " + workspace.name());
-        Button settingsButton = new Button("AI Settings");
-        settingsButton.setOnAction(event -> showSettings());
-        HBox navigation = new HBox(12, back, spacer(), settingsButton);
-        VBox header = new VBox(12, navigation, title);
+        showWorkspace(workspace, selectDocument ? 1 : 0);
+    }
 
-        Tab materialsTab = new Tab("Materials", materialsPage(workspace));
+    private void showWorkspace(Workspace workspace, int selectedTab) {
+        activeWorkspace = workspace;
+        Tab materialsTab = new Tab("Materials", UiTheme.scroll(materialsPage(workspace)));
         Tab documentTab = new Tab("Standard Document", standardDocumentPage(workspace));
-        Tab questionTab = new Tab("Question Bank", placeholder("Coming later"));
+        Tab questionTab = new Tab("Question Bank",
+                questionBankPage.content(workspace, () -> showWorkspace(workspace, 2)));
         TabPane tabs = new TabPane(materialsTab, documentTab, questionTab);
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        if (selectDocument) {
-            tabs.getSelectionModel().select(documentTab);
-        }
-
-        VBox page = new VBox(18, header, tabs);
-        VBox.setVgrow(tabs, Priority.ALWAYS);
-        root.setCenter(page);
+        tabs.getStyleClass().add("workspace-tabs");
+        tabs.setId("workspace-tabs");
+        materialsTab.setGraphic(UiTheme.icon("folder"));
+        documentTab.setGraphic(UiTheme.icon("file"));
+        questionTab.setGraphic(UiTheme.icon("book"));
+        tabs.getSelectionModel().select(selectedTab);
+        workspaceTabs = tabs;
+        tabs.getSelectionModel().selectedIndexProperty().addListener((obs, before, after) -> updateSectionSelection());
+        refreshSidebar();
+        showContent(workspace.name(), tabs);
+        statusContext.setText(materials.listMaterials(workspace.id()).size() + " materials  ·  " + workspace.name());
     }
 
     private VBox materialsPage(Workspace workspace) {
-        Label title = new Label("Materials");
-        Button importButton = new Button("+ Import Markdown");
-        importButton.setOnAction(event -> importMarkdown(workspace));
+        Label title = heading("Materials");
+        Button importButton = UiTheme.button("Import Markdown", "upload", "primary", () -> importMarkdown(workspace));
         HBox header = new HBox(12, title, spacer(), importButton);
         header.setAlignment(Pos.CENTER_LEFT);
 
-        VBox page = new VBox(12, header);
-        page.setPadding(new Insets(16));
+        VBox page = new VBox(16, header, UiTheme.label("The source material for everything you’ll learn here.", "muted"));
+        page.getStyleClass().add("content-page");
         List<Material> entries = materials.listMaterials(workspace.id());
         if (entries.isEmpty()) {
-            page.getChildren().add(new Label("No materials yet. Import Markdown files to begin."));
+            page.getChildren().add(UiTheme.emptyState("file", "Start with something worth learning",
+                    "Import a Markdown note, chapter or article to get started."));
         } else {
+            page.getChildren().add(UiTheme.label(entries.size() + " FILES", "eyebrow"));
             for (Material material : entries) {
                 page.getChildren().add(materialRow(workspace, material));
             }
@@ -159,19 +294,22 @@ public final class DesktopView {
     }
 
     private HBox materialRow(Workspace workspace, Material material) {
-        Label name = new Label(material.originalFileName());
+        Label name = UiTheme.label(material.originalFileName(), "file-name");
         String size = material.fileSize() < 1024
                 ? material.fileSize() + " B"
                 : String.format(Locale.ROOT, "%.1f KB", material.fileSize() / 1024.0);
-        Label details = new Label(size + " · " + material.status());
+        Label details = UiTheme.label(size + "  ·  " + material.status(), "muted");
         VBox text = new VBox(4, name, details);
+        text.setMinWidth(0);
+        HBox.setHgrow(text, Priority.ALWAYS);
         Button preview = new Button("Preview");
         preview.setOnAction(event -> preview(material));
         Button delete = new Button("Delete");
+        delete.getStyleClass().add("quiet-danger");
         delete.setOnAction(event -> delete(workspace, material));
-        HBox row = new HBox(12, text, spacer(), preview, delete);
+        HBox row = new HBox(14, UiTheme.icon("file"), text, preview, delete);
         row.setAlignment(Pos.CENTER_LEFT);
-        row.setPadding(new Insets(8));
+        row.getStyleClass().add("material-row");
         return row;
     }
 
@@ -208,9 +346,11 @@ public final class DesktopView {
             TextArea contents = new TextArea(materials.readMaterial(material.id()));
             contents.setEditable(false);
             contents.setWrapText(false);
+            contents.getStyleClass().add("document-editor");
             contents.setPrefSize(700, 500);
             Dialog<Void> dialog = new Dialog<>();
             dialog.initOwner(stage);
+            UiTheme.apply(dialog);
             dialog.setTitle(material.originalFileName());
             dialog.getDialogPane().setContent(contents);
             dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
@@ -225,6 +365,7 @@ public final class DesktopView {
                 "Delete the QuizForge copy of " + material.originalFileName() + "?",
                 ButtonType.CANCEL, ButtonType.OK);
         confirm.initOwner(stage);
+        UiTheme.apply(confirm);
         confirm.setTitle("Delete Material");
         Optional<ButtonType> choice = confirm.showAndWait();
         if (choice.isEmpty() || choice.get() != ButtonType.OK) {
@@ -239,32 +380,36 @@ public final class DesktopView {
     }
 
     private VBox standardDocumentPage(Workspace workspace) {
-        VBox page = new VBox(12);
-        page.setPadding(new Insets(16));
+        VBox page = new VBox(16);
+        page.getStyleClass().add("content-page");
         Optional<StandardDocumentView> current = documents.findByWorkspace(workspace.id());
+        Button generate = UiTheme.button(current.isEmpty() ? "Generate document" : "Regenerate",
+                "spark", "primary", () -> { });
+        HBox header = new HBox(12, heading("Standard document"), spacer(), generate);
+        header.setAlignment(Pos.CENTER_LEFT);
+        page.getChildren().add(header);
         if (current.isEmpty()) {
-            page.getChildren().addAll(new Label("No standard document yet."),
-                    new Label("Select materials and generate one."));
+            page.getChildren().add(UiTheme.emptyState("file", "From scattered notes to a clear structure",
+                    "Choose your materials and let your AI provider organize them into a study document."));
         } else {
             StandardDocumentView view = current.get();
             var document = view.document();
-            page.getChildren().addAll(heading("Standard Document"),
-                    new Label("Title: " + document.title()),
-                    new Label("Format: QuizForge Standard Markdown v1"),
-                    new Label("Status: " + document.status()),
-                    new Label("Generated from: " + document.sourceMaterialIds().size() + " materials"),
-                    new Label("Generated at: " + document.updatedAt()));
+            page.getChildren().addAll(UiTheme.label(document.title(), "section-title"),
+                    UiTheme.label(document.sourceMaterialIds().size() + " source materials  ·  "
+                            + document.status() + "  ·  Standard Markdown v1", "muted"));
             TextArea raw = new TextArea(view.content());
             raw.setEditable(false);
             raw.setWrapText(false);
+            raw.getStyleClass().add("document-editor");
+            raw.setId("document-editor");
             VBox.setVgrow(raw, Priority.ALWAYS);
             page.getChildren().add(raw);
+            page.getChildren().add(UiTheme.label("Updated " + document.updatedAt(), "muted"));
         }
-        Button generate = new Button(current.isEmpty() ? "Generate Standard Document" : "Regenerate");
         generate.setDisable(generationRunning);
-        Label status = new Label();
+        Label status = UiTheme.label(generationRunning ? "Generating document…" : "", "muted");
         generate.setOnAction(event -> chooseMaterialsAndGenerate(workspace, status, generate));
-        page.getChildren().addAll(generate, status);
+        page.getChildren().add(status);
         return page;
     }
 
@@ -277,6 +422,7 @@ public final class DesktopView {
                     "Configure an AI Provider first.", ButtonType.CANCEL,
                     new ButtonType("Open AI Settings"));
             alert.initOwner(stage);
+            UiTheme.apply(alert);
             alert.setTitle("AI Provider required");
             if (alert.showAndWait().map(ButtonType::getText).orElse("")
                     .equals("Open AI Settings")) {
@@ -307,9 +453,13 @@ public final class DesktopView {
         choices.getChildren().add(selected);
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(stage);
+        UiTheme.apply(dialog);
         dialog.setTitle("Select Materials");
         dialog.setHeaderText("Generate Standard Document");
-        dialog.getDialogPane().setContent(choices);
+        ScrollPane choicesScroll = UiTheme.scroll(choices);
+        choicesScroll.setPrefViewportHeight(Math.min(360, entries.size() * 34 + 40));
+        choicesScroll.setPrefViewportWidth(420);
+        dialog.getDialogPane().setContent(choicesScroll);
         ButtonType submit = new ButtonType("Generate");
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.CANCEL, submit);
         if (dialog.showAndWait().orElse(ButtonType.CANCEL) != submit) {
@@ -352,8 +502,13 @@ public final class DesktopView {
     }
 
     private void showSettings() {
-        Button back = new Button("← Workspaces");
-        back.setOnAction(event -> showHome());
+        workspaceTabs = null;
+        updateSectionSelection();
+        Button back = new Button(activeWorkspace == null ? "← Workspaces" : "← Back to workspace");
+        back.setOnAction(event -> {
+            if (activeWorkspace == null) showHome();
+            else showWorkspace(activeWorkspace);
+        });
         ComboBox<String> provider = new ComboBox<>();
         provider.getItems().add("DeepSeek");
         provider.setValue("DeepSeek");
@@ -368,6 +523,7 @@ public final class DesktopView {
                 ? "API Key configured ✓" : "API Key not configured");
         Label connectionStatus = new Label();
         Button save = new Button("Save");
+        save.getStyleClass().add("primary");
         save.setOnAction(event -> {
             try {
                 settings.save("deepseek", baseUrl.getText(), model.getText(), key.getText());
@@ -380,6 +536,7 @@ public final class DesktopView {
             }
         });
         Button remove = new Button("Remove API Key");
+        remove.getStyleClass().add("quiet-danger");
         remove.setOnAction(event -> {
             try {
                 settings.removeApiKey();
@@ -413,12 +570,20 @@ public final class DesktopView {
             worker.setDaemon(true);
             worker.start();
         });
-        VBox page = new VBox(12, back, heading("AI Provider Settings"),
-                new Label("Provider"), provider, new Label("Base URL"), baseUrl,
-                new Label("Model"), model, new Label("API Key"), key, keyStatus,
-                new HBox(12, save, test, remove), connectionStatus);
-        page.setPadding(new Insets(16));
-        root.setCenter(page);
+        provider.setMaxWidth(Double.MAX_VALUE);
+        VBox page = new VBox(20, back, heading("Your AI, your choice."),
+                UiTheme.label("Connect a provider to organize materials and generate questions.", "intro"),
+                field("Provider", provider), field("Base URL", baseUrl),
+                field("Model", model), field("API key", key), keyStatus,
+                UiTheme.label("Your key is encrypted on this device. Save changes before testing the connection.", "muted"),
+                new HBox(10, save, test, remove), connectionStatus);
+        page.getStyleClass().add("settings-page");
+        page.setMaxWidth(620);
+        StackPane centered = new StackPane(page);
+        centered.setPadding(new Insets(32, 40, 40, 40));
+        StackPane.setAlignment(page, Pos.TOP_CENTER);
+        showContent("Settings / AI provider", UiTheme.scroll(centered));
+        statusContext.setText("AI provider settings");
     }
 
     private void showFailure(Throwable failure) {
@@ -431,16 +596,12 @@ public final class DesktopView {
         }
     }
 
-    private VBox placeholder(String message) {
-        VBox box = new VBox(new Label(message));
-        box.setPadding(new Insets(24));
-        return box;
+    private VBox field(String title, Node input) {
+        return new VBox(8, UiTheme.label(title, "field-label"), input);
     }
 
     private Label heading(String text) {
-        Label label = new Label(text);
-        label.setStyle("-fx-font-size: 24px; -fx-font-weight: bold;");
-        return label;
+        return UiTheme.label(text, "page-title");
     }
 
     private Region spacer() {
@@ -456,6 +617,7 @@ public final class DesktopView {
     private void showInfo(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION, message, ButtonType.OK);
         alert.initOwner(stage);
+        UiTheme.apply(alert);
         alert.setTitle(title);
         alert.setHeaderText(null);
         alert.showAndWait();
