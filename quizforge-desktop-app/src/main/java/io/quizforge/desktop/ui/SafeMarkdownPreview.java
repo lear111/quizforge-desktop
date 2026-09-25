@@ -33,12 +33,15 @@ final class SafeMarkdownPreview {
     javafx.scene.Node view(String markdown) {
         VBox preview = new VBox(12);
         preview.getStyleClass().add("markdown-preview");
+        preview.setMaxWidth(820);
         for (Block block : project(markdown)) {
             Label label = UiTheme.label(block.text(), block.style());
             label.setMaxWidth(Double.MAX_VALUE);
             preview.getChildren().add(label);
         }
-        return UiTheme.scroll(preview);
+        javafx.scene.layout.StackPane centered = new javafx.scene.layout.StackPane(preview);
+        centered.setAlignment(javafx.geometry.Pos.TOP_CENTER);
+        return UiTheme.scroll(centered);
     }
 
     private void collect(Node node, List<Block> blocks, String prefix) {

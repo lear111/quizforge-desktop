@@ -285,14 +285,11 @@ public class DesktopConfiguration {
     }
 
     @Bean
-    public DesktopView desktopView(WorkspaceService workspaces, MaterialService materials,
-            DocumentNormalizationService documents,
-            io.quizforge.core.document.FileStandardDocumentGenerationService fileDocuments,
-            AiSettingsService settings,
-            AiConnectionService connections, QuestionGenerationService questions,
-            FileQuestionBankGenerationService fileQuestions, QuestionBankReferenceResolver references,
-            WorkspaceFileService workspaceFiles) {
-        return new DesktopView(workspaces, materials, documents, fileDocuments,
-                settings, connections, questions, fileQuestions, references, workspaceFiles);
+    public DesktopView desktopView(WorkspaceService workspaces, WorkspaceFileService files,
+            WorkspaceFileCatalog catalog, QuestionBankReferenceResolver references, MaterialService materials,
+            io.quizforge.core.document.FileStandardDocumentGenerationService documents,
+            AiSettingsService settings, AiConnectionService connections, QuizForgeDataDirectory directory) {
+        return new DesktopView(workspaces, files, catalog, references, materials, documents,
+                settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"));
     }
 }

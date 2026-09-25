@@ -1,6 +1,6 @@
 /* Warm paper, quiet chrome, and one restrained accent. Shared by every scene. */
 .root {
-    -fx-font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    -fx-font-family: "Microsoft YaHei UI";
     -fx-font-size: 13px;
     -fx-base: #f4f3f0;
     -fx-background: #faf9f6;
@@ -68,7 +68,8 @@
     -fx-max-height: 34;
 }
 .button.icon-button:hover { -fx-background-color: #dedbd4; }
-.button.icon-button:focused { -fx-border-color: #9582bc; }
+.button.icon-button:focused { -fx-border-color: transparent; -fx-background-color: transparent; }
+.button.icon-button:focused .line-icon { -fx-stroke: #635475; }
 .sidebar {
     -fx-background-color: #f0eee9;
     -fx-padding: 20 12 14 12;
@@ -187,3 +188,82 @@
 .preview-heading-3 { -fx-font-size: 17px; -fx-font-weight: bold; }
 .preview-paragraph { -fx-font-size: 14px; -fx-line-spacing: 4; }
 .preview-code { -fx-font-family: "Consolas", monospace; -fx-font-size: 13px; -fx-background-color: #eeeae3; -fx-padding: 12; }
+
+/* Step 4.1: one workspace, one tree, one file. */
+.workspace-split { -fx-padding: 0; -fx-background-color: transparent; -fx-background-insets: 0; }
+.workspace-split > .split-pane-divider {
+    -fx-padding: 0 3 0 2;
+    -fx-background-color: #f0eee9;
+    -fx-border-color: #e1ded7;
+    -fx-border-width: 0 1 0 0;
+    -fx-cursor: h-resize;
+}
+.workspace-split > .split-pane-divider:hover { -fx-background-color: #c9bed8; }
+.workspace-settings-area {
+    -fx-border-color: #dedbd4;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 7 2 0 2;
+}
+.button.sidebar-settings:hover { -fx-background-color: #e8e5de; }
+.folder-disclosure { -fx-padding: 7 5; }
+.folder-chevron { -fx-fill: transparent; -fx-stroke: #918b80; -fx-stroke-width: 1.3; -fx-stroke-line-cap: round; -fx-stroke-line-join: round; }
+.workspace-sidebar {
+    -fx-background-color: #f0eee9;
+    -fx-border-color: #e1ded7;
+    -fx-border-width: 0;
+    -fx-padding: 0 7 10 7;
+}
+.workspace-switcher {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 5;
+    -fx-padding: 12 8;
+    -fx-font-weight: bold;
+    -fx-font-size: 13px;
+    -fx-pref-height: 51;
+    -fx-cursor: hand;
+}
+.workspace-switcher:hover, .workspace-switcher:showing { -fx-background-color: #e8e5de; }
+.workspace-switcher > .label { -fx-padding: 0 8 0 2; }
+.workspace-switcher > .arrow-button { -fx-padding: 0 4; }
+.workspace-switcher > .arrow-button > .arrow {
+    -fx-background-color: #8a857b;
+    -fx-shape: "M0 0 L5 5 L10 0 L9 -1 L5 3 L1 -1 Z";
+}
+.context-menu { -fx-background-color: #faf9f6; -fx-background-radius: 6; -fx-padding: 6; }
+.menu-item { -fx-padding: 8 12; }
+.menu-item:focused { -fx-background-color: #ebe6f1; }
+.menu-item:focused .label { -fx-text-fill: #4c425b; }
+.tree-view { -fx-background-color: transparent; -fx-background-insets: 0; -fx-border-width: 0; -fx-padding: 6 0; }
+.tree-cell { -fx-background-color: transparent; -fx-padding: 5 5; -fx-font-size: 12px; -fx-text-fill: #5b574f; }
+.tree-cell:filled:selected { -fx-background-color: #e7e2ed; -fx-background-radius: 4; -fx-text-fill: #51475f; }
+.tree-cell:filled:hover { -fx-background-color: #eae7e0; -fx-background-radius: 4; }
+.tree-cell:filled:selected:hover { -fx-background-color: #e7e2ed; }
+.tree-cell .tree-disclosure-node .arrow { -fx-background-color: #918b80; }
+.tree-cell .line-icon { -fx-stroke: #948d82; -fx-stroke-width: 1.25; }
+.file-header { -fx-padding: 8 20; -fx-pref-height: 51; -fx-border-color: #edeae4; -fx-border-width: 0 0 1 0; }
+.file-title { -fx-font-size: 12px; -fx-text-fill: #70695f; -fx-padding: 0 12 0 0; }
+.file-header .icon-button { -fx-padding: 6; -fx-min-width: 30; -fx-min-height: 30; -fx-max-width: 30; -fx-max-height: 30; }
+.file-header .icon-button:hover { -fx-background-color: #eeebe5; }
+.file-header .line-icon { -fx-stroke: #857d71; -fx-stroke-width: 1.25; }
+.quiet-state { -fx-alignment: center; -fx-padding: 36; }
+.quiet-state .label { -fx-text-alignment: center; -fx-max-width: 420; }
+.quiet-state-title { -fx-font-size: 16px; -fx-text-fill: #777065; }
+.markdown-preview { -fx-padding: 42 44; -fx-spacing: 18; }
+.preview-heading-1 { -fx-font-size: 27px; -fx-padding: 0 0 12 0; }
+.preview-heading-2 { -fx-font-size: 21px; -fx-padding: 18 0 4 0; }
+.preview-heading-3 { -fx-font-size: 17px; -fx-padding: 12 0 0 0; }
+.preview-paragraph { -fx-font-size: 14px; -fx-line-spacing: 6; }
+.preview-code { -fx-background-color: #f0ede7; -fx-background-radius: 4; }
+.practice-view { -fx-padding: 42 42; }
+.practice-view .progress-bar { -fx-pref-height: 3; -fx-min-height: 3; -fx-max-height: 3; -fx-padding: 0; }
+.practice-view .progress-bar > .track { -fx-background-color: #e9e5dd; -fx-background-insets: 0; -fx-background-radius: 2; }
+.practice-view .progress-bar > .bar { -fx-background-color: #a395b8; -fx-background-insets: 0; -fx-background-radius: 2; -fx-padding: 0; }
+.practice-view .question-stem { -fx-font-size: 20px; -fx-line-spacing: 7; -fx-padding: 12 0; }
+.practice-view .radio-button, .practice-view .check-box { -fx-padding: 12 0; -fx-line-spacing: 5; }
+.practice-view .radio-button:disabled, .practice-view .check-box:disabled { -fx-opacity: 0.85; }
+.practice-feedback { -fx-padding: 18 0; -fx-border-color: #e6e1d8; -fx-border-width: 1 0 0 0; }
+.incorrect { -fx-text-fill: #a15d4e; -fx-font-weight: bold; }
+.asset-details { -fx-background-color: #faf9f6; -fx-background-radius: 7; -fx-border-radius: 7; -fx-border-color: #ded8ce; -fx-padding: 18; }
+.asset-details .detail-key { -fx-font-size: 10px; -fx-text-fill: #8a8277; }
+.asset-details .detail-value { -fx-font-size: 12px; -fx-text-fill: #494238; -fx-max-width: 300; }
