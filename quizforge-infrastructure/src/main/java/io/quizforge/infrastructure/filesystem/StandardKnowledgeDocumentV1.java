@@ -34,6 +34,10 @@ public final class StandardKnowledgeDocumentV1 {
 
     public record Parsed(String assetId, String contentId, String title, String schemaVersion) { }
 
+    public static boolean isIdComment(String literal) {
+        return literal != null && ID_COMMENT.matcher(literal).matches();
+    }
+
     /** Returns empty for ordinary Markdown; a declared but invalid document is an error. */
     public Optional<Parsed> parseIfStandard(String source) {
         if (source == null) throw new IllegalArgumentException("Document is missing");

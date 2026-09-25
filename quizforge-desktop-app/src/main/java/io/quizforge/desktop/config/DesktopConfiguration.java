@@ -12,6 +12,8 @@ import io.quizforge.core.port.CredentialStore;
 import io.quizforge.core.port.MaterialFileStorage;
 import io.quizforge.core.port.MaterialRepository;
 import io.quizforge.core.port.StandardDocumentFileStorage;
+import io.quizforge.core.port.FileDocumentStorage;
+import io.quizforge.core.port.KnowledgeDocumentAssembler;
 import io.quizforge.core.port.StandardDocumentRepository;
 import io.quizforge.core.port.WorkspaceRepository;
 import io.quizforge.core.port.WorkspaceDirectoryStorage;
@@ -32,6 +34,7 @@ import io.quizforge.extensions.document.standardmd.StandardMarkdownV1Validator;
 import io.quizforge.extensions.question.choice.DefaultChoiceQuestionGenerator;
 import io.quizforge.infrastructure.filesystem.LocalMaterialFileStorage;
 import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
+import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentAssembler;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
@@ -156,8 +159,25 @@ public class DesktopConfiguration {
     }
 
     @Bean
-    public StandardDocumentFileStorage standardDocumentFileStorage(QuizForgeDataDirectory directory) {
+    public LocalStandardDocumentFileStorage standardDocumentFileStorage(QuizForgeDataDirectory directory) {
         return new LocalStandardDocumentFileStorage(directory);
+    }
+
+    @Bean
+    public KnowledgeDocumentAssembler knowledgeDocumentAssembler() {
+        return new StandardKnowledgeDocumentAssembler();
+    }
+
+    @Bean
+    public io.quizforge.core.document.FileStandardDocumentGenerationService fileDocumentGenerationService(
+            WorkspaceService workspaces, MaterialRepository materials, MaterialFileStorage materialFiles,
+            AiProviderResolver providers, DocumentProcessor processor, DocumentValidator validator,
+            KnowledgeDocumentAssembler assembler, FileDocumentStorage files, WorkspaceAssetScanner scanner) {
+        int maxChars = Integer.getInteger("quizforge.document.maxInputChars",
+                DEFAULT_MAX_DOCUMENT_INPUT_CHARS);
+        return new io.quizforge.core.document.FileStandardDocumentGenerationService(workspaces,
+                materials, materialFiles, providers, processor, validator, assembler, files,
+                scanner, maxChars);
     }
 
     @Bean
@@ -208,8 +228,11 @@ public class DesktopConfiguration {
 
     @Bean
     public DesktopView desktopView(WorkspaceService workspaces, MaterialService materials,
-            DocumentNormalizationService documents, AiSettingsService settings,
+            DocumentNormalizationService documents,
+            io.quizforge.core.document.FileStandardDocumentGenerationService fileDocuments,
+            AiSettingsService settings,
             AiConnectionService connections, QuestionGenerationService questions) {
-        return new DesktopView(workspaces, materials, documents, settings, connections, questions);
+        return new DesktopView(workspaces, materials, documents, fileDocuments,
+                settings, connections, questions);
     }
 }

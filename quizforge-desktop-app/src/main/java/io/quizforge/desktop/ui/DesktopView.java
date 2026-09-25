@@ -4,7 +4,10 @@ import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.ai.AiConnectionService;
 import io.quizforge.core.ai.AiSettingsService;
 import io.quizforge.core.document.DocumentNormalizationService;
+import io.quizforge.core.document.FileDocumentView;
+import io.quizforge.core.document.FileStandardDocumentGenerationService;
 import io.quizforge.core.document.StandardDocumentView;
+import io.quizforge.core.asset.Asset;
 import io.quizforge.core.material.Material;
 import io.quizforge.core.material.MaterialService;
 import io.quizforge.core.question.QuestionGenerationService;
@@ -48,6 +51,7 @@ public final class DesktopView {
     private final WorkspaceService workspaces;
     private final MaterialService materials;
     private final DocumentNormalizationService documents;
+    private final FileStandardDocumentGenerationService fileDocuments;
     private final AiSettingsService settings;
     private final AiConnectionService connections;
     private final QuestionGenerationService questions;
@@ -55,6 +59,7 @@ public final class DesktopView {
     private BorderPane root;
     private Stage stage;
     private boolean generationRunning;
+    private String selectedDocumentAssetId;
     private VBox sidebar;
     private Label location;
     private Label statusContext;
@@ -63,11 +68,13 @@ public final class DesktopView {
     private final List<Button> sectionButtons = new ArrayList<>();
 
     public DesktopView(WorkspaceService workspaces, MaterialService materials,
-            DocumentNormalizationService documents, AiSettingsService settings,
+            DocumentNormalizationService documents, FileStandardDocumentGenerationService fileDocuments,
+            AiSettingsService settings,
             AiConnectionService connections, QuestionGenerationService questions) {
         this.workspaces = workspaces;
         this.materials = materials;
         this.documents = documents;
+        this.fileDocuments = fileDocuments;
         this.settings = settings;
         this.connections = connections;
         this.questions = questions;
@@ -382,38 +389,73 @@ public final class DesktopView {
     private VBox standardDocumentPage(Workspace workspace) {
         VBox page = new VBox(16);
         page.getStyleClass().add("content-page");
-        Optional<StandardDocumentView> current = documents.findByWorkspace(workspace.id());
-        Button generate = UiTheme.button(current.isEmpty() ? "Generate document" : "Regenerate",
-                "spark", "primary", () -> { });
-        HBox header = new HBox(12, heading("Standard document"), spacer(), generate);
+        List<Asset> available = fileDocuments.list(workspace.id());
+        Button generate = UiTheme.button("Create document", "spark", "primary", () -> { });
+        Button regenerate = UiTheme.button("Regenerate selected", "arrow", "quiet", () -> { });
+        regenerate.setDisable(generationRunning || available.isEmpty());
+        HBox header = new HBox(12, heading("Standard document"), spacer(), regenerate, generate);
         header.setAlignment(Pos.CENTER_LEFT);
         page.getChildren().add(header);
-        if (current.isEmpty()) {
-            page.getChildren().add(UiTheme.emptyState("file", "From scattered notes to a clear structure",
-                    "Choose your materials and let your AI provider organize them into a study document."));
+        ComboBox<String> selection = new ComboBox<>();
+        for (Asset asset : available) {
+            selection.getItems().add(asset.title() + "  ·  " + asset.currentPath());
+        }
+        if (!available.isEmpty()) {
+            int selected = 0;
+            for (int i = 0; i < available.size(); i++) {
+                if (available.get(i).assetId().equals(selectedDocumentAssetId)) selected = i;
+            }
+            selection.getSelectionModel().select(selected);
+            page.getChildren().add(selection);
+            VBox preview = new VBox(8);
+            VBox.setVgrow(preview, Priority.ALWAYS);
+            Runnable showSelected = () -> {
+                preview.getChildren().clear();
+                int index = selection.getSelectionModel().getSelectedIndex();
+                if (index < 0) return;
+                Asset asset = available.get(index);
+                selectedDocumentAssetId = asset.assetId();
+                FileDocumentView view = fileDocuments.findById(workspace.id(), asset.assetId())
+                        .orElseThrow();
+                preview.getChildren().addAll(UiTheme.label(view.asset().title(), "section-title"),
+                        UiTheme.label("assetId: " + view.asset().assetId(), "muted"),
+                        UiTheme.label("contentId: " + view.asset().contentId(), "muted"),
+                        UiTheme.label("Path: " + view.asset().currentPath(), "muted"));
+                TextArea raw = new TextArea(view.markdown());
+                raw.setEditable(false);
+                raw.setWrapText(false);
+                raw.getStyleClass().add("document-editor");
+                raw.setId("document-editor");
+                VBox.setVgrow(raw, Priority.ALWAYS);
+                preview.getChildren().add(raw);
+            };
+            selection.setOnAction(event -> showSelected.run());
+            showSelected.run();
+            page.getChildren().add(preview);
         } else {
-            StandardDocumentView view = current.get();
-            var document = view.document();
-            page.getChildren().addAll(UiTheme.label(document.title(), "section-title"),
-                    UiTheme.label(document.sourceMaterialIds().size() + " source materials  ·  "
-                            + document.status() + "  ·  Standard Markdown v1", "muted"));
-            TextArea raw = new TextArea(view.content());
-            raw.setEditable(false);
-            raw.setWrapText(false);
-            raw.getStyleClass().add("document-editor");
-            raw.setId("document-editor");
-            VBox.setVgrow(raw, Priority.ALWAYS);
-            page.getChildren().add(raw);
-            page.getChildren().add(UiTheme.label("Updated " + document.updatedAt(), "muted"));
+            Optional<StandardDocumentView> legacy = documents.findByWorkspace(workspace.id());
+            if (legacy.isPresent()) {
+                page.getChildren().add(UiTheme.label("Existing Draft document: "
+                        + legacy.get().document().title(), "muted"));
+            } else {
+                page.getChildren().add(UiTheme.emptyState("file", "From scattered notes to a clear structure",
+                        "Choose your materials and let your AI provider organize them into a study document."));
+            }
         }
         generate.setDisable(generationRunning);
         Label status = UiTheme.label(generationRunning ? "Generating document…" : "", "muted");
-        generate.setOnAction(event -> chooseMaterialsAndGenerate(workspace, status, generate));
+        generate.setOnAction(event -> chooseMaterialsAndGenerate(workspace, status, generate, null));
+        regenerate.setOnAction(event -> {
+            int selected = selection.getSelectionModel().getSelectedIndex();
+            if (selected >= 0) chooseMaterialsAndGenerate(workspace, status, regenerate,
+                    available.get(selected).assetId());
+        });
         page.getChildren().add(status);
         return page;
     }
 
-    private void chooseMaterialsAndGenerate(Workspace workspace, Label status, Button generate) {
+    private void chooseMaterialsAndGenerate(Workspace workspace, Label status, Button generate,
+            String existingAssetId) {
         if (generationRunning) {
             return;
         }
@@ -436,12 +478,10 @@ public final class DesktopView {
             return;
         }
         List<CheckBox> checks = new ArrayList<>();
-        List<io.quizforge.core.material.MaterialId> previous = documents.findByWorkspace(workspace.id())
-                .map(view -> view.document().sourceMaterialIds()).orElse(List.of());
         VBox choices = new VBox(8);
         for (Material material : entries) {
             CheckBox check = new CheckBox(material.originalFileName());
-            check.setSelected(previous.isEmpty() || previous.contains(material.id()));
+            check.setSelected(true);
             checks.add(check);
             choices.getChildren().add(check);
         }
@@ -477,16 +517,20 @@ public final class DesktopView {
         }
         generationRunning = true;
         generate.setDisable(true);
-        Task<StandardDocumentView> task = new Task<>() {
+        Task<FileDocumentView> task = new Task<>() {
             @Override
-            protected StandardDocumentView call() {
-                return documents.generate(workspace.id(), ids, this::updateMessage);
+            protected FileDocumentView call() {
+                return existingAssetId == null
+                        ? fileDocuments.create(workspace.id(), ids, this::updateMessage)
+                        : fileDocuments.regenerate(workspace.id(), existingAssetId, ids,
+                                this::updateMessage);
             }
         };
         status.textProperty().bind(task.messageProperty());
         task.setOnSucceeded(event -> {
             generationRunning = false;
             status.textProperty().unbind();
+            selectedDocumentAssetId = task.getValue().asset().assetId();
             showWorkspace(workspace, true);
         });
         task.setOnFailed(event -> {

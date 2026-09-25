@@ -66,6 +66,24 @@ is indexed. Invalid files are reported and skipped. Removing `workspace.db` and 
 again rebuilds the registry from files.
 The scanner indexes files; this step does not write `.qbank` files or move existing assets.
 
+The Standard Document page now creates real file-backed v1 documents. The existing AI
+processor supplies a validated Draft with semantic headings and content; the local
+assembler discards any AI-provided QuizForge IDs, creates document/chapter/section IDs,
+and validates the completed file with the same v1 parser used by the scanner. New files
+use a title-based name under `documents/`; collisions receive ` (2)`, ` (3)`, etc.
+Regenerating a selected file retains its asset ID, writes via a staged replacement,
+and refreshes the registry immediately. The page reads its preview from the saved `.md`
+file and shows the asset ID, content ID, and workspace-relative path. Multiple document
+files can coexist and be rediscovered after restart or relocation.
+If registry refresh fails after a new file is published, the valid file remains on disk
+and the error names its relative path; a later scan can register it. A failed regeneration
+restores the previous file.
+
+The old `standard_document` tables and `document/study.md` Draft path remain solely for
+the current QuestionBank compatibility flow. New document generation does not write to
+those tables or treat them as the source of its formal content. QuestionBank generation
+from file-backed documents is a later migration step.
+
 The Question Bank tab generates 1–50 single and/or multiple choice questions from the whole
 Standard Document, one chapter or one section. The dialog populates chapter and section
 choices from CommonMark headings. AI output must be JSON. The local validator accepts only
