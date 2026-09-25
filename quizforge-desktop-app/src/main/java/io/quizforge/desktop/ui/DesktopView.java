@@ -11,6 +11,8 @@ import io.quizforge.core.asset.Asset;
 import io.quizforge.core.material.Material;
 import io.quizforge.core.material.MaterialService;
 import io.quizforge.core.question.QuestionGenerationService;
+import io.quizforge.core.question.FileQuestionBankGenerationService;
+import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceService;
 import io.quizforge.extensions.ai.deepseek.DeepSeekAiProvider;
@@ -55,7 +57,9 @@ public final class DesktopView {
     private final AiSettingsService settings;
     private final AiConnectionService connections;
     private final QuestionGenerationService questions;
-    private QuestionBankPage questionBankPage;
+    private final FileQuestionBankGenerationService fileQuestions;
+    private final QuestionBankReferenceResolver references;
+    private FileQuestionBankPage questionBankPage;
     private BorderPane root;
     private Stage stage;
     private boolean generationRunning;
@@ -70,7 +74,8 @@ public final class DesktopView {
     public DesktopView(WorkspaceService workspaces, MaterialService materials,
             DocumentNormalizationService documents, FileStandardDocumentGenerationService fileDocuments,
             AiSettingsService settings,
-            AiConnectionService connections, QuestionGenerationService questions) {
+            AiConnectionService connections, QuestionGenerationService questions,
+            FileQuestionBankGenerationService fileQuestions, QuestionBankReferenceResolver references) {
         this.workspaces = workspaces;
         this.materials = materials;
         this.documents = documents;
@@ -78,11 +83,13 @@ public final class DesktopView {
         this.settings = settings;
         this.connections = connections;
         this.questions = questions;
+        this.fileQuestions = fileQuestions;
+        this.references = references;
     }
 
     public Scene createScene(Stage stage) {
         this.stage = stage;
-        questionBankPage = new QuestionBankPage(questions, settings, stage);
+        questionBankPage = new FileQuestionBankPage(fileQuestions, references, settings, stage);
         root = new BorderPane();
         root.getStyleClass().add("workspace-shell");
         sidebar = new VBox(14);

@@ -20,6 +20,12 @@ import io.quizforge.core.port.WorkspaceDirectoryStorage;
 import io.quizforge.core.port.AssetIndexRepository;
 import io.quizforge.core.port.WorkspaceAssetScanner;
 import io.quizforge.core.port.QuestionBankRepository;
+import io.quizforge.core.port.FormalDocumentReader;
+import io.quizforge.core.port.QuestionBankFileCodec;
+import io.quizforge.core.port.QuestionBankFileStorage;
+import io.quizforge.core.question.FileQuestionBankGenerationService;
+import io.quizforge.core.question.QuestionBankReferenceResolver;
+import io.quizforge.core.question.QuestionBankV1Assembler;
 import io.quizforge.core.question.QuestionGenerationService;
 import io.quizforge.core.question.QuestionValidator;
 import io.quizforge.core.workspace.WorkspaceService;
@@ -28,16 +34,21 @@ import io.quizforge.extension.document.DocumentProcessor;
 import io.quizforge.extension.document.DocumentValidator;
 import io.quizforge.extension.document.DocumentStructureParser;
 import io.quizforge.extension.question.QuestionGenerator;
+import io.quizforge.extension.question.SourceAwareQuestionGenerator;
 import io.quizforge.extensions.ai.deepseek.DeepSeekAiProvider;
 import io.quizforge.extensions.document.standardmd.StandardMarkdownV1Processor;
 import io.quizforge.extensions.document.standardmd.StandardMarkdownV1Validator;
 import io.quizforge.extensions.question.choice.DefaultChoiceQuestionGenerator;
+import io.quizforge.extensions.question.choice.SourceAwareChoiceQuestionGenerator;
 import io.quizforge.infrastructure.filesystem.LocalMaterialFileStorage;
 import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
 import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentAssembler;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
+import io.quizforge.infrastructure.filesystem.FormalMarkdownDocumentReader;
+import io.quizforge.infrastructure.filesystem.LocalQuestionBankFileStorage;
+import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteAiProviderConfigRepository;
 import io.quizforge.infrastructure.persistence.SqliteMaterialRepository;
@@ -196,6 +207,38 @@ public class DesktopConfiguration {
     }
 
     @Bean
+    public SourceAwareQuestionGenerator sourceAwareQuestionGenerator(AiProviderResolver providers) {
+        return new SourceAwareChoiceQuestionGenerator(providers::resolve);
+    }
+
+    @Bean
+    public FormalDocumentReader formalDocumentReader(FileDocumentStorage files) {
+        return new FormalMarkdownDocumentReader(files);
+    }
+
+    @Bean
+    public QuestionBankFileCodec questionBankFileCodec() { return new QuestionBankV1Codec(); }
+
+    @Bean
+    public QuestionBankFileStorage questionBankFileStorage(QuizForgeDataDirectory directory) {
+        return new LocalQuestionBankFileStorage(directory);
+    }
+
+    @Bean
+    public QuestionBankReferenceResolver questionBankReferenceResolver(WorkspaceAssetScanner scanner) {
+        return new QuestionBankReferenceResolver(scanner);
+    }
+
+    @Bean
+    public FileQuestionBankGenerationService fileQuestionBankGenerationService(WorkspaceService workspaces,
+            WorkspaceAssetScanner scanner, FormalDocumentReader documents,
+            SourceAwareQuestionGenerator generator, QuestionBankFileCodec codec,
+            QuestionBankFileStorage files) {
+        return new FileQuestionBankGenerationService(workspaces, scanner, documents, generator,
+                new QuestionBankV1Assembler(), codec, files);
+    }
+
+    @Bean
     public QuestionValidator questionValidator() {
         return new QuestionValidator();
     }
@@ -231,8 +274,9 @@ public class DesktopConfiguration {
             DocumentNormalizationService documents,
             io.quizforge.core.document.FileStandardDocumentGenerationService fileDocuments,
             AiSettingsService settings,
-            AiConnectionService connections, QuestionGenerationService questions) {
+            AiConnectionService connections, QuestionGenerationService questions,
+            FileQuestionBankGenerationService fileQuestions, QuestionBankReferenceResolver references) {
         return new DesktopView(workspaces, materials, documents, fileDocuments,
-                settings, connections, questions);
+                settings, connections, questions, fileQuestions, references);
     }
 }
