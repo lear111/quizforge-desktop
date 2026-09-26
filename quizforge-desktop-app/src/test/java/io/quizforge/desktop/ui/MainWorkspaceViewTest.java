@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.quizforge.core.workspace.WorkspaceFileEntry;
 import io.quizforge.core.workspace.WorkspaceFileKind;
 import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentV1;
+import io.quizforge.infrastructure.filesystem.QDocV1Codec;
+import io.quizforge.core.document.qdoc.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -65,6 +67,26 @@ class MainWorkspaceViewTest {
             var paths = paths(shell.sidebar().tree().getRoot());
             assertTrue(paths.contains("Spring.md"));
             assertFalse(paths.contains("我的笔记/学习计划.md"));
+        });
+    }
+
+    @Test void qdocBrowseRendersModelWithComputedNumberingInsteadOfJson() throws Exception {
+        var section = new DocumentNode("section_one", DocumentNodeType.SECTION, "ArrayList",
+                List.of(ContentBlock.text(ContentBlockType.PARAGRAPH, "数组支持按索引访问。")));
+        var chapter = new DocumentNode("chapter_one", DocumentNodeType.CHAPTER, "Java 集合", List.of(section));
+        var document = new QDocDocument("quizforge-document", "1.0", "doc_structured",
+                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "集合知识", "zh-CN", List.of(chapter));
+        fixture.write("Java/Structured.qdoc", new QDocV1Codec().write(document));
+        fx(() -> {
+            shell.refresh();
+            open("Java/Structured.qdoc");
+            assertNotNull(shell.lookup("#qdoc-browse-view"));
+            String rendered = text(shell.filePane().getCenter());
+            assertTrue(rendered.contains("1 Java 集合"));
+            assertTrue(rendered.contains("1.1 ArrayList"));
+            assertTrue(rendered.contains("数组支持按索引访问。"));
+            assertFalse(rendered.contains("schemaVersion"));
+            assertFalse(rendered.contains("doc_structured"));
         });
     }
 

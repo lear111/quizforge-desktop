@@ -126,6 +126,7 @@ final class QuestionBankPage {
             case DOCUMENT -> "Entire Document";
             case CHAPTER -> bank.sourceChapter();
             case SECTION -> bank.sourceChapter() + " / " + bank.sourceSection();
+            case SUBSECTION -> bank.sourceChapter() + " / " + bank.sourceSection();
         };
     }
 

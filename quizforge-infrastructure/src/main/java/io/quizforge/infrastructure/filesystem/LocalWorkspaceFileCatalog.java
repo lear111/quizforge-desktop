@@ -26,11 +26,19 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
             "(?m)^\\s*quizforge_format\\s*:\\s*[\"']?study-document(?:[\"']|\\s|$)");
     private final WorkspacePathResolver paths;
     private final StandardKnowledgeDocumentV1 documents = new StandardKnowledgeDocumentV1();
+    private final QDocV1Codec qdocs = new QDocV1Codec();
     private final QuestionBankFileCodec banks;
+    private final boolean legacyMarkdown;
 
     public LocalWorkspaceFileCatalog(WorkspacePathResolver paths, QuestionBankFileCodec banks) {
+        this(paths, banks, true);
+    }
+
+    public LocalWorkspaceFileCatalog(WorkspacePathResolver paths, QuestionBankFileCodec banks,
+            boolean legacyMarkdown) {
         this.paths = paths;
         this.banks = banks;
+        this.legacyMarkdown = legacyMarkdown;
     }
 
     @Override
@@ -104,7 +112,21 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
         String relative = relative(root, file);
         String name = file.getFileName().toString();
         String lower = name.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".qdoc")) {
+            try {
+                var document = qdocs.parse(Files.readString(file, StandardCharsets.UTF_8));
+                return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.STANDARD_DOCUMENT,
+                        document.id(), qdocs.contentId(document), document.title(), null);
+            } catch (IOException | RuntimeException error) {
+                return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.INVALID_STANDARD_DOCUMENT,
+                        null, null, null, error.getMessage());
+            }
+        }
         if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
+            if (!legacyMarkdown) {
+                return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.MARKDOWN,
+                        null, null, null, null);
+            }
             String source;
             try { source = Files.readString(file, StandardCharsets.UTF_8); }
             catch (IOException error) {

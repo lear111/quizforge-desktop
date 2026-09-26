@@ -108,7 +108,7 @@ final class FileQuestionBankPage {
         if (running) return;
         if (!settings.hasCredential()) { info("AI Provider required", "Configure an AI Provider first."); return; }
         List<Asset> available = questions.listDocuments(workspace.id());
-        if (available.isEmpty()) { info("No documents", "Add a valid StandardDocument .md first."); return; }
+        if (available.isEmpty()) { info("No documents", "Add a valid StandardDocument .qdoc first."); return; }
         TextField title = new TextField("New QuestionBank");
         TextField count = new TextField("10");
         CheckBox single = new CheckBox("Single Choice");

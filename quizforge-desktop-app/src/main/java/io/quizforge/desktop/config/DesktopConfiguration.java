@@ -44,11 +44,11 @@ import io.quizforge.extensions.question.choice.DefaultChoiceQuestionGenerator;
 import io.quizforge.extensions.question.choice.SourceAwareChoiceQuestionGenerator;
 import io.quizforge.infrastructure.filesystem.LocalMaterialFileStorage;
 import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
-import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentAssembler;
+import io.quizforge.infrastructure.filesystem.QDocKnowledgeDocumentAssembler;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
-import io.quizforge.infrastructure.filesystem.FormalMarkdownDocumentReader;
+import io.quizforge.infrastructure.filesystem.QDocFormalDocumentReader;
 import io.quizforge.infrastructure.filesystem.LocalQuestionBankFileStorage;
 import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
 import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileCatalog;
@@ -112,7 +112,8 @@ public class DesktopConfiguration {
     @Bean
     public WorkspaceAssetScanner workspaceAssetScanner(QuizForgeDataDirectory directory,
             AssetIndexRepository index, Clock clock) {
-        return new FileSystemWorkspaceAssetScanner(new WorkspacePathResolver(directory), index, clock);
+        return new FileSystemWorkspaceAssetScanner(new WorkspacePathResolver(directory), index, clock,
+                Boolean.getBoolean("quizforge.legacyMarkdownCompatibility"));
     }
 
     @Bean
@@ -179,7 +180,7 @@ public class DesktopConfiguration {
 
     @Bean
     public KnowledgeDocumentAssembler knowledgeDocumentAssembler() {
-        return new StandardKnowledgeDocumentAssembler();
+        return new QDocKnowledgeDocumentAssembler();
     }
 
     @Bean
@@ -216,7 +217,7 @@ public class DesktopConfiguration {
 
     @Bean
     public FormalDocumentReader formalDocumentReader(FileDocumentStorage files) {
-        return new FormalMarkdownDocumentReader(files);
+        return new QDocFormalDocumentReader(files);
     }
 
     @Bean
@@ -230,7 +231,8 @@ public class DesktopConfiguration {
     @Bean
     public WorkspaceFileCatalog workspaceFileCatalog(QuizForgeDataDirectory directory,
             QuestionBankFileCodec banks) {
-        return new LocalWorkspaceFileCatalog(new WorkspacePathResolver(directory), banks);
+        return new LocalWorkspaceFileCatalog(new WorkspacePathResolver(directory), banks,
+                Boolean.getBoolean("quizforge.legacyMarkdownCompatibility"));
     }
 
     @Bean

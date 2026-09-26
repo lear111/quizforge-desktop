@@ -96,14 +96,26 @@ public final class FileQuestionBankGenerationService {
         progress.accept("Reading source documents");
         List<SourceDocumentSnapshot> snapshots = new ArrayList<>();
         Map<String, Set<String>> selected = new HashMap<>();
+        Map<String, Map<String, Set<String>>> selectedSubsections = new HashMap<>();
         Set<String> seenDocuments = new HashSet<>();
         for (StandardDocumentSelection selection : selections) {
             SourceDocumentSnapshot snapshot = inspectDocument(workspaceId, selection.documentAssetId());
             if (seenDocuments.add(snapshot.assetId())) snapshots.add(snapshot);
-            selected.computeIfAbsent(snapshot.assetId(), ignored -> new HashSet<>())
-                    .addAll(resolveSections(snapshot, selection));
+            Set<String> sections = resolveSections(snapshot, selection);
+            selected.computeIfAbsent(snapshot.assetId(), ignored -> new HashSet<>()).addAll(sections);
+            Map<String, Set<String>> bySection = selectedSubsections.computeIfAbsent(snapshot.assetId(),
+                    ignored -> new HashMap<>());
+            for (String sectionId : sections) {
+                Set<String> included = bySection.computeIfAbsent(sectionId, ignored -> new HashSet<>());
+                if (selection.scope() == GenerationScopeType.SUBSECTION) {
+                    if (!included.contains("*")) included.add(selection.subsectionId());
+                } else {
+                    included.clear();
+                    included.add("*");
+                }
+            }
         }
-        String context = context(snapshots, selected);
+        String context = context(snapshots, selected, selectedSubsections);
         progress.accept("Calling AI provider");
         List<SourceAwareQuestionGenerator.Candidate> candidates;
         try {
@@ -172,15 +184,22 @@ public final class FileQuestionBankGenerationService {
             if (selection.scope() != GenerationScopeType.DOCUMENT && selection.chapterId() != null
                     && !chapter.id().equals(selection.chapterId())) continue;
             for (SourceDocumentSnapshot.Section section : chapter.sections()) {
-                if (selection.scope() == GenerationScopeType.SECTION && !section.id().equals(selection.sectionId())) continue;
+                if ((selection.scope() == GenerationScopeType.SECTION
+                        || selection.scope() == GenerationScopeType.SUBSECTION)
+                        && !section.id().equals(selection.sectionId())) continue;
+                if (selection.scope() == GenerationScopeType.SUBSECTION
+                        && section.subsections().stream().noneMatch(subsection ->
+                        subsection.id().equals(selection.subsectionId()) && !subsection.content().isBlank())) continue;
                 ids.add(section.id());
             }
         }
-        if (ids.isEmpty()) throw fail(ErrorCode.INVALID_GENERATION_SCOPE, "Selected chapter or section was not found.");
+        if (ids.isEmpty()) throw fail(ErrorCode.INVALID_GENERATION_SCOPE,
+                "Selected chapter, section or subsection was not found or has no content.");
         return ids;
     }
 
-    private String context(List<SourceDocumentSnapshot> documents, Map<String, Set<String>> selected) {
+    private String context(List<SourceDocumentSnapshot> documents, Map<String, Set<String>> selected,
+            Map<String, Map<String, Set<String>>> selectedSubsections) {
         StringBuilder out = new StringBuilder();
         for (SourceDocumentSnapshot document : documents) {
             out.append("DOCUMENT\nassetId: ").append(document.assetId()).append("\ntitle: ")
@@ -189,7 +208,14 @@ public final class FileQuestionBankGenerationService {
                 for (SourceDocumentSnapshot.Section section : chapter.sections()) {
                     if (!selected.get(document.assetId()).contains(section.id())) continue;
                     out.append("SECTION\nsectionId: ").append(section.id()).append("\ntitle: ")
-                            .append(section.title()).append("\n").append(section.markdown()).append("\n");
+                            .append(section.title()).append("\n");
+                    Set<String> included = selectedSubsections.get(document.assetId()).get(section.id());
+                    if (included.contains("*")) out.append(section.content()).append('\n');
+                    else for (SourceDocumentSnapshot.Subsection subsection : section.subsections()) {
+                        if (included.contains(subsection.id())) out.append("SUBSECTION\nsubsectionId: ")
+                                .append(subsection.id()).append("\ntitle: ").append(subsection.title())
+                                .append('\n').append(subsection.content()).append('\n');
+                    }
                 }
             }
         }

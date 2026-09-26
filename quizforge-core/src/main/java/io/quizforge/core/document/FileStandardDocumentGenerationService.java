@@ -28,7 +28,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/** Creates file-backed documents while Material input and QuestionBank remain on their legacy paths. */
+/** Creates file-backed documents from legacy Material input through a format assembler. */
 public final class FileStandardDocumentGenerationService {
     private final WorkspaceService workspaces;
     private final MaterialRepository materials;
@@ -135,8 +135,8 @@ public final class FileStandardDocumentGenerationService {
         progress.accept("Saving document file");
         Asset previous = existingAssetId == null ? null : requireCurrentAsset(workspaceId, existingAssetId);
         try (FileDocumentStorage.StagedFile staged = previous == null
-                ? files.stageCreate(workspaceId, assembled.title(), assembled.markdown())
-                : files.stageReplace(workspaceId, previous.currentPath(), assembled.markdown())) {
+                ? files.stageCreate(workspaceId, assembled.title(), assembled.content())
+                : files.stageReplace(workspaceId, previous.currentPath(), assembled.content())) {
             staged.publish();
             try {
                 progress.accept("Refreshing asset registry");

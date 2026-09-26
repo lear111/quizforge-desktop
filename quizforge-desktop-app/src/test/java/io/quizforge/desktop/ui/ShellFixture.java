@@ -29,11 +29,15 @@ final class ShellFixture implements AutoCloseable {
 
     ShellFixture(Path temp) throws Exception {
         String previous = System.getProperty("quizforge.dataDir");
+        String previousLegacy = System.getProperty("quizforge.legacyMarkdownCompatibility");
         System.setProperty("quizforge.dataDir", temp.resolve("data").toString());
+        System.setProperty("quizforge.legacyMarkdownCompatibility", "true");
         try { context = new AnnotationConfigApplicationContext(DesktopConfiguration.class); }
         finally {
             if (previous == null) System.clearProperty("quizforge.dataDir");
             else System.setProperty("quizforge.dataDir", previous);
+            if (previousLegacy == null) System.clearProperty("quizforge.legacyMarkdownCompatibility");
+            else System.setProperty("quizforge.legacyMarkdownCompatibility", previousLegacy);
         }
         workspaces = context.getBean(WorkspaceService.class);
         files = context.getBean(WorkspaceFileService.class);

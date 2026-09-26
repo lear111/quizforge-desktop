@@ -7,6 +7,7 @@ import javafx.scene.layout.StackPane;
 /** File kind and mode route independently; no business navigation or metadata panels. */
 final class FileViewerRouter {
     private final SafeMarkdownPreview markdown = new SafeMarkdownPreview();
+    private final QDocDocumentView qdoc = new QDocDocumentView();
 
     Node view(FilePresentation file, FileMode mode) {
         if (mode == FileMode.EDIT && file.supportsMode()) {
@@ -19,7 +20,8 @@ final class FileViewerRouter {
             case MARKDOWN -> markdown.view(file.file().sourceText());
             case STANDARD_DOCUMENT -> file.empty()
                     ? UiTheme.quietState("此文档暂无内容", "开始编辑，或使用 AI 生成")
-                    : markdown.view(file.file().sourceText());
+                    : file.document() == null ? markdown.view(file.file().sourceText())
+                    : qdoc.view(file.document());
             case QUESTION_BANK -> file.empty()
                     ? UiTheme.quietState("该题库暂无题目", "开始编辑，或使用 AI 生成") : practice(file);
             case DIRECTORY -> welcome();
