@@ -2,6 +2,7 @@ package io.quizforge.desktop.ui;
 
 import io.quizforge.core.document.qdoc.QDocFileEditService;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
+import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceFileService;
 import io.quizforge.core.workspace.WorkspaceId;
@@ -24,14 +25,14 @@ final class MainWorkspaceView extends BorderPane {
     MainWorkspaceView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceHistory history,
             FilePresentationLoader loader, QuestionBankReferenceResolver references, Stage stage,
             Runnable settings, BiConsumer<WorkspaceId, FilePresentation> ai,
-            QDocFileEditService qdocEdits) {
+            QDocFileEditService qdocEdits, QuestionBankFileEditService bankEdits) {
         this.workspaces = workspaces;
         this.files = files;
         this.history = history;
         this.stage = stage;
         setId("main-workspace");
         getStyleClass().add("workspace-shell");
-        filePane = new FilePane(loader, references, ai, qdocEdits);
+        filePane = new FilePane(loader, references, ai, qdocEdits, bankEdits);
         sidebar = new WorkspaceSidebar(entry -> { if (current != null) filePane.open(current.id(), entry.relativePath()); }, settings);
         filePane.setMinWidth(320);
         SplitPane split = new SplitPane(sidebar, filePane);

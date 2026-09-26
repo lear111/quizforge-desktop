@@ -6,6 +6,7 @@ import io.quizforge.core.workspace.WorkspaceFileEntry;
 import io.quizforge.core.workspace.WorkspaceFileKind;
 import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentV1;
 import io.quizforge.infrastructure.filesystem.QDocV1Codec;
+import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
 import io.quizforge.core.document.qdoc.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -232,7 +233,8 @@ class MainWorkspaceViewTest {
             button("next-question").fire();
             Button toggle = button("file-mode-toggle");
             toggle.fire();
-            assertNotNull(shell.lookup("#editor-placeholder"));
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#question-bank-editor"));
             assertNull(shell.lookup("#question-practice"));
             toggle.fire();
             assertSame(toggle, button("file-mode-toggle"));
@@ -272,6 +274,20 @@ class MainWorkspaceViewTest {
         fx(() -> { open("题库/Java集合.qbank"); assertNull(shell.lookup("#empty-asset-ai")); });
     }
 
+    @Test void emptyQuestionBankDraftCanEnterEditorAndAddQuestion() throws Exception {
+        fx(() -> {
+            open("空草稿/新题库.qbank");
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#question-bank-editor"));
+            MenuButton add = (MenuButton) shell.lookup("#qbank-add-question");
+            add.getItems().getFirst().fire();
+            shell.applyCss(); shell.layout();
+            assertEquals("1 / 1", ((Label) shell.lookup("#qbank-editor-position")).getText());
+            assertNotNull(shell.lookup("#qbank-add-source"));
+        });
+    }
+
     @Test void submittingAnswersRevealsFeedbackAndPracticeIsSingleQuestion() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank");
@@ -303,6 +319,53 @@ class MainWorkspaceViewTest {
             button("submit-answer").fire();
             assertTrue(text(shell.lookup("#answer-feedback")).contains("回答错误"));
             assertEquals(before, Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+        });
+    }
+
+    @Test void practiceResultAndRestartStayTransient() throws Exception {
+        fx(() -> {
+            String before = Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-1")).fire();
+            button("submit-answer").fire();
+            button("next-question").fire();
+            ((CheckBox) shell.lookup("#option-0")).fire();
+            ((CheckBox) shell.lookup("#option-1")).fire();
+            button("submit-answer").fire();
+            button("next-question").fire();
+            assertTrue(text(shell.lookup("#practice-result")).contains("1 / 2"));
+            assertTrue(text(shell.lookup("#practice-result")).contains("50%"));
+            button("practice-restart").fire();
+            assertNotNull(shell.lookup("#submit-answer"));
+            assertNull(shell.lookup("#answer-feedback"));
+            assertEquals(before, Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+        });
+    }
+
+    @Test void questionBankEditorSavesToRealFileAndReturnsToPractice() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            var codec = new QuestionBankV1Codec();
+            var oldBank = codec.parse(
+                    Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#question-bank-editor"));
+            ((TextArea) shell.lookup("#qbank-question-stem")).setText("New question stem?");
+            ((TextField) shell.lookup("#qbank-option-0")).setText("Updated option");
+            ((TextArea) shell.lookup("#qbank-analysis")).setText("Updated analysis");
+            ((MenuButton) shell.lookup("#qbank-question-actions")).getItems().getFirst().fire();
+            button("qbank-save").fire();
+            assertEquals(FileMode.BROWSE, shell.filePane().mode());
+            assertTrue(text(shell.filePane()).contains("New question stem?"));
+            var saved = codec.parse(
+                    Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+            assertEquals(oldBank.id(), saved.id());
+            assertEquals(3, saved.questions().size());
+            assertNotEquals(saved.questions().get(0).id(), saved.questions().get(1).id());
+            assertEquals("Updated option", saved.questions().getFirst().data().options().getFirst().content());
+            assertEquals("Updated analysis", saved.questions().getFirst().analysis());
+            assertNotEquals(codec.contentId(oldBank), codec.contentId(saved));
         });
     }
 

@@ -34,6 +34,7 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
     private static final ObjectMapper JSON = new ObjectMapper();
     private final StandardKnowledgeDocumentV1 documents = new StandardKnowledgeDocumentV1();
     private final QDocV1Codec qdocs = new QDocV1Codec();
+    private final QuestionBankV1Codec banks = new QuestionBankV1Codec();
 
     private final WorkspacePathResolver paths;
     private final AssetIndexRepository index;
@@ -158,8 +159,11 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
         if (!"1.0".equals(version) || !id.matches("qb_[A-Za-z0-9_-]+") || title.isBlank()) {
             throw new IllegalArgumentException("Invalid QuestionBank metadata");
         }
+        String revision;
+        try { revision = banks.contentId(banks.parse(Files.readString(file, StandardCharsets.UTF_8))); }
+        catch (RuntimeException invalidDraft) { revision = null; }
         return Optional.of(new Asset(id, AssetType.QUESTION_BANK, relative(root, file),
-                title, null, version));
+                title, revision, version));
     }
 
     private String relative(Path root, Path file) {

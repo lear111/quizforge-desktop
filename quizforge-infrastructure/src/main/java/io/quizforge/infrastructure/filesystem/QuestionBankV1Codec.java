@@ -1,100 +1,111 @@
 package io.quizforge.infrastructure.filesystem;
 
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.port.QuestionBankFileCodec;
 import io.quizforge.core.question.QuestionBankFile;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import io.quizforge.core.question.QuestionBankValidator;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
-/** Self-contained portable .qbank v1 schema; source availability is resolved separately. */
+/** Portable .qbank v1 JSON plus a deterministic hash of the validated model. */
 public final class QuestionBankV1Codec implements QuestionBankFileCodec {
     private final ObjectMapper json = new ObjectMapper()
-            .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
+            .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+    private final QuestionBankValidator validator = new QuestionBankValidator();
 
-    @Override
-    public String write(QuestionBankFile bank) {
+    @Override public String write(QuestionBankFile bank) {
         validate(bank);
         try { return json.writerWithDefaultPrettyPrinter().writeValueAsString(bank) + "\n"; }
         catch (Exception error) { throw invalid("Could not serialize QuestionBank", error); }
     }
 
-    @Override
-    public QuestionBankFile parse(String source) {
+    @Override public QuestionBankFile parse(String source) {
         try {
             QuestionBankFile bank = json.readValue(source, QuestionBankFile.class);
             validate(bank);
             return bank;
-        } catch (QuizForgeException error) {
-            throw error;
-        } catch (Exception error) {
-            throw invalid("Invalid QuestionBank JSON", error);
-        }
+        } catch (QuizForgeException error) { throw error; }
+        catch (Exception error) { throw invalid("Invalid QuestionBank JSON", error); }
     }
 
-    @Override
-    public void validate(QuestionBankFile bank) {
-        if (bank == null || !"quizforge-question-bank".equals(bank.format())
-                || !"1.0".equals(bank.schemaVersion()) || !id(bank.id(), "qb_")
-                || blank(bank.title()) || bank.sourceDocuments().isEmpty()
-                || bank.questions().isEmpty()) throw invalid("Invalid QuestionBank metadata", null);
-        Map<String, String> sources = new HashMap<>();
-        for (QuestionBankFile.SourceDocument source : bank.sourceDocuments()) {
-            if (source == null || !id(source.assetId(), "doc_")
-                    || !contentId(source.contentId()) || blank(source.title())
-                    || sources.putIfAbsent(source.assetId(), source.contentId()) != null) {
-                throw invalid("Invalid sourceDocuments", null);
+    @Override public void validate(QuestionBankFile bank) { validator.validate(bank); }
+
+    @Override public QuestionBankFile parseEmptyDraft(String source) {
+        try {
+            QuestionBankFile bank = json.readValue(source, QuestionBankFile.class);
+            if (bank == null || !"quizforge-question-bank".equals(bank.format())
+                    || !"1.0".equals(bank.schemaVersion()) || bank.id() == null
+                    || !bank.id().matches("qb_[A-Za-z0-9_-]+") || bank.title() == null
+                    || bank.title().isBlank() || !bank.questions().isEmpty()) {
+                throw invalid("Invalid empty QuestionBank draft", null);
             }
-        }
-        Set<String> questions = new HashSet<>();
-        Set<String> allOptions = new HashSet<>();
-        for (QuestionBankFile.Entry entry : bank.questions()) {
-            if (entry == null || !id(entry.id(), "q_") || !questions.add(entry.id())
-                    || blank(entry.stem()) || blank(entry.analysis()) || entry.data() == null
-                    || entry.sourceRefs().isEmpty()) throw invalid("Invalid question", null);
-            boolean single = "SINGLE_CHOICE".equals(entry.type());
-            boolean multiple = "MULTIPLE_CHOICE".equals(entry.type());
-            if (!single && !multiple) throw invalid("Invalid question type", null);
-            Set<String> refs = new HashSet<>();
-            for (QuestionBankFile.SourceRef ref : entry.sourceRefs()) {
-                if (ref == null || !id(ref.documentAssetId(), "doc_")
-                        || !contentId(ref.documentContentId()) || !id(ref.sectionId(), "section_")
-                        || blank(ref.documentTitle()) || blank(ref.sectionTitle())
-                        || !ref.documentContentId().equals(sources.get(ref.documentAssetId()))
-                        || !refs.add(ref.documentAssetId() + "\0" + ref.sectionId())) {
-                    throw invalid("Invalid sourceRefs", null);
+            java.util.Set<String> ids = new java.util.HashSet<>();
+            for (var ref : bank.sourceDocuments()) {
+                if (ref == null || ref.assetId() == null
+                        || !ref.assetId().matches("doc_[A-Za-z0-9_-]+")
+                        || ref.contentId() == null || !ref.contentId().matches("qfd:v1:[0-9a-f]{64}")
+                        || ref.title() == null || ref.title().isBlank() || !ids.add(ref.assetId())) {
+                    throw invalid("Invalid empty QuestionBank draft sources", null);
                 }
             }
-            Set<String> options = new HashSet<>();
-            for (QuestionBankFile.Option option : entry.data().options()) {
-                if (option == null || !id(option.id(), "opt_") || blank(option.content())
-                        || !options.add(option.id()) || !allOptions.add(option.id())) {
-                    throw invalid("Invalid option", null);
+            return bank;
+        } catch (QuizForgeException error) { throw error; }
+        catch (Exception error) { throw invalid("Invalid empty QuestionBank draft", error); }
+    }
+
+    @Override public String contentId(QuestionBankFile bank) {
+        validate(bank);
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            DataOutputStream out = new DataOutputStream(bytes);
+            value(out, "qbank-canonical-v1");
+            value(out, bank.format());
+            value(out, bank.schemaVersion());
+            value(out, bank.title());
+            out.writeInt(bank.sourceDocuments().size());
+            for (var source : bank.sourceDocuments()) {
+                value(out, source.assetId()); value(out, source.contentId()); value(out, source.title());
+            }
+            out.writeInt(bank.questions().size());
+            for (var question : bank.questions()) {
+                value(out, question.id()); value(out, question.type()); value(out, question.stem());
+                value(out, question.analysis());
+                out.writeInt(question.sourceRefs().size());
+                for (var ref : question.sourceRefs()) {
+                    value(out, ref.documentAssetId()); value(out, ref.documentContentId());
+                    value(out, ref.sectionId()); value(out, ref.documentTitle()); value(out, ref.sectionTitle());
                 }
+                out.writeInt(question.data().options().size());
+                for (var option : question.data().options()) {
+                    value(out, option.id()); value(out, option.content());
+                }
+                out.writeInt(question.data().correctOptionIds().size());
+                for (String correct : question.data().correctOptionIds()) value(out, correct);
             }
-            Set<String> correct = new HashSet<>(entry.data().correctOptionIds());
-            if (options.size() < 2 || correct.size() != entry.data().correctOptionIds().size()
-                    || !options.containsAll(correct)
-                    || single && correct.size() != 1
-                    || multiple && (correct.size() < 2 || correct.size() >= options.size())) {
-                throw invalid("Invalid correctOptionIds", null);
-            }
+            out.flush();
+            return "qfb:v1:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(bytes.toByteArray()));
+        } catch (IOException | NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
         }
     }
 
-    private boolean id(String value, String prefix) {
-        return value != null && value.matches(prefix + "[A-Za-z0-9_-]+");
+    private void value(DataOutputStream out, String value) throws IOException {
+        if (value == null) { out.writeInt(-1); return; }
+        byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
+        out.writeInt(encoded.length);
+        out.write(encoded);
     }
-
-    private boolean contentId(String value) {
-        return value != null && value.matches("qfd:v1:[0-9a-f]{64}");
-    }
-
-    private boolean blank(String value) { return value == null || value.isBlank(); }
 
     private QuizForgeException invalid(String message, Throwable error) {
         return new QuizForgeException(ErrorCode.QUESTION_BANK_FILE_INVALID, message, error);

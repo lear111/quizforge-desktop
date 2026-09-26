@@ -26,6 +26,7 @@ import io.quizforge.core.port.QuestionBankFileCodec;
 import io.quizforge.core.port.QuestionBankFileStorage;
 import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.question.FileQuestionBankGenerationService;
+import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankV1Assembler;
 import io.quizforge.core.workspace.WorkspaceFileService;
@@ -237,6 +238,13 @@ public class DesktopConfiguration {
     }
 
     @Bean
+    public QuestionBankFileEditService questionBankFileEditService(WorkspaceService workspaces,
+            QuestionBankFileStorage files, QuestionBankFileCodec codec,
+            WorkspaceAssetScanner scanner, FormalDocumentReader documents) {
+        return new QuestionBankFileEditService(workspaces, files, codec, scanner, documents);
+    }
+
+    @Bean
     public WorkspaceFileCatalog workspaceFileCatalog(QuizForgeDataDirectory directory,
             QuestionBankFileCodec banks) {
         return new LocalWorkspaceFileCatalog(new WorkspacePathResolver(directory), banks,
@@ -299,8 +307,9 @@ public class DesktopConfiguration {
             WorkspaceFileCatalog catalog, QuestionBankReferenceResolver references, MaterialService materials,
             io.quizforge.core.document.FileStandardDocumentGenerationService documents,
             AiSettingsService settings, AiConnectionService connections, QuizForgeDataDirectory directory,
-            QDocFileEditService qdocEdits) {
+            QDocFileEditService qdocEdits, QuestionBankFileEditService bankEdits) {
         return new DesktopView(workspaces, files, catalog, references, materials, documents,
-                settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"), qdocEdits);
+                settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"),
+                qdocEdits, bankEdits);
     }
 }

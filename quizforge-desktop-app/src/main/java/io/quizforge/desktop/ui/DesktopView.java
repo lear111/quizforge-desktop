@@ -7,6 +7,7 @@ import io.quizforge.core.document.qdoc.QDocFileEditService;
 import io.quizforge.core.material.MaterialService;
 import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
+import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.WorkspaceFileService;
 import io.quizforge.core.workspace.WorkspaceService;
 import java.nio.file.Path;
@@ -25,11 +26,13 @@ public final class DesktopView {
     private final AiConnectionService connections;
     private final Path historyPath;
     private final QDocFileEditService qdocEdits;
+    private final QuestionBankFileEditService bankEdits;
 
     public DesktopView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceFileCatalog catalog,
             QuestionBankReferenceResolver references, MaterialService materials,
             FileStandardDocumentGenerationService documents, AiSettingsService settings,
-            AiConnectionService connections, Path historyPath, QDocFileEditService qdocEdits) {
+            AiConnectionService connections, Path historyPath, QDocFileEditService qdocEdits,
+            QuestionBankFileEditService bankEdits) {
         this.workspaces = workspaces;
         this.files = files;
         this.catalog = catalog;
@@ -40,6 +43,7 @@ public final class DesktopView {
         this.connections = connections;
         this.historyPath = historyPath;
         this.qdocEdits = qdocEdits;
+        this.bankEdits = bankEdits;
     }
 
     public Scene createScene(Stage stage) {
@@ -47,7 +51,7 @@ public final class DesktopView {
         EmptyAssetAiAction[] ai = new EmptyAssetAiAction[1];
         MainWorkspaceView shell = new MainWorkspaceView(workspaces, files, new WorkspaceHistory(historyPath),
                 new FilePresentationLoader(files, catalog), references, stage, settingsDialog::show,
-                (workspace, file) -> ai[0].run(workspace, file), qdocEdits);
+                (workspace, file) -> ai[0].run(workspace, file), qdocEdits, bankEdits);
         ai[0] = new EmptyAssetAiAction(materials, documents, settings, stage,
                 settingsDialog::show, shell::refreshAndOpen);
         Scene scene = new Scene(shell, 1180, 780);

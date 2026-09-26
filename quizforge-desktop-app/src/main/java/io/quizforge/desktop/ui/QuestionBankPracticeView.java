@@ -1,10 +1,7 @@
 package io.quizforge.desktop.ui;
 
 import io.quizforge.core.question.QuestionBankFile;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import io.quizforge.core.question.QuestionBankPracticeSession;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
@@ -16,15 +13,12 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
-/** A transient practice session: one question at a time, no persisted records. */
+/** One question at a time; answer state never alters the .qbank file. */
 final class QuestionBankPracticeView extends VBox {
-    private final QuestionBankFile bank;
-    private final Map<Integer, Set<String>> selections = new HashMap<>();
-    private final Set<Integer> submitted = new HashSet<>();
-    private int index;
+    private final QuestionBankPracticeSession session;
 
     QuestionBankPracticeView(QuestionBankFile bank) {
-        this.bank = bank;
+        session = new QuestionBankPracticeSession(bank);
         setId("question-practice");
         getStyleClass().add("practice-view");
         setSpacing(20);
@@ -34,79 +28,93 @@ final class QuestionBankPracticeView extends VBox {
 
     private void render() {
         getChildren().clear();
-        if (bank.questions().isEmpty()) {
-            getChildren().add(UiTheme.quietState("该题库暂无题目", "开始编辑，或使用 AI 生成"));
-            return;
-        }
-        var question = bank.questions().get(index);
-        Set<String> selected = selections.computeIfAbsent(index, ignored -> new HashSet<>());
-        boolean answered = submitted.contains(index);
-        var position = UiTheme.label("Question " + (index + 1) + " / " + bank.questions().size(), "muted");
+        getChildren().add(UiTheme.label(session.bank().title(), "section-title"));
+        if (session.finished()) { result(); return; }
+        QuestionBankFile.Entry question = session.current();
+        var state = session.state();
+        var position = UiTheme.label("Question " + (session.index() + 1) + " / "
+                + session.bank().questions().size(), "muted");
         position.setId("question-position");
-        ProgressBar progress = new ProgressBar((index + 1.0) / bank.questions().size());
+        ProgressBar progress = new ProgressBar((session.index() + 1.0) / session.bank().questions().size());
         progress.setMaxWidth(Double.MAX_VALUE);
         getChildren().addAll(position, progress, UiTheme.label(question.stem(), "question-stem"));
-        Button submit = new Button("提交答案");
+        Button submit = new Button("确认答案");
         submit.setId("submit-answer");
-        submit.setDisable(selected.isEmpty() || answered);
+        submit.setDisable(state != QuestionBankPracticeSession.State.SELECTED);
         ToggleGroup group = new ToggleGroup();
-        boolean single = "SINGLE_CHOICE".equals(question.type());
         VBox options = new VBox(8);
+        boolean single = "SINGLE_CHOICE".equals(question.type());
         for (int i = 0; i < question.data().options().size(); i++) {
             var option = question.data().options().get(i);
-            String text = (char) ('A' + i) + "   " + option.content();
+            String label = (char) ('A' + i) + "   " + option.content();
             if (single) {
-                RadioButton choice = new RadioButton(text);
+                RadioButton choice = new RadioButton(label);
                 choice.setToggleGroup(group);
-                choice.setSelected(selected.contains(option.id()));
-                choice.setOnAction(event -> { selected.clear(); selected.add(option.id()); submit.setDisable(false); });
+                choice.setSelected(session.selected().contains(option.id()));
+                choice.setOnAction(event -> { session.select(option.id()); submit.setDisable(false); });
                 choice.setWrapText(true);
                 choice.setMaxWidth(Double.MAX_VALUE);
-                choice.setDisable(answered);
+                choice.setDisable(state == QuestionBankPracticeSession.State.SUBMITTED);
                 choice.setId("option-" + i);
                 options.getChildren().add(choice);
             } else {
-                CheckBox choice = new CheckBox(text);
-                choice.setSelected(selected.contains(option.id()));
+                CheckBox choice = new CheckBox(label);
+                choice.setSelected(session.selected().contains(option.id()));
                 choice.setOnAction(event -> {
-                    if (choice.isSelected()) selected.add(option.id()); else selected.remove(option.id());
-                    submit.setDisable(selected.isEmpty());
+                    session.select(option.id());
+                    submit.setDisable(session.state() != QuestionBankPracticeSession.State.SELECTED);
                 });
                 choice.setWrapText(true);
                 choice.setMaxWidth(Double.MAX_VALUE);
-                choice.setDisable(answered);
+                choice.setDisable(state == QuestionBankPracticeSession.State.SUBMITTED);
                 choice.setId("option-" + i);
                 options.getChildren().add(choice);
             }
         }
         getChildren().add(options);
-        submit.setOnAction(event -> { submitted.add(index); render(); });
+        submit.setOnAction(event -> { session.submit(); render(); });
         getChildren().add(submit);
-        if (answered) {
-            boolean correct = selected.equals(new HashSet<>(question.data().correctOptionIds()));
-            VBox feedback = new VBox(12, UiTheme.label(correct ? "回答正确" : "回答错误", correct ? "answer" : "incorrect"),
+        if (state == QuestionBankPracticeSession.State.SUBMITTED) {
+            VBox feedback = new VBox(12, UiTheme.label(session.correct() ? "回答正确" : "回答错误",
+                    session.correct() ? "answer" : "incorrect"),
                     UiTheme.label("正确答案：" + answerLabels(question), "field-label"),
                     UiTheme.label(question.analysis(), "preview-paragraph"));
             feedback.setId("answer-feedback");
             feedback.getStyleClass().add("practice-feedback");
-            for (var ref : question.sourceRefs()) {
-                feedback.getChildren().add(UiTheme.label("来源：" + ref.documentTitle() + " / " + ref.sectionTitle(), "muted"));
-            }
+            for (var ref : question.sourceRefs()) feedback.getChildren().add(UiTheme.label(
+                    "来源：" + ref.documentTitle() + " / " + ref.sectionTitle(), "muted"));
             getChildren().add(feedback);
         }
         Button previous = new Button("上一题");
         previous.setId("previous-question");
-        previous.setDisable(index == 0);
-        previous.setOnAction(event -> { index--; render(); });
-        Button next = new Button("下一题");
+        previous.setDisable(session.index() == 0);
+        previous.setOnAction(event -> { session.previous(); render(); });
+        Button next = new Button(session.index() == session.bank().questions().size() - 1 ? "完成练习" : "下一题");
         next.setId("next-question");
-        next.setDisable(index == bank.questions().size() - 1);
-        next.setOnAction(event -> { index++; render(); });
+        next.setDisable(session.index() == session.bank().questions().size() - 1
+                && !session.canFinish());
+        next.setOnAction(event -> { session.next(); render(); });
         Region space = new Region();
         HBox.setHgrow(space, Priority.ALWAYS);
         HBox navigation = new HBox(previous, space, next);
         navigation.setAlignment(Pos.CENTER_LEFT);
         getChildren().add(navigation);
+    }
+
+    private void result() {
+        var result = session.result();
+        VBox page = new VBox(12, UiTheme.label("本次练习完成", "section-title"),
+                UiTheme.label(result.correct() + " / " + result.total(), "practice-result-score"),
+                UiTheme.label("正确率：" + result.accuracyPercent() + "%", "preview-paragraph"),
+                UiTheme.label("正确：" + result.correct(), "preview-paragraph"),
+                UiTheme.label("错误：" + result.incorrect(), "preview-paragraph"));
+        page.setId("practice-result");
+        Button restart = UiTheme.button("重新开始", "refresh", "primary-button", () -> {
+            session.restart(); render();
+        });
+        restart.setId("practice-restart");
+        page.getChildren().add(restart);
+        getChildren().add(page);
     }
 
     private String answerLabels(QuestionBankFile.Entry question) {

@@ -75,7 +75,7 @@ class FileQuestionBankGenerationIntegrationTest {
         assertEquals(2, outcome.accepted());
         assertEquals(AssetType.QUESTION_BANK, outcome.asset().assetType());
         assertEquals("question-banks/Java Bank.qbank", outcome.asset().currentPath());
-        assertNull(outcome.asset().contentId());
+        assertEquals(codec.contentId(outcome.bank()), outcome.asset().contentId());
         QuestionBankFile bank = codec.parse(Files.readString(root.resolve(outcome.asset().currentPath())));
         assertEquals(2, bank.sourceDocuments().size());
         assertEquals(2, bank.questions().size());

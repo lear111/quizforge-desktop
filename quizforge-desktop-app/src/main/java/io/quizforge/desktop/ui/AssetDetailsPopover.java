@@ -33,7 +33,7 @@ final class AssetDetailsPopover {
         body.getChildren().add(UiTheme.label(entry.name(), "field-label"));
         row("Type", file.kind() == WorkspaceFileKind.QUESTION_BANK ? "Question Bank" : "Standard Document");
         row("Asset ID", entry.assetId());
-        if (file.kind() == WorkspaceFileKind.STANDARD_DOCUMENT) row("Content Revision", entry.contentId());
+        row("Content Revision", entry.contentId());
         row("Path", entry.relativePath());
         row("Status", file.draft() ? "空草稿 · 未通过正式格式校验" : "Valid");
         if (file.kind() == WorkspaceFileKind.QUESTION_BANK) {

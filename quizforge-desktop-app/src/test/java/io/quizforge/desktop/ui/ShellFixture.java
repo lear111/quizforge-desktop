@@ -4,6 +4,7 @@ import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.document.qdoc.QDocFileEditService;
+import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceFileService;
 import io.quizforge.core.workspace.WorkspaceService;
@@ -81,7 +82,8 @@ final class ShellFixture implements AutoCloseable {
         historyStore.visit(alpha);
         return new MainWorkspaceView(workspaces, files, historyStore, loader,
                 context.getBean(QuestionBankReferenceResolver.class), stage, settingsOpened::incrementAndGet,
-                (workspace, file) -> aiOpened.incrementAndGet(), context.getBean(QDocFileEditService.class));
+                (workspace, file) -> aiOpened.incrementAndGet(), context.getBean(QDocFileEditService.class),
+                context.getBean(QuestionBankFileEditService.class));
     }
 
     static String document(String body) {

@@ -10,9 +10,8 @@ final class FileViewerRouter {
     private final QDocDocumentView qdoc = new QDocDocumentView();
 
     Node view(FilePresentation file, FileMode mode) {
-        if (mode == FileMode.EDIT && file.supportsMode()) {
-            Node placeholder = UiTheme.quietState(file.kind() == io.quizforge.core.workspace.WorkspaceFileKind.QUESTION_BANK
-                    ? "题库编辑器" : "文档编辑器", "编辑功能将在后续版本提供，当前文件未发生修改。");
+        if (mode == FileMode.EDIT && file.kind() == io.quizforge.core.workspace.WorkspaceFileKind.MARKDOWN) {
+            Node placeholder = UiTheme.quietState("文档编辑器", "编辑功能将在后续版本提供，当前文件未发生修改。");
             placeholder.setId("editor-placeholder");
             return placeholder;
         }

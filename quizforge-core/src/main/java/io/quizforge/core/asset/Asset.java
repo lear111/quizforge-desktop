@@ -32,7 +32,10 @@ public record Asset(String assetId, AssetType assetType, String currentPath, Str
         if (schemaVersion == null || schemaVersion.isBlank()) {
             throw new IllegalArgumentException("Asset schema version is required");
         }
-        if (contentId != null && !contentId.matches("qfd:v1:[0-9a-f]{64}")) {
+        if (contentId != null && !(assetType == AssetType.STANDARD_DOCUMENT
+                && contentId.matches("qfd:v1:[0-9a-f]{64}")
+                || assetType == AssetType.QUESTION_BANK
+                && contentId.matches("qfb:v1:[0-9a-f]{64}"))) {
             throw new IllegalArgumentException("Asset content ID is invalid");
         }
         assetId = assetId.trim();

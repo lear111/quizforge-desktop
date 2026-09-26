@@ -153,7 +153,7 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
             try {
                 var bank = banks.parse(Files.readString(file, StandardCharsets.UTF_8));
                 return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.QUESTION_BANK,
-                        bank.id(), null, bank.title(), null);
+                        bank.id(), banks.contentId(bank), bank.title(), null);
             } catch (IOException | RuntimeException error) {
                 return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.INVALID_QUESTION_BANK,
                         null, null, null, error.getMessage());

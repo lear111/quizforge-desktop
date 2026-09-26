@@ -17,4 +17,12 @@ class AssetTest {
         assertThrows(IllegalArgumentException.class, () -> new Asset("doc_123",
                 AssetType.STANDARD_DOCUMENT, "/tmp/study.md", "Java"));
     }
+
+    @Test void revisionPrefixMatchesAssetType() {
+        String hash = "a".repeat(64);
+        assertEquals("qfb:v1:" + hash, new Asset("qb_one", AssetType.QUESTION_BANK,
+                "banks/one.qbank", "One", "qfb:v1:" + hash, "1.0").contentId());
+        assertThrows(IllegalArgumentException.class, () -> new Asset("qb_one", AssetType.QUESTION_BANK,
+                "banks/one.qbank", "One", "qfd:v1:" + hash, "1.0"));
+    }
 }
