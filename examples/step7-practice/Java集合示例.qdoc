@@ -1,0 +1,42 @@
+{
+  "format": "quizforge-document",
+  "schemaVersion": "1.0",
+  "id": "doc_java_collections_demo",
+  "template": {
+    "id": "quizforge-general-knowledge",
+    "version": "1.0"
+  },
+  "title": "Java 集合示例",
+  "language": "zh-CN",
+  "content": [
+    {
+      "id": "chapter_collections_demo",
+      "type": "CHAPTER",
+      "title": "常用集合",
+      "children": [
+        {
+          "id": "section_arraylist_demo",
+          "type": "SECTION",
+          "title": "ArrayList",
+          "children": [
+            {
+              "type": "PARAGRAPH",
+              "text": "ArrayList 基于可扩容数组，保持元素的插入顺序，允许重复元素，按索引访问的时间复杂度为 O(1)。"
+            }
+          ]
+        },
+        {
+          "id": "section_hashset_demo",
+          "type": "SECTION",
+          "title": "HashSet",
+          "children": [
+            {
+              "type": "PARAGRAPH",
+              "text": "HashSet 基于哈希表，不保存重复元素，不保证遍历顺序；在正常散列条件下，contains 的平均时间复杂度为 O(1)。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

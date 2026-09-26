@@ -1,0 +1,114 @@
+{
+  "format": "quizforge-question-bank",
+  "schemaVersion": "1.0",
+  "id": "qb_java_collections_practice_demo",
+  "title": "Java 集合练习示例",
+  "sourceDocuments": [
+    {
+      "assetId": "doc_java_collections_demo",
+      "contentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+      "title": "Java 集合示例"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q_demo_arraylist_structure",
+      "type": "SINGLE_CHOICE",
+      "stem": "ArrayList 的底层结构是什么？",
+      "analysis": "ArrayList 基于可扩容数组，因此支持按索引快速访问。",
+      "sourceRefs": [
+        {
+          "documentAssetId": "doc_java_collections_demo",
+          "documentContentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+          "sectionId": "section_arraylist_demo",
+          "documentTitle": "Java 集合示例",
+          "sectionTitle": "ArrayList"
+        }
+      ],
+      "data": {
+        "options": [
+          { "id": "opt_demo_01_a", "content": "可扩容数组" },
+          { "id": "opt_demo_01_b", "content": "双向链表" },
+          { "id": "opt_demo_01_c", "content": "红黑树" }
+        ],
+        "correctOptionIds": ["opt_demo_01_a"]
+      }
+    },
+    {
+      "id": "q_demo_arraylist_properties",
+      "type": "MULTIPLE_CHOICE",
+      "stem": "下列哪些描述适用于 ArrayList？",
+      "analysis": "ArrayList 保持插入顺序、允许重复元素；它不会自动按元素大小排序。",
+      "sourceRefs": [
+        {
+          "documentAssetId": "doc_java_collections_demo",
+          "documentContentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+          "sectionId": "section_arraylist_demo",
+          "documentTitle": "Java 集合示例",
+          "sectionTitle": "ArrayList"
+        }
+      ],
+      "data": {
+        "options": [
+          { "id": "opt_demo_02_a", "content": "保持插入顺序" },
+          { "id": "opt_demo_02_b", "content": "允许重复元素" },
+          { "id": "opt_demo_02_c", "content": "自动按元素大小排序" }
+        ],
+        "correctOptionIds": ["opt_demo_02_a", "opt_demo_02_b"]
+      }
+    },
+    {
+      "id": "q_demo_hashset_unique",
+      "type": "SINGLE_CHOICE",
+      "stem": "向 HashSet 重复添加同一个元素，题目中的哪项描述正确？",
+      "analysis": "HashSet 不保存重复元素，重复添加不会得到两个相同元素。",
+      "sourceRefs": [
+        {
+          "documentAssetId": "doc_java_collections_demo",
+          "documentContentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+          "sectionId": "section_hashset_demo",
+          "documentTitle": "Java 集合示例",
+          "sectionTitle": "HashSet"
+        }
+      ],
+      "data": {
+        "options": [
+          { "id": "opt_demo_03_a", "content": "会保存两个相同元素" },
+          { "id": "opt_demo_03_b", "content": "不会保存重复元素" },
+          { "id": "opt_demo_03_c", "content": "会自动转换为 ArrayList" }
+        ],
+        "correctOptionIds": ["opt_demo_03_b"]
+      }
+    },
+    {
+      "id": "q_demo_compare_collections",
+      "type": "MULTIPLE_CHOICE",
+      "stem": "关于 ArrayList 与 HashSet，下列哪些说法正确？",
+      "analysis": "ArrayList 可按索引访问；HashSet 不保存重复元素，且不保证遍历顺序。",
+      "sourceRefs": [
+        {
+          "documentAssetId": "doc_java_collections_demo",
+          "documentContentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+          "sectionId": "section_arraylist_demo",
+          "documentTitle": "Java 集合示例",
+          "sectionTitle": "ArrayList"
+        },
+        {
+          "documentAssetId": "doc_java_collections_demo",
+          "documentContentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+          "sectionId": "section_hashset_demo",
+          "documentTitle": "Java 集合示例",
+          "sectionTitle": "HashSet"
+        }
+      ],
+      "data": {
+        "options": [
+          { "id": "opt_demo_04_a", "content": "ArrayList 支持按索引访问" },
+          { "id": "opt_demo_04_b", "content": "HashSet 不保存重复元素" },
+          { "id": "opt_demo_04_c", "content": "HashSet 保证按插入顺序遍历" }
+        ],
+        "correctOptionIds": ["opt_demo_04_a", "opt_demo_04_b"]
+      }
+    }
+  ]
+}
