@@ -10,7 +10,13 @@ public record DocumentTemplate(String id, String version, DocumentSchema schema)
                     Map.of(DocumentNodeType.CHAPTER, Set.of(DocumentNodeType.SECTION),
                             DocumentNodeType.SECTION, Set.of(DocumentNodeType.SUBSECTION),
                             DocumentNodeType.SUBSECTION, Set.of()),
-                    Set.of(DocumentNodeType.SECTION, DocumentNodeType.SUBSECTION),
+                    Map.of(DocumentNodeType.CHAPTER, Set.of(ContentBlockType.PARAGRAPH),
+                            DocumentNodeType.SECTION, Set.of(ContentBlockType.PARAGRAPH,
+                                    ContentBlockType.BULLET_LIST, ContentBlockType.ORDERED_LIST,
+                                    ContentBlockType.CODE_BLOCK, ContentBlockType.QUOTE),
+                            DocumentNodeType.SUBSECTION, Set.of(ContentBlockType.PARAGRAPH,
+                                    ContentBlockType.BULLET_LIST, ContentBlockType.ORDERED_LIST,
+                                    ContentBlockType.CODE_BLOCK, ContentBlockType.QUOTE)),
                     Map.of(DocumentNodeType.CHAPTER, DocumentNodeType.SECTION)));
 
     public QDocDocument.TemplateRef reference() { return new QDocDocument.TemplateRef(id, version); }

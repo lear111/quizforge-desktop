@@ -6,7 +6,10 @@ import java.util.List;
 public record SourceDocumentSnapshot(String assetId, String contentId, String title,
         List<Chapter> chapters) {
     public SourceDocumentSnapshot { chapters = List.copyOf(chapters); }
-    public record Chapter(String id, String title, List<Section> sections) {
+    public record Chapter(String id, String title, String content, List<Section> sections) {
+        public Chapter(String id, String title, List<Section> sections) {
+            this(id, title, "", sections);
+        }
         public Chapter { sections = List.copyOf(sections); }
     }
     public record Section(String id, String title, String markdown, List<Subsection> subsections) {

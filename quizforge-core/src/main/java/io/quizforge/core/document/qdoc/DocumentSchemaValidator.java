@@ -43,12 +43,12 @@ public final class DocumentSchemaValidator {
         boolean required = false;
         for (DocumentElement child : node.children()) {
             if (child instanceof DocumentNode nested) {
-                if (nested.type() == null || !schema.nodeChildren().getOrDefault(node.type(), Set.of()).contains(nested.type()))
+                if (nested.type() == null || !schema.allowedNodes(node.type()).contains(nested.type()))
                     fail("INVALID_NODE_RELATION");
                 if (nested.type() == schema.requiredChild().get(node.type())) required = true;
                 validateNode(nested, schema, ids);
             } else if (child instanceof ContentBlock block) {
-                if (!schema.blockParents().contains(node.type())) fail("INVALID_BLOCK_PARENT");
+                if (!schema.allowedBlocks(node.type()).contains(block.type())) fail("INVALID_BLOCK_PARENT");
                 validateBlock(block);
             } else fail("UNKNOWN_DOCUMENT_ELEMENT");
         }

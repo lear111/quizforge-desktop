@@ -13,6 +13,7 @@ import io.quizforge.core.document.qdoc.DocumentNode;
 import io.quizforge.core.document.qdoc.DocumentNodeType;
 import io.quizforge.core.document.qdoc.DocumentSchemaValidator;
 import io.quizforge.core.document.qdoc.QDocDocument;
+import io.quizforge.core.port.QDocCodec;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -25,7 +26,7 @@ import java.util.List;
 import java.util.Set;
 
 /** Strict JSON boundary for QDoc v1; content IDs hash the model, never JSON bytes. */
-public final class QDocV1Codec {
+public final class QDocV1Codec implements QDocCodec {
     private static final ObjectMapper JSON = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);

@@ -32,7 +32,9 @@ public final class QDocFormalDocumentReader implements FormalDocumentReader {
         List<SourceDocumentSnapshot.Chapter> chapters = new ArrayList<>();
         for (DocumentNode chapter : document.content()) {
             List<SourceDocumentSnapshot.Section> sections = new ArrayList<>();
+            StringBuilder chapterBody = new StringBuilder();
             for (DocumentElement element : chapter.children()) {
+                if (element instanceof ContentBlock block) { append(chapterBody, block); continue; }
                 DocumentNode section = (DocumentNode) element;
                 StringBuilder body = new StringBuilder();
                 List<SourceDocumentSnapshot.Subsection> subsections = new ArrayList<>();
@@ -53,7 +55,8 @@ public final class QDocFormalDocumentReader implements FormalDocumentReader {
                 sections.add(new SourceDocumentSnapshot.Section(section.id(), section.title(),
                         body.toString().trim(), subsections));
             }
-            chapters.add(new SourceDocumentSnapshot.Chapter(chapter.id(), chapter.title(), sections));
+            chapters.add(new SourceDocumentSnapshot.Chapter(chapter.id(), chapter.title(),
+                    chapterBody.toString().trim(), sections));
         }
         return new SourceDocumentSnapshot(document.id(), codec.contentId(document), document.title(), chapters);
     }

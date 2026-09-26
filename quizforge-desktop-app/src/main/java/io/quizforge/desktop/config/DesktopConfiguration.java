@@ -5,6 +5,7 @@ import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.ai.AiConnectionService;
 import io.quizforge.core.ai.AiSettingsService;
 import io.quizforge.core.document.DocumentNormalizationService;
+import io.quizforge.core.document.qdoc.QDocFileEditService;
 import io.quizforge.core.material.MaterialService;
 import io.quizforge.core.port.AiProviderConfigRepository;
 import io.quizforge.core.port.AiProviderResolver;
@@ -45,6 +46,7 @@ import io.quizforge.extensions.question.choice.SourceAwareChoiceQuestionGenerato
 import io.quizforge.infrastructure.filesystem.LocalMaterialFileStorage;
 import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
 import io.quizforge.infrastructure.filesystem.QDocKnowledgeDocumentAssembler;
+import io.quizforge.infrastructure.filesystem.QDocV1Codec;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
@@ -179,6 +181,12 @@ public class DesktopConfiguration {
     }
 
     @Bean
+    public QDocFileEditService qdocFileEditService(WorkspaceService workspaces,
+            FileDocumentStorage files, WorkspaceAssetScanner scanner) {
+        return new QDocFileEditService(workspaces, files, scanner, new QDocV1Codec());
+    }
+
+    @Bean
     public KnowledgeDocumentAssembler knowledgeDocumentAssembler() {
         return new QDocKnowledgeDocumentAssembler();
     }
@@ -290,8 +298,9 @@ public class DesktopConfiguration {
     public DesktopView desktopView(WorkspaceService workspaces, WorkspaceFileService files,
             WorkspaceFileCatalog catalog, QuestionBankReferenceResolver references, MaterialService materials,
             io.quizforge.core.document.FileStandardDocumentGenerationService documents,
-            AiSettingsService settings, AiConnectionService connections, QuizForgeDataDirectory directory) {
+            AiSettingsService settings, AiConnectionService connections, QuizForgeDataDirectory directory,
+            QDocFileEditService qdocEdits) {
         return new DesktopView(workspaces, files, catalog, references, materials, documents,
-                settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"));
+                settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"), qdocEdits);
     }
 }

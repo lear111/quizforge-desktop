@@ -24,6 +24,7 @@ final class QDocDocumentView {
             page.getChildren().add(UiTheme.label(chapterNumber + " " + chapter.title(), "preview-heading-2"));
             int sectionNumber = 0;
             for (DocumentElement element : chapter.children()) {
+                if (element instanceof ContentBlock block) { show(page, block); continue; }
                 DocumentNode section = (DocumentNode) element;
                 sectionNumber++;
                 page.getChildren().add(UiTheme.label(chapterNumber + "." + sectionNumber + " "

@@ -90,6 +90,84 @@ class MainWorkspaceViewTest {
         });
     }
 
+    @Test void qdocEditUsesStructuredControlsAndSaveReturnsToFreshBrowse() throws Exception {
+        var section = new DocumentNode("section_one", DocumentNodeType.SECTION, "ArrayList",
+                List.of(ContentBlock.text(ContentBlockType.PARAGRAPH, "Old content")));
+        var chapter = new DocumentNode("chapter_one", DocumentNodeType.CHAPTER, "Java", List.of(section));
+        var document = new QDocDocument("quizforge-document", "1.0", "doc_edit_ui",
+                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "Knowledge", "en-US", List.of(chapter));
+        fixture.write("Java/Editable.qdoc", new QDocV1Codec().write(document));
+        fx(() -> {
+            shell.refresh(); open("Java/Editable.qdoc");
+            String before = shell.filePane().currentFile().file().entry().contentId();
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#qdoc-editor-view"));
+            assertNull(shell.lookup("#editor-placeholder"));
+            assertNull(shell.lookup("#qdoc-empty-ai"));
+            ((TextArea) shell.lookup("#qdoc-block-text-0-0-0")).setText("New content");
+            button("qdoc-save").fire();
+            assertEquals(FileMode.BROWSE, shell.filePane().mode());
+            assertTrue(text(shell.filePane()).contains("New content"));
+            assertNotEquals(before, shell.filePane().currentFile().file().entry().contentId());
+            assertEquals("doc_edit_ui", new QDocV1Codec().parse(Files.readString(
+                    fixture.alphaRoot.resolve("Java/Editable.qdoc"))).id());
+        });
+    }
+
+    @Test void emptyQDocOffersAiAndAddMenuHidesInvalidBlockTypes() throws Exception {
+        var section = new DocumentNode("section_empty", DocumentNodeType.SECTION, "Empty", List.of());
+        var chapter = new DocumentNode("chapter_empty", DocumentNodeType.CHAPTER, "Chapter", List.of(section));
+        var document = new QDocDocument("quizforge-document", "1.0", "doc_empty_ui",
+                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "Empty Knowledge", "en-US", List.of(chapter));
+        fixture.write("Java/Empty.qdoc", new QDocV1Codec().write(document));
+        fx(() -> {
+            shell.refresh(); open("Java/Empty.qdoc");
+            assertNotNull(shell.lookup("#empty-asset-ai"));
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#qdoc-empty-state"));
+            button("qdoc-empty-ai").fire();
+            assertEquals(1, fixture.aiOpened.get());
+            MenuButton root = (MenuButton) shell.lookup("#qdoc-add-root");
+            assertEquals(List.of("CHAPTER"), root.getItems().stream().map(MenuItem::getText).toList());
+            MenuButton chapterMenu = (MenuButton) shell.lookup("#qdoc-add-0");
+            assertTrue(chapterMenu.getItems().stream().anyMatch(item -> item.getText().equals("SECTION")));
+            assertFalse(chapterMenu.getItems().stream().anyMatch(item -> item.getText().equals("CODE_BLOCK")));
+            MenuButton sectionMenu = (MenuButton) shell.lookup("#qdoc-add-0-0");
+            assertTrue(sectionMenu.getItems().stream().anyMatch(item -> item.getText().equals("SUBSECTION")));
+            assertFalse(sectionMenu.getItems().stream().anyMatch(item -> item.getText().equals("CHAPTER")));
+            sectionMenu.getItems().stream().filter(item -> item.getText().equals("PARAGRAPH"))
+                    .findFirst().orElseThrow().fire();
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#qdoc-block-0-0-0"));
+            assertNull(shell.lookup("#qdoc-empty-ai"));
+            ((MenuButton) shell.lookup("#qdoc-more-0-0-0")).getItems().getFirst().fire();
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#qdoc-empty-ai"));
+        });
+    }
+
+    @Test void qdocInvalidEditShowsErrorAndLeavesFileIntact() throws Exception {
+        var section = new DocumentNode("section_one", DocumentNodeType.SECTION, "Section",
+                List.of(ContentBlock.text(ContentBlockType.PARAGRAPH, "Valid")));
+        var chapter = new DocumentNode("chapter_one", DocumentNodeType.CHAPTER, "Chapter", List.of(section));
+        var document = new QDocDocument("quizforge-document", "1.0", "doc_validation_ui",
+                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "Knowledge", "en-US", List.of(chapter));
+        String source = new QDocV1Codec().write(document);
+        fixture.write("Java/InvalidEdit.qdoc", source);
+        fx(() -> {
+            shell.refresh(); open("Java/InvalidEdit.qdoc");
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            ((TextArea) shell.lookup("#qdoc-block-text-0-0-0")).setText("");
+            button("qdoc-save").fire();
+            assertTrue(text(shell.filePane()).contains("Document validation failed"));
+            assertEquals(source, Files.readString(fixture.alphaRoot.resolve("Java/InvalidEdit.qdoc")));
+            assertEquals(FileMode.EDIT, shell.filePane().mode());
+        });
+    }
+
     @Test void sidebarContainsSwitcherOneRealFileTreeAndFixedSettings() throws Exception {
         fx(() -> {
             assertEquals(3, shell.sidebar().getChildren().size());

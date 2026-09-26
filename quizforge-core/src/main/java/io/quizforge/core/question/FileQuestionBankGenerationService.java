@@ -205,6 +205,11 @@ public final class FileQuestionBankGenerationService {
             out.append("DOCUMENT\nassetId: ").append(document.assetId()).append("\ntitle: ")
                     .append(document.title()).append("\ncontentId: ").append(document.contentId()).append('\n');
             for (SourceDocumentSnapshot.Chapter chapter : document.chapters()) {
+                if (!chapter.content().isBlank() && chapter.sections().stream().anyMatch(section ->
+                        selected.get(document.assetId()).contains(section.id()))) {
+                    out.append("CHAPTER\nchapterId: ").append(chapter.id()).append("\ntitle: ")
+                            .append(chapter.title()).append('\n').append(chapter.content()).append('\n');
+                }
                 for (SourceDocumentSnapshot.Section section : chapter.sections()) {
                     if (!selected.get(document.assetId()).contains(section.id())) continue;
                     out.append("SECTION\nsectionId: ").append(section.id()).append("\ntitle: ")

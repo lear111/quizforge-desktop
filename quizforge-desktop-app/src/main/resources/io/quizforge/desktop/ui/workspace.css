@@ -267,3 +267,13 @@
 .asset-details { -fx-background-color: #faf9f6; -fx-background-radius: 7; -fx-border-radius: 7; -fx-border-color: #ded8ce; -fx-padding: 18; }
 .asset-details .detail-key { -fx-font-size: 10px; -fx-text-fill: #8a8277; }
 .asset-details .detail-value { -fx-font-size: 12px; -fx-text-fill: #494238; -fx-max-width: 300; }
+.qdoc-editor { -fx-padding: 28 36; }
+.qdoc-block { -fx-padding: 12 14; -fx-border-color: #e6e1d8; -fx-border-radius: 6; -fx-background-radius: 6; -fx-background-color: #faf9f6; }
+.qdoc-block .qdoc-block { -fx-background-color: #f6f4ef; }
+.qdoc-type { -fx-font-size: 10px; -fx-text-fill: #8a8277; }
+.qdoc-number { -fx-text-fill: #70695f; -fx-min-width: 24; }
+.qdoc-error { -fx-text-fill: #a15d4e; }
+.qdoc-add-block { -fx-padding: 2 8; }
+.qdoc-block .qdoc-add-block { -fx-opacity: 0.55; }
+.qdoc-block:hover .qdoc-add-block { -fx-opacity: 1; }
+.qdoc-editor .text-area { -fx-pref-width: 650; }

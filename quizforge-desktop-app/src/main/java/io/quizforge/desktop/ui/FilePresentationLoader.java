@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import io.quizforge.core.document.qdoc.ContentBlock;
-import io.quizforge.core.document.qdoc.DocumentNode;
+import io.quizforge.core.document.qdoc.DocumentTemplate;
+import io.quizforge.core.document.qdoc.QDocEditorModel;
 import io.quizforge.infrastructure.filesystem.QDocV1Codec;
 import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.question.QuestionBankFile;
@@ -33,11 +33,7 @@ final class FilePresentationLoader {
         if (kind == WorkspaceFileKind.STANDARD_DOCUMENT) {
             if (path.toLowerCase(java.util.Locale.ROOT).endsWith(".qdoc")) {
                 var document = qdocs.parse(file.sourceText());
-                boolean empty = document.content().stream().noneMatch(chapter -> chapter.children().stream()
-                        .filter(DocumentNode.class::isInstance).map(DocumentNode.class::cast)
-                        .anyMatch(section -> section.children().stream().anyMatch(child ->
-                                child instanceof ContentBlock || child instanceof DocumentNode subsection
-                                        && !subsection.children().isEmpty())));
+                boolean empty = !new QDocEditorModel(document, DocumentTemplate.GENERAL_KNOWLEDGE).hasContent();
                 return new FilePresentation(file, empty, false, document);
             }
             return new FilePresentation(file, emptyMarkdown(file.sourceText()), false);
