@@ -63,4 +63,32 @@ public final class FileDocumentNodeLookup implements DocumentNodeLookup {
         }
         throw new IllegalArgumentException("Unsupported document format: " + path);
     }
+
+    @Override public AnchorResult lookupNamedAnchor(WorkspaceId workspace, Asset document,
+            String anchorName, int occurrence) {
+        String path = document.currentPath();
+        if (!path.toLowerCase(Locale.ROOT).endsWith(".md"))
+            throw new IllegalArgumentException("Unsupported document format: " + path);
+        String text = files.readText(workspace, path);
+        var registered = markdown.parseIfRegistered(text, path);
+        String contentId;
+        java.util.List<io.quizforge.core.document.registered.NamedMarkdownAnchor> anchors;
+        if (registered.isPresent()) {
+            var parsed = registered.get();
+            if (!document.assetId().equals(parsed.documentAssetId()))
+                throw new IllegalStateException("Document identity changed");
+            contentId = parsed.contentId();
+            anchors = parsed.anchors();
+        } else {
+            var parsed = standard.parseIfStandard(text)
+                    .orElseThrow(() -> new IllegalStateException("Document is no longer registered"));
+            if (!document.assetId().equals(parsed.assetId()))
+                throw new IllegalStateException("Document identity changed");
+            contentId = parsed.contentId();
+            anchors = markdown.inspectAnchors(text);
+        }
+        var match = anchors.stream().filter(anchor -> anchor.name().equals(anchorName)
+                && anchor.occurrence() == occurrence).findFirst();
+        return new AnchorResult(contentId, match.isPresent(), match.isPresent() && match.get().orphan());
+    }
 }

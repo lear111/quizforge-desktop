@@ -10,6 +10,7 @@ import io.quizforge.core.port.MarkdownDocumentRegistration;
 import io.quizforge.core.port.AssetIndexRepository;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
+import io.quizforge.core.question.QuestionSourceLinkService;
 import io.quizforge.core.workspace.WorkspaceFileService;
 import io.quizforge.core.workspace.WorkspaceService;
 import java.nio.file.Path;
@@ -31,13 +32,15 @@ public final class DesktopView {
     private final MarkdownFileEditService markdownEdits;
     private final MarkdownDocumentRegistration registration;
     private final AssetIndexRepository assetIndex;
+    private final QuestionSourceLinkService sourceLinks;
 
     public DesktopView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceFileCatalog catalog,
             QuestionBankReferenceResolver references, MaterialService materials,
             FileStandardDocumentGenerationService documents, AiSettingsService settings,
             AiConnectionService connections, Path historyPath,
             QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
-            MarkdownDocumentRegistration registration, AssetIndexRepository assetIndex) {
+            MarkdownDocumentRegistration registration, AssetIndexRepository assetIndex,
+            QuestionSourceLinkService sourceLinks) {
         this.workspaces = workspaces;
         this.files = files;
         this.catalog = catalog;
@@ -51,6 +54,7 @@ public final class DesktopView {
         this.markdownEdits = markdownEdits;
         this.registration = registration;
         this.assetIndex = assetIndex;
+        this.sourceLinks = sourceLinks;
     }
 
     public Scene createScene(Stage stage) {
@@ -59,7 +63,7 @@ public final class DesktopView {
         MainWorkspaceView shell = new MainWorkspaceView(workspaces, files, new WorkspaceHistory(historyPath),
                 new FilePresentationLoader(files, catalog), references, stage, settingsDialog::show,
                 (workspace, file) -> ai[0].run(workspace, file), bankEdits,
-                markdownEdits, registration, TextClipboard.system(), assetIndex);
+                markdownEdits, registration, TextClipboard.system(), assetIndex, sourceLinks);
         ai[0] = new EmptyAssetAiAction(materials, documents, settings, stage,
                 settingsDialog::show, shell::refreshAndOpen);
         Scene scene = new Scene(shell, 1180, 780);

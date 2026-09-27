@@ -3,6 +3,7 @@ package io.quizforge.core.question;
 import io.quizforge.core.asset.Asset;
 import io.quizforge.core.asset.AssetType;
 import io.quizforge.core.port.FormalDocumentReader;
+import io.quizforge.core.port.DocumentNodeLookup;
 import io.quizforge.core.port.QuestionBankFileCodec;
 import io.quizforge.core.port.QuestionBankFileStorage;
 import io.quizforge.core.port.WorkspaceAssetScanner;
@@ -22,14 +23,22 @@ public final class QuestionBankFileEditService {
     private final QuestionBankFileCodec codec;
     private final WorkspaceAssetScanner scanner;
     private final FormalDocumentReader documents;
+    private final DocumentNodeLookup nodes;
 
     public QuestionBankFileEditService(WorkspaceService workspaces, QuestionBankFileStorage files,
             QuestionBankFileCodec codec, WorkspaceAssetScanner scanner, FormalDocumentReader documents) {
+        this(workspaces, files, codec, scanner, documents, null);
+    }
+
+    public QuestionBankFileEditService(WorkspaceService workspaces, QuestionBankFileStorage files,
+            QuestionBankFileCodec codec, WorkspaceAssetScanner scanner, FormalDocumentReader documents,
+            DocumentNodeLookup nodes) {
         this.workspaces = workspaces;
         this.files = files;
         this.codec = codec;
         this.scanner = scanner;
         this.documents = documents;
+        this.nodes = nodes;
     }
 
     public List<Asset> availableSources(WorkspaceId workspace) {
@@ -98,8 +107,21 @@ public final class QuestionBankFileEditService {
         Set<QuestionBankFile.SourceRef> existing = new HashSet<>();
         current.questions().forEach(question -> existing.addAll(question.sourceRefs()));
         Map<String, SourceDocumentSnapshot> snapshots = new HashMap<>();
+        Map<String, Asset> registered = new HashMap<>();
+        scanner.scan(workspace).stream().filter(asset -> asset.assetType() == AssetType.STANDARD_DOCUMENT)
+                .forEach(asset -> registered.put(asset.assetId(), asset));
         for (var question : edited.questions()) for (var ref : question.sourceRefs()) {
             if (existing.contains(ref)) continue;
+            if (ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR) {
+                Asset asset = registered.get(ref.documentAssetId());
+                if (nodes == null || asset == null || !asset.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".md"))
+                    throw new IllegalArgumentException("Source Markdown is unavailable");
+                var found = nodes.lookupNamedAnchor(workspace, asset, ref.anchorName(), ref.occurrence());
+                if (!found.containsAnchor() || found.orphan()
+                        || !ref.documentContentId().equals(found.contentId()))
+                    throw new IllegalArgumentException("Source Anchor is not in the current Markdown revision");
+                continue;
+            }
             SourceDocumentSnapshot source = snapshots.computeIfAbsent(ref.documentAssetId(),
                     id -> source(workspace, id));
             if (!source.contentId().equals(ref.documentContentId()) || source.chapters().stream()

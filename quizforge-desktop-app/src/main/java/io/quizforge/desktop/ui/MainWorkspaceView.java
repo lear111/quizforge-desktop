@@ -6,6 +6,7 @@ import io.quizforge.core.port.AssetIndexRepository;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
+import io.quizforge.core.question.QuestionSourceLinkService;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceFileService;
 import io.quizforge.core.workspace.WorkspaceFileEntry;
@@ -36,7 +37,7 @@ final class MainWorkspaceView extends BorderPane {
             Runnable settings, BiConsumer<WorkspaceId, FilePresentation> ai,
             QuestionBankFileEditService bankEdits,
             MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration,
-            TextClipboard clipboard, AssetIndexRepository index) {
+            TextClipboard clipboard, AssetIndexRepository index, QuestionSourceLinkService sourceLinks) {
         this.workspaces = workspaces;
         this.files = files;
         this.history = history;
@@ -45,9 +46,9 @@ final class MainWorkspaceView extends BorderPane {
         setId("main-workspace");
         getStyleClass().add("workspace-shell");
         filePane = new FilePane(loader, references, ai, bankEdits,
-                markdownEdits, registration, this::refreshTree, clipboard);
+                markdownEdits, registration, this::refreshTree, clipboard, sourceLinks);
         tabs = new WorkspaceTabManager(() -> new FilePane(loader, references, ai, bankEdits,
-                markdownEdits, registration, this::refreshTree, clipboard), filePane, this::confirmDiscard);
+                markdownEdits, registration, this::refreshTree, clipboard, sourceLinks), filePane, this::confirmDiscard);
         navigation = new WorkspaceNavigationService(index, () -> current == null ? null : current.id(), tabs);
         sidebar = new WorkspaceSidebar((entry, pinned) -> {
             if (current != null) {

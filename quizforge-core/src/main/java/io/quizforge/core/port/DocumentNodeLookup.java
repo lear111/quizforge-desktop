@@ -9,4 +9,10 @@ public interface DocumentNodeLookup {
     record AnchorResult(String contentId, boolean containsAnchor, boolean orphan) { }
     Result lookup(WorkspaceId workspace, Asset document, String nodeId);
     AnchorResult lookupAnchor(WorkspaceId workspace, Asset document, String anchorName, int occurrence);
+
+    /** New Source links require an explicit qf:anchor marker, not a legacy qf:id. */
+    default AnchorResult lookupNamedAnchor(WorkspaceId workspace, Asset document,
+            String anchorName, int occurrence) {
+        return lookupAnchor(workspace, document, anchorName, occurrence);
+    }
 }

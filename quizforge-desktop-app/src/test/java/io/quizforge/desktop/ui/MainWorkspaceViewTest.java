@@ -390,8 +390,93 @@ class MainWorkspaceViewTest {
             assertEquals("copy-link",
                     folderCell("Java/Java集合.md").getContextMenu().getItems().getFirst().getId());
             folderCell("Java/Java集合.md").getContextMenu().getItems().getFirst().fire();
-            assertEquals(new QuizForgeNavigationLinkCodec().encode(
-                    QuizForgeNavigationLink.asset(entry.assetId())), fixture.copiedText.get());
+            assertEquals(new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec().format(
+                    "Java/Java集合.md", QuizForgeNavigationLink.asset(entry.assetId())), fixture.copiedText.get());
+        });
+    }
+
+    @Test void sourceLinkOnlyChangesExplicitSourceAndOrdinaryFieldsKeepMarkdownText() throws Exception {
+        String path = "Java/Source.md";
+        var prepared = new RegisteredMarkdownCodec().prepareRegistration(
+                "# Source\n\n<!-- qf:anchor=定义 -->\nCurrent content.\n", path);
+        fixture.write(path, prepared.source());
+        String link = new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec().format(path,
+                QuizForgeNavigationLink.anchor(prepared.document().documentAssetId(), "定义", 1));
+        fx(() -> {
+            shell.refresh();
+            open("题库/Java集合.qbank");
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            ((TextArea) shell.lookup("#qbank-question-stem")).setText(link);
+            ((TextField) shell.lookup("#qbank-option-0")).setText(link);
+            ((TextArea) shell.lookup("#qbank-analysis")).setText(link);
+            assertEquals(1, shell.filePane().currentFile().file().questionBank()
+                    .questions().getFirst().sourceRefs().size());
+            ((TextField) shell.lookup("#qbank-source-link")).setText(link);
+            button("qbank-use-source-link").fire();
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#qbank-source-1"));
+            assertEquals("Source · 定义", ((Button) shell.lookup("#qbank-source-1")).getText());
+            button("qbank-save").fire();
+            var saved = new QuestionBankV1Codec().parse(Files.readString(
+                    fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+            var question = saved.questions().getFirst();
+            assertEquals(link, question.stem());
+            assertEquals(link, question.data().options().getFirst().content());
+            assertEquals(link, question.analysis());
+            assertEquals(2, question.sourceRefs().size());
+            var source = question.sourceRefs().get(1);
+            assertEquals(prepared.document().documentAssetId(), source.documentAssetId());
+            assertEquals(prepared.document().contentId(), source.documentContentId());
+            assertEquals("定义", source.anchorName());
+            assertEquals(1, source.occurrence());
+            assertFalse(Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank"))
+                    .contains("\"displayLabel\""));
+        });
+    }
+
+    @Test void rejectedSourceLinkDoesNotRemoveExistingReferences() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            ((TextField) shell.lookup("#qbank-source-link")).setText(
+                    "[Heading](quizforge://asset/doc_java/heading/ArrayList?occurrence=1)");
+            button("qbank-use-source-link").fire();
+            assertNotNull(shell.lookup("#qbank-source-0"));
+            assertNull(shell.lookup("#qbank-source-1"));
+            assertTrue(text(shell.lookup("#question-bank-editor")).contains("Source Anchor"));
+        });
+    }
+
+    @Test void formalMarkdownNamedAnchorCanBecomeSourceButLegacyIdCannot() throws Exception {
+        String path = "Java/Named.md";
+        String markdown = ShellFixture.document("A formal document section.").replace("doc_java", "doc_named")
+                + "\n<!-- qf:anchor=命名来源 -->\nNamed anchor body.\n";
+        fixture.write(path, markdown);
+        fx(() -> {
+            shell.refresh();
+            open("题库/Java集合.qbank");
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            var links = new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec();
+            ((TextField) shell.lookup("#qbank-source-link")).setText(links.format(path,
+                    QuizForgeNavigationLink.anchor("doc_named", "section_list", 1)));
+            button("qbank-use-source-link").fire();
+            assertNull(shell.lookup("#qbank-source-1"));
+            assertTrue(text(shell.lookup("#question-bank-editor")).contains("Source Anchor is missing"));
+            ((TextField) shell.lookup("#qbank-source-link")).setText(links.format(path,
+                    QuizForgeNavigationLink.anchor("doc_named", "命名来源", 1)));
+            button("qbank-use-source-link").fire();
+            shell.applyCss(); shell.layout();
+            assertEquals("Named · 命名来源", ((Button) shell.lookup("#qbank-source-1")).getText());
+            button("qbank-save").fire();
+            var saved = new QuestionBankV1Codec().parse(Files.readString(
+                    fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+            var ref = saved.questions().getFirst().sourceRefs().get(1);
+            assertEquals("命名来源", ref.anchorName());
+            assertEquals(new StandardKnowledgeDocumentV1().parseIfStandard(markdown)
+                    .orElseThrow().contentId(), ref.documentContentId());
         });
     }
 
@@ -405,8 +490,8 @@ class MainWorkspaceViewTest {
                     .file().entry().relativePath());
             var registered = fixture.files.open(fixture.alpha.id(), path).entry();
             assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, registered.kind());
-            assertEquals(new QuizForgeNavigationLinkCodec().encode(
-                    QuizForgeNavigationLink.asset(registered.assetId())), fixture.copiedText.get());
+            assertEquals(new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec().format(
+                    path, QuizForgeNavigationLink.asset(registered.assetId())), fixture.copiedText.get());
             assertTrue(Files.readString(fixture.alphaRoot.resolve(path)).endsWith(before));
             assertFalse(Files.readString(fixture.alphaRoot.resolve(path)).contains("qf:anchor="));
         });
@@ -430,8 +515,8 @@ class MainWorkspaceViewTest {
             String assetId = registered.file().entry().assetId();
             assertTrue(assetId.startsWith("doc_"));
             assertEquals(path, registered.file().entry().relativePath());
-            assertEquals(new QuizForgeNavigationLinkCodec().encode(
-                    QuizForgeNavigationLink.heading(assetId, "示例", 2)), fixture.copiedText.get());
+            assertEquals(new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec().format(
+                    path, QuizForgeNavigationLink.heading(assetId, "示例", 2)), fixture.copiedText.get());
             String saved = Files.readString(fixture.alphaRoot.resolve(path));
             assertTrue(saved.contains("title: User note"));
             assertTrue(saved.endsWith(source.substring(source.indexOf("# Java"))));
@@ -444,8 +529,8 @@ class MainWorkspaceViewTest {
             assertFalse(text(page).contains("qf:anchor"));
             assertEquals("示例", button("qf-nav-2").getAccessibleText());
             button("qf-nav-4").getContextMenu().getItems().getFirst().fire();
-            assertEquals(new QuizForgeNavigationLinkCodec().encode(
-                    QuizForgeNavigationLink.anchor(assetId, "定义", 2)), fixture.copiedText.get());
+            assertEquals(new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec().format(
+                    path, QuizForgeNavigationLink.anchor(assetId, "定义", 2)), fixture.copiedText.get());
             assertEquals(saved, Files.readString(fixture.alphaRoot.resolve(path)));
             assertEquals(assetId, shell.filePane().currentFile().file().entry().assetId());
         });
@@ -460,8 +545,8 @@ class MainWorkspaceViewTest {
             open(path);
             button("qf-nav-1").getContextMenu().getItems().getFirst().fire();
             var entry = shell.filePane().currentFile().file().entry();
-            assertEquals(new QuizForgeNavigationLinkCodec().encode(
-                    QuizForgeNavigationLink.anchor(entry.assetId(), "手写来源", 1)),
+            assertEquals(new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec().format(
+                    path, QuizForgeNavigationLink.anchor(entry.assetId(), "手写来源", 1)),
                     fixture.copiedText.get());
             String saved = Files.readString(fixture.alphaRoot.resolve(path));
             assertTrue(saved.endsWith(source));

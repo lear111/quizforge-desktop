@@ -4,6 +4,7 @@ import io.quizforge.core.asset.Asset;
 import io.quizforge.core.question.QuestionBankEditorModel;
 import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.question.QuestionBankFileEditService;
+import io.quizforge.core.question.QuestionSourceLinkService;
 import io.quizforge.core.question.SourceDocumentSnapshot;
 import io.quizforge.core.workspace.WorkspaceId;
 import java.util.List;
@@ -20,16 +21,19 @@ final class QuestionBankEditorView extends VBox {
     private final QuestionBankEditorModel model;
     private final WorkspaceId workspace;
     private final QuestionBankFileEditService edits;
+    private final QuestionSourceLinkService sourceLinks;
     private final Consumer<QuestionBankFile> save;
     private final VBox body = new VBox(14);
     private final VBox errors = new VBox(3);
     private int index;
 
     QuestionBankEditorView(QuestionBankFile bank, WorkspaceId workspace,
-            QuestionBankFileEditService edits, Consumer<QuestionBankFile> save) {
+            QuestionBankFileEditService edits, QuestionSourceLinkService sourceLinks,
+            Consumer<QuestionBankFile> save) {
         model = new QuestionBankEditorModel(bank);
         this.workspace = workspace;
         this.edits = edits;
+        this.sourceLinks = sourceLinks;
         this.save = save;
         setId("question-bank-editor");
         getStyleClass().add("qbank-editor");
@@ -169,7 +173,7 @@ final class QuestionBankEditorView extends VBox {
         for (int i = 0; i < question.sourceRefs().size(); i++) {
             final int refIndex = i;
             var ref = question.sourceRefs().get(i);
-            Button change = new Button(ref.documentTitle() + " → " + ref.sectionTitle());
+            Button change = new Button(sourceLinks.displayName(workspace, ref));
             change.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(change, Priority.ALWAYS);
             change.getStyleClass().add("text-action");
@@ -184,6 +188,22 @@ final class QuestionBankEditorView extends VBox {
         addSource.setId("qbank-add-source");
         addSource.setOnAction(event -> chooseSource(-1));
         refs.getChildren().add(addSource);
+        TextField sourceLink = new TextField();
+        sourceLink.setId("qbank-source-link");
+        sourceLink.setPromptText("粘贴 Source Anchor 链接…");
+        Button useLink = UiTheme.button("使用链接", "plus", "text-action", () -> { });
+        useLink.setId("qbank-use-source-link");
+        useLink.setOnAction(event -> {
+            try {
+                var ref = sourceLinks.resolve(workspace, sourceLink.getText());
+                model.addSourceRef(index, ref);
+                errors.getChildren().clear();
+                render();
+            } catch (RuntimeException error) { showError(error.getMessage()); }
+        });
+        HBox linkInput = new HBox(8, sourceLink, useLink);
+        HBox.setHgrow(sourceLink, Priority.ALWAYS);
+        refs.getChildren().add(linkInput);
         body.getChildren().add(refs);
     }
 

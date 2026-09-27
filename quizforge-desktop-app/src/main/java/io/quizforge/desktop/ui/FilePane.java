@@ -3,6 +3,7 @@ package io.quizforge.desktop.ui;
 import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLinkCodec;
+import io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec;
 import io.quizforge.core.document.registered.QuizForgeReference;
 import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
 import io.quizforge.core.document.registered.NamedMarkdownAnchor;
@@ -10,6 +11,7 @@ import io.quizforge.core.document.registered.MarkdownSourceRange;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
+import io.quizforge.core.question.QuestionSourceLinkService;
 import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.core.workspace.WorkspaceFileEntry;
 import io.quizforge.core.workspace.WorkspaceFileKind;
@@ -35,9 +37,11 @@ final class FilePane extends BorderPane {
     private final MarkdownDocumentRegistration registration;
     private final Runnable refreshTree;
     private final TextClipboard clipboard;
+    private final QuestionSourceLinkService sourceLinks;
     private final FileViewerRouter router;
     private final QuizForgeReferenceCodec referencesCodec = new QuizForgeReferenceCodec();
     private final QuizForgeNavigationLinkCodec navigationCodec = new QuizForgeNavigationLinkCodec();
+    private final MarkdownNavigationLinkCodec markdownLinks = new MarkdownNavigationLinkCodec();
     private final AssetDetailsPopover details = new AssetDetailsPopover();
     private WorkspaceId workspace;
     private FilePresentation current;
@@ -51,7 +55,8 @@ final class FilePane extends BorderPane {
     FilePane(FilePresentationLoader loader, QuestionBankReferenceResolver references,
             BiConsumer<WorkspaceId, FilePresentation> aiAction,
             QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
-            MarkdownDocumentRegistration registration, Runnable refreshTree, TextClipboard clipboard) {
+            MarkdownDocumentRegistration registration, Runnable refreshTree, TextClipboard clipboard,
+            QuestionSourceLinkService sourceLinks) {
         this.loader = loader;
         this.references = references;
         this.aiAction = aiAction;
@@ -60,6 +65,7 @@ final class FilePane extends BorderPane {
         this.registration = registration;
         this.refreshTree = refreshTree;
         this.clipboard = clipboard;
+        this.sourceLinks = sourceLinks;
         this.router = new FileViewerRouter(new SafeMarkdownPreview.SourceActions() {
             @Override public void create(MarkdownSourceRange block) { createSourceReference(block); }
             @Override public void copy(List<NamedMarkdownAnchor> anchors) { copySourceReference(anchors); }
@@ -112,7 +118,7 @@ final class FilePane extends BorderPane {
         } else if (mode == FileMode.EDIT && current.kind() == io.quizforge.core.workspace.WorkspaceFileKind.QUESTION_BANK
                 && current.file().questionBank() != null) {
             bankEditor = new QuestionBankEditorView(current.file().questionBank(), workspace,
-                    bankEdits, this::saveBank);
+                    bankEdits, sourceLinks, this::saveBank);
             StackPane centered = new StackPane(bankEditor);
             centered.setAlignment(Pos.TOP_CENTER);
             setCenter(UiTheme.scroll(centered));
@@ -207,7 +213,7 @@ final class FilePane extends BorderPane {
                 refreshTree.run();
                 if (active && mode == FileMode.BROWSE) reopenPreviewPreservingScroll(path);
             }
-            clipboard.write(navigationCodec.encode(QuizForgeNavigationLink.asset(
+            clipboard.write(markdownLinks.format(path, QuizForgeNavigationLink.asset(
                     ready.file().file().entry().assetId())));
         } catch (RuntimeException error) { showNavigationError(error); }
     }
@@ -231,7 +237,7 @@ final class FilePane extends BorderPane {
                 refreshTree.run();
                 reopenPreviewPreservingScroll(path);
             }
-            clipboard.write(navigationCodec.encode(link));
+            clipboard.write(markdownLinks.format(path, link));
         } catch (RuntimeException error) { showNavigationError(error); }
     }
 

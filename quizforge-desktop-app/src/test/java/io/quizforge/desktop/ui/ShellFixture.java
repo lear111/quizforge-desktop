@@ -85,7 +85,8 @@ final class ShellFixture implements AutoCloseable {
                 (workspace, file) -> aiOpened.incrementAndGet(), context.getBean(QuestionBankFileEditService.class),
                 context.getBean(MarkdownFileEditService.class),
                 context.getBean(MarkdownDocumentRegistration.class), copiedText::set,
-                context.getBean(AssetIndexRepository.class));
+                context.getBean(AssetIndexRepository.class),
+                context.getBean(io.quizforge.core.question.QuestionSourceLinkService.class));
     }
 
     static String document(String body) {

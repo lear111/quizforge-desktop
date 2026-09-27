@@ -244,8 +244,14 @@ public class DesktopConfiguration {
     @Bean
     public QuestionBankFileEditService questionBankFileEditService(WorkspaceService workspaces,
             QuestionBankFileStorage files, QuestionBankFileCodec codec,
-            WorkspaceAssetScanner scanner, FormalDocumentReader documents) {
-        return new QuestionBankFileEditService(workspaces, files, codec, scanner, documents);
+            WorkspaceAssetScanner scanner, FormalDocumentReader documents, DocumentNodeLookup nodes) {
+        return new QuestionBankFileEditService(workspaces, files, codec, scanner, documents, nodes);
+    }
+
+    @Bean
+    public io.quizforge.core.question.QuestionSourceLinkService questionSourceLinkService(
+            AssetIndexRepository index, DocumentNodeLookup nodes) {
+        return new io.quizforge.core.question.QuestionSourceLinkService(index, nodes);
     }
 
     @Bean
@@ -330,9 +336,10 @@ public class DesktopConfiguration {
             AiSettingsService settings, AiConnectionService connections, QuizForgeDataDirectory directory,
             QuestionBankFileEditService bankEdits,
               MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration,
-              AssetIndexRepository assetIndex) {
+              AssetIndexRepository assetIndex,
+              io.quizforge.core.question.QuestionSourceLinkService sourceLinks) {
         return new DesktopView(workspaces, files, catalog, references, materials, documents,
                 settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"),
-                  bankEdits, markdownEdits, registration, assetIndex);
+                  bankEdits, markdownEdits, registration, assetIndex, sourceLinks);
     }
 }
