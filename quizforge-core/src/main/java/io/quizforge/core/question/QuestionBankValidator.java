@@ -11,7 +11,8 @@ import java.util.Set;
 public final class QuestionBankValidator {
     public void validate(QuestionBankFile bank) {
         if (bank == null || !"quizforge-question-bank".equals(bank.format())
-                || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion()))
+                || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion())
+                        || "1.2".equals(bank.schemaVersion()))
                 || !id(bank.id(), "qb_")
                 || blank(bank.title()) || bank.sourceDocuments().isEmpty()
                 || bank.questions().isEmpty()) fail("Invalid QuestionBank metadata");
@@ -35,10 +36,10 @@ public final class QuestionBankValidator {
             Set<String> refs = new HashSet<>();
             for (QuestionBankFile.SourceRef ref : entry.sourceRefs()) {
                 if (ref == null || !id(ref.documentAssetId(), "doc_")
-                        || !contentId(ref.documentContentId()) || !nodeId(ref.nodeId())
+                        || !contentId(ref.documentContentId()) || !address(ref, bank.schemaVersion())
                         || blank(ref.documentTitle()) || blank(ref.sectionTitle())
                         || !ref.documentContentId().equals(sources.get(ref.documentAssetId()))
-                        || !refs.add(ref.documentAssetId() + "\0" + ref.nodeId())) {
+                        || !refs.add(ref.documentAssetId() + "\0" + ref.address())) {
                     fail("Invalid sourceRefs");
                 }
             }
@@ -65,6 +66,12 @@ public final class QuestionBankValidator {
     }
     private boolean nodeId(String value) {
         return value != null && value.matches("[A-Za-z][A-Za-z0-9_-]*");
+    }
+    private boolean address(QuestionBankFile.SourceRef ref, String version) {
+        if (ref.address() == null) return false;
+        if ("1.2".equals(version)) return ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR
+                && ref.occurrence() != null && ref.occurrence() >= 1;
+        return ref.address().kind() != QuestionSourceAddress.Kind.ANCHOR && nodeId(ref.nodeId());
     }
     private boolean blank(String value) { return value == null || value.isBlank(); }
     private void fail(String message) {

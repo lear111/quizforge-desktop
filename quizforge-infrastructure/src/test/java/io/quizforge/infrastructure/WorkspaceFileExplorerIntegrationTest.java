@@ -209,7 +209,9 @@ class WorkspaceFileExplorerIntegrationTest {
                 List.of(new QuestionBankFile.SourceDocument("doc_alpha", contentId, "Java")),
                 List.of(new QuestionBankFile.Entry("q_one", "SINGLE_CHOICE", "What stays stable?",
                         "The source says facts.", List.of(new QuestionBankFile.SourceRef(
-                                "doc_alpha", contentId, "section_one", "Java", "Section")),
+                                "doc_alpha", contentId,
+                                io.quizforge.core.question.QuestionSourceAddress.section("section_one"),
+                                "Java", "Section")),
                         new QuestionBankFile.Data(List.of(new QuestionBankFile.Option("opt_a", "Facts"),
                                 new QuestionBankFile.Option("opt_b", "Nothing")), List.of("opt_a")))));
     }

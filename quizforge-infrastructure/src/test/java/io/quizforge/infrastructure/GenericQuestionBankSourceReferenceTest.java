@@ -38,8 +38,14 @@ class GenericQuestionBankSourceReferenceTest {
         assertFalse(legacyJson.contains("\"nodeId\""));
         var loaded = banks.parse(legacyJson);
         assertEquals("section_old", loaded.questions().getFirst().sourceRefs().getFirst().nodeId());
+        var previous = loaded.questions().getFirst();
+        var sourceRef = previous.sourceRefs().getFirst();
+        var node = new QuestionBankFile.SourceRef(sourceRef.documentAssetId(),
+                sourceRef.documentContentId(), sourceRef.nodeId(),
+                sourceRef.documentTitle(), sourceRef.sectionTitle());
         var upgraded = new QuestionBankFile(loaded.format(), "1.1", loaded.id(), loaded.title(),
-                loaded.sourceDocuments(), loaded.questions());
+                loaded.sourceDocuments(), List.of(new QuestionBankFile.Entry(previous.id(), previous.type(),
+                        previous.stem(), previous.analysis(), List.of(node), previous.data())));
         String newJson = banks.write(upgraded);
         assertTrue(newJson.contains("\"nodeId\""));
         assertFalse(newJson.contains("\"sectionId\""));
@@ -103,6 +109,66 @@ class GenericQuestionBankSourceReferenceTest {
         var assets = new AtomicReference<>(List.of(asset(document.id(), revision, "old.qdoc", "1.0")));
         assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
                 resolver(source, assets).resolveRefs(workspace, legacy).getFirst().status());
+    }
+
+    @Test void namedAnchorSchema12RoundTripsWithoutLegacyFieldsAndResolvesOccurrences() {
+        var markdown = new RegisteredMarkdownCodec();
+        String text = "---\nquizforge:\n  format: document\n  version: 1\n  assetId: doc_anchor\n---\n"
+                + "# H\n\n<!-- qf:anchor=shared -->\nFirst.\n\n"
+                + "<!-- qf:anchor=shared -->\nSecond.\n";
+        var document = markdown.parseIfRegistered(text, "notes/source.md").orElseThrow();
+        var source = new AtomicReference<>(text);
+        var assets = new AtomicReference<>(List.of(asset(document.documentAssetId(), document.contentId(),
+                "notes/source.md", "1")));
+        var first = QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+                "shared", 1, document.title(), "First");
+        var second = QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+                "shared", 2, document.title(), "Second");
+        var bank = bank("1.2", document.documentAssetId(), document.contentId(), List.of(first, second));
+        String written = banks.write(bank);
+        assertTrue(written.contains("\"anchorName\""));
+        assertTrue(written.contains("\"occurrence\""));
+        assertFalse(written.contains("\"nodeId\""));
+        assertFalse(written.contains("\"sectionId\""));
+        var reread = banks.parse(written);
+        assertEquals(written, banks.write(reread));
+        assertEquals(List.of(QuestionBankReferenceResolver.Status.EXACT_MATCH,
+                QuestionBankReferenceResolver.Status.EXACT_MATCH), resolver(source, assets)
+                .resolveRefs(workspace, reread).stream().map(item -> item.status()).toList());
+        var missingName = bank("1.2", document.documentAssetId(), document.contentId(),
+                List.of(QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+                        "absent", 1, document.title(), "")));
+        assertEquals(QuestionBankReferenceResolver.Status.MISSING_ANCHOR,
+                resolver(source, assets).resolveRefs(workspace, missingName).getFirst().status());
+        var missingOccurrence = bank("1.2", document.documentAssetId(), document.contentId(),
+                List.of(QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+                        "shared", 3, document.title(), "")));
+        assertEquals(QuestionBankReferenceResolver.Status.MISSING_ANCHOR,
+                resolver(source, assets).resolveRefs(workspace, missingOccurrence).getFirst().status());
+        assets.set(List.of());
+        assertEquals(QuestionBankReferenceResolver.Status.MISSING_DOCUMENT,
+                resolver(source, assets).resolveRefs(workspace, reread).getFirst().status());
+        source.set(text.replace("Second.", "Changed."));
+        var changed = markdown.parseIfRegistered(source.get(), "notes/source.md").orElseThrow();
+        assets.set(List.of(asset(document.documentAssetId(), changed.contentId(), "notes/source.md", "1")));
+        assertEquals(QuestionBankReferenceResolver.Status.DIFFERENT_REVISION,
+                resolver(source, assets).resolveRefs(workspace, reread).getFirst().status());
+    }
+
+    @Test void orphanAnchorIsReportedWithoutGuessingAnotherBlock() {
+        var markdown = new RegisteredMarkdownCodec();
+        String text = "---\nquizforge:\n  format: document\n  version: 1\n"
+                + "  assetId: doc_orphan\n---\n# H\n\n<!-- qf:anchor=lost -->\n";
+        var document = markdown.parseIfRegistered(text, "orphan.md").orElseThrow();
+        assertTrue(document.anchors().getFirst().orphan());
+        var source = new AtomicReference<>(text);
+        var assets = new AtomicReference<>(List.of(asset(document.documentAssetId(),
+                document.contentId(), "orphan.md", "1")));
+        var bank = bank("1.2", document.documentAssetId(), document.contentId(),
+                List.of(QuestionBankFile.SourceRef.anchor(document.documentAssetId(),
+                        document.contentId(), "lost", 1, document.title(), "lost")));
+        assertEquals(QuestionBankReferenceResolver.Status.ORPHAN_ANCHOR,
+                resolver(source, assets).resolveRefs(workspace, bank).getFirst().status());
     }
 
     private QuestionBankReferenceResolver resolver(AtomicReference<String> source,

@@ -31,6 +31,7 @@ import io.quizforge.core.question.FileQuestionBankGenerationService;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.port.DocumentNodeLookup;
+import io.quizforge.core.port.MarkdownDocumentRegistration;
 import io.quizforge.core.question.QuestionBankV1Assembler;
 import io.quizforge.core.workspace.WorkspaceFileService;
 import io.quizforge.core.question.QuestionGenerationService;
@@ -52,6 +53,7 @@ import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
 import io.quizforge.infrastructure.filesystem.QDocKnowledgeDocumentAssembler;
 import io.quizforge.infrastructure.filesystem.QDocV1Codec;
 import io.quizforge.infrastructure.filesystem.FileDocumentNodeLookup;
+import io.quizforge.infrastructure.filesystem.MarkdownDocumentRegistrationService;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
@@ -263,6 +265,12 @@ public class DesktopConfiguration {
     }
 
     @Bean
+    public MarkdownDocumentRegistration markdownDocumentRegistration(QuizForgeDataDirectory directory,
+            WorkspaceAssetScanner scanner) {
+        return new MarkdownDocumentRegistrationService(new WorkspacePathResolver(directory), scanner);
+    }
+
+    @Bean
     public WorkspaceFileOperations workspaceFileOperations(QuizForgeDataDirectory directory) {
         return new LocalWorkspaceFileOperations(new WorkspacePathResolver(directory));
     }
@@ -331,9 +339,9 @@ public class DesktopConfiguration {
             io.quizforge.core.document.FileStandardDocumentGenerationService documents,
             AiSettingsService settings, AiConnectionService connections, QuizForgeDataDirectory directory,
             QDocFileEditService qdocEdits, QuestionBankFileEditService bankEdits,
-            MarkdownFileEditService markdownEdits) {
+            MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration) {
         return new DesktopView(workspaces, files, catalog, references, materials, documents,
                 settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"),
-                qdocEdits, bankEdits, markdownEdits);
+                qdocEdits, bankEdits, markdownEdits, registration);
     }
 }

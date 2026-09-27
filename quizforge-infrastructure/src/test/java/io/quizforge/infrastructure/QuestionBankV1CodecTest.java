@@ -3,6 +3,8 @@ package io.quizforge.infrastructure;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.quizforge.core.question.QuestionBankFile;
+import io.quizforge.core.QuizForgeException;
+import io.quizforge.core.question.QuestionSourceAddress;
 import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -13,7 +15,8 @@ class QuestionBankV1CodecTest {
 
     static QuestionBankFile valid(String type) {
         var source = new QuestionBankFile.SourceDocument("doc_one", REVISION, "Document");
-        var ref = new QuestionBankFile.SourceRef("doc_one", REVISION, "section_one", "Document", "Section");
+        var ref = new QuestionBankFile.SourceRef("doc_one", REVISION,
+                QuestionSourceAddress.section("section_one"), "Document", "Section");
         var options = List.of(new QuestionBankFile.Option("opt_a", "A"),
                 new QuestionBankFile.Option("opt_b", "B"), new QuestionBankFile.Option("opt_c", "C"));
         var correct = "SINGLE_CHOICE".equals(type) ? List.of("opt_a") : List.of("opt_a", "opt_b");
@@ -112,5 +115,25 @@ class QuestionBankV1CodecTest {
                         new QuestionBankFile.Option("opt_second_b", "B")), List.of("opt_second_a")));
         assertNotEquals(initial, codec.contentId(withQuestions(bank,
                 List.of(question, second))));
+    }
+
+    @Test void schema12RejectsLegacyFieldsAndInvalidAnchorOccurrence() {
+        var old = valid("SINGLE_CHOICE");
+        var question = old.questions().getFirst();
+        var anchor = QuestionBankFile.SourceRef.anchor("doc_one", REVISION, "来源 A", 2,
+                "Document", "Source");
+        var bank = new QuestionBankFile(old.format(), "1.2", old.id(), old.title(),
+                old.sourceDocuments(), List.of(new QuestionBankFile.Entry(question.id(), question.type(),
+                        question.stem(), question.analysis(), List.of(anchor), question.data())));
+        String json = codec.write(bank);
+        assertFalse(json.contains("nodeId"));
+        assertFalse(json.contains("sectionId"));
+        assertEquals(json, codec.write(codec.parse(json)));
+        assertThrows(QuizForgeException.class, () -> codec.parse(json.replace("\"occurrence\" : 2",
+                "\"occurrence\" : 0")));
+        assertThrows(QuizForgeException.class, () -> codec.parse(json.replace("\"occurrence\" : 2",
+                "\"occurrence\" : \"2\"")));
+        assertThrows(QuizForgeException.class, () -> codec.parse(json.replace("\"anchorName\"",
+                "\"nodeId\"")));
     }
 }

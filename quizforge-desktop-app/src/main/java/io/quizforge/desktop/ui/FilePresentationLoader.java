@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.quizforge.core.document.qdoc.DocumentTemplate;
 import io.quizforge.core.document.qdoc.QDocEditorModel;
 import io.quizforge.infrastructure.filesystem.QDocV1Codec;
+import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
 import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.workspace.*;
@@ -21,6 +22,7 @@ final class FilePresentationLoader {
     private final WorkspaceFileCatalog catalog;
     private final SafeMarkdownPreview markdown = new SafeMarkdownPreview();
     private final QDocV1Codec qdocs = new QDocV1Codec();
+    private final RegisteredMarkdownCodec registeredMarkdown = new RegisteredMarkdownCodec();
 
     FilePresentationLoader(WorkspaceFileService files, WorkspaceFileCatalog catalog) {
         this.files = files;
@@ -36,7 +38,9 @@ final class FilePresentationLoader {
                 boolean empty = !new QDocEditorModel(document, DocumentTemplate.GENERAL_KNOWLEDGE).hasContent();
                 return new FilePresentation(file, empty, false, document);
             }
-            return new FilePresentation(file, emptyMarkdown(file.sourceText()), false);
+            var registered = registeredMarkdown.parseIfRegistered(file.sourceText(), path);
+            return new FilePresentation(file, emptyMarkdown(file.sourceText()), false, null,
+                    registered.orElse(null));
         }
         if (kind == WorkspaceFileKind.QUESTION_BANK) return new FilePresentation(file, file.questionBank().questions().isEmpty(), false);
         if (kind == WorkspaceFileKind.INVALID_STANDARD_DOCUMENT || kind == WorkspaceFileKind.INVALID_QUESTION_BANK) {
@@ -70,7 +74,8 @@ final class FilePresentationLoader {
     private FilePresentation bankDraft(OpenedWorkspaceFile original, String source) throws Exception {
         QuestionBankFile bank = JSON.readValue(source, QuestionBankFile.class);
         if (!"quizforge-question-bank".equals(bank.format())
-                || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion()))
+                || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion())
+                        || "1.2".equals(bank.schemaVersion()))
                 || bank.id() == null || !bank.id().matches("qb_[A-Za-z0-9_-]+")
                 || bank.title() == null || bank.title().isBlank() || !bank.questions().isEmpty()) return null;
         Set<String> sources = new HashSet<>();

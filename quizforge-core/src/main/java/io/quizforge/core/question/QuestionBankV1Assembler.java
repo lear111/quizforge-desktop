@@ -28,7 +28,7 @@ public final class QuestionBankV1Assembler {
             if (entry == null) rejected++;
             else accepted.add(entry);
         }
-        return new Result(new QuestionBankFile("quizforge-question-bank", "1.1",
+        return new Result(new QuestionBankFile("quizforge-question-bank", "1.2",
                 existingId == null ? "qb_" + UUID.randomUUID() : existingId,
                 title, sources, accepted), rejected);
     }
@@ -64,8 +64,8 @@ public final class QuestionBankV1Assembler {
                     .flatMap(chapter -> chapter.sections().stream())
                     .filter(item -> item.id().equals(ref.sectionId())).findFirst().orElse(null);
             if (section == null) return null;
-            refs.add(new QuestionBankFile.SourceRef(document.assetId(), document.contentId(), section.id(),
-                    document.title(), section.title()));
+            refs.add(QuestionBankFile.SourceRef.anchor(document.assetId(), document.contentId(), section.id(),
+                    1, document.title(), section.title()));
         }
         List<String> correctIds = candidate.options().stream()
                 .filter(option -> correct.contains(option.key())).map(option -> optionIds.get(option.key())).toList();

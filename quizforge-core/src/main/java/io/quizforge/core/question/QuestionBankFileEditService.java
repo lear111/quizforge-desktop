@@ -13,6 +13,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.ArrayList;
 
 /** Edits a portable bank in place; new references must resolve to current valid QDocs. */
 public final class QuestionBankFileEditService {
@@ -57,8 +58,8 @@ public final class QuestionBankFileEditService {
         workspaces.getWorkspace(workspace);
         if (path == null || !path.toLowerCase(java.util.Locale.ROOT).endsWith(".qbank"))
             throw new IllegalArgumentException("Only .qbank files can be edited here");
-        QuestionBankFile saved = new QuestionBankFile(edited.format(), "1.1", edited.id(),
-                edited.title(), edited.sourceDocuments(), edited.questions());
+        QuestionBankFile saved = new QuestionBankFile(edited.format(), "1.2", edited.id(),
+                edited.title(), edited.sourceDocuments(), anchorEntries(workspace, edited.questions()));
         codec.validate(saved);
         String content = codec.write(saved);
         String revision = codec.contentId(saved);
@@ -102,9 +103,36 @@ public final class QuestionBankFileEditService {
                     id -> source(workspace, id));
             if (!source.contentId().equals(ref.documentContentId()) || source.chapters().stream()
                     .flatMap(chapter -> chapter.sections().stream())
-                    .noneMatch(section -> section.id().equals(ref.nodeId()))) {
+                    .noneMatch(section -> section.id().equals(ref.address().value()))) {
                 throw new IllegalArgumentException("Source reference is not in the selected QDoc revision");
             }
         }
+    }
+
+    private List<QuestionBankFile.Entry> anchorEntries(WorkspaceId workspace,
+            List<QuestionBankFile.Entry> questions) {
+        Map<String, Asset> sources = new HashMap<>();
+        scanner.scan(workspace).stream().filter(asset -> asset.assetType() == AssetType.STANDARD_DOCUMENT)
+                .forEach(asset -> sources.put(asset.assetId(), asset));
+        List<QuestionBankFile.Entry> result = new ArrayList<>();
+        for (var question : questions) {
+            List<QuestionBankFile.SourceRef> refs = new ArrayList<>();
+            for (var ref : question.sourceRefs()) {
+                if (ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR) refs.add(ref);
+                else {
+                    Asset source = sources.get(ref.documentAssetId());
+                    if (source == null || !(source.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".qdoc")
+                            || source.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".md")
+                                    && ref.documentContentId().startsWith("qfd:v1:")))
+                        throw new IllegalArgumentException("Legacy node references need explicit migration");
+                    refs.add(QuestionBankFile.SourceRef.anchor(ref.documentAssetId(),
+                            ref.documentContentId(), ref.address().value(), 1,
+                            ref.documentTitle(), ref.sectionTitle()));
+                }
+            }
+            result.add(new QuestionBankFile.Entry(question.id(), question.type(), question.stem(),
+                    question.analysis(), refs, question.data()));
+        }
+        return result;
     }
 }

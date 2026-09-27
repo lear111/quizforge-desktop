@@ -7,6 +7,7 @@ import io.quizforge.core.document.qdoc.QDocFileEditService;
 import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.material.MaterialService;
 import io.quizforge.core.port.WorkspaceFileCatalog;
+import io.quizforge.core.port.MarkdownDocumentRegistration;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.WorkspaceFileService;
@@ -29,12 +30,14 @@ public final class DesktopView {
     private final QDocFileEditService qdocEdits;
     private final QuestionBankFileEditService bankEdits;
     private final MarkdownFileEditService markdownEdits;
+    private final MarkdownDocumentRegistration registration;
 
     public DesktopView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceFileCatalog catalog,
             QuestionBankReferenceResolver references, MaterialService materials,
             FileStandardDocumentGenerationService documents, AiSettingsService settings,
             AiConnectionService connections, Path historyPath, QDocFileEditService qdocEdits,
-            QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits) {
+            QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
+            MarkdownDocumentRegistration registration) {
         this.workspaces = workspaces;
         this.files = files;
         this.catalog = catalog;
@@ -47,6 +50,7 @@ public final class DesktopView {
         this.qdocEdits = qdocEdits;
         this.bankEdits = bankEdits;
         this.markdownEdits = markdownEdits;
+        this.registration = registration;
     }
 
     public Scene createScene(Stage stage) {
@@ -54,7 +58,8 @@ public final class DesktopView {
         EmptyAssetAiAction[] ai = new EmptyAssetAiAction[1];
         MainWorkspaceView shell = new MainWorkspaceView(workspaces, files, new WorkspaceHistory(historyPath),
                 new FilePresentationLoader(files, catalog), references, stage, settingsDialog::show,
-                (workspace, file) -> ai[0].run(workspace, file), qdocEdits, bankEdits, markdownEdits);
+                (workspace, file) -> ai[0].run(workspace, file), qdocEdits, bankEdits,
+                markdownEdits, registration);
         ai[0] = new EmptyAssetAiAction(materials, documents, settings, stage,
                 settingsDialog::show, shell::refreshAndOpen);
         Scene scene = new Scene(shell, 1180, 780);

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.quizforge.core.document.registered.AddressableMarkdownBlock;
 import io.quizforge.core.document.registered.MarkdownBlockType;
 import io.quizforge.core.document.registered.MarkdownSourceRange;
+import io.quizforge.core.document.registered.NamedMarkdownAnchor;
 import io.quizforge.core.document.registered.RegisteredMarkdownDocument;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -42,10 +43,20 @@ public final class RegisteredMarkdownCodec {
     private static final Parser MARKDOWN = Parser.builder()
             .includeSourceSpans(IncludeSourceSpans.BLOCKS).build();
     private static final Pattern ANCHOR = Pattern.compile("<!--\\s*qf:id=(node_[A-Za-z0-9_-]+)\\s*-->");
+    private static final Pattern NAMED_ANCHOR = Pattern.compile("^\\s*<!--\\s*qf:anchor=(.*?)\\s*-->\\s*$");
     private static final Pattern TOP_LEVEL_KEY = Pattern.compile("^[^\\s#][^:]*:.*$");
     private static final int MAX_FRONT_MATTER = 64 * 1024;
 
     public record Prepared(String source, RegisteredMarkdownDocument document) { }
+
+    public record PreparedAnchor(String source, RegisteredMarkdownDocument document,
+            NamedMarkdownAnchor anchor) { }
+
+    /** Reuses the same source-span binding rules for hand-written anchors in ordinary Markdown. */
+    public List<NamedMarkdownAnchor> inspectAnchors(String source) {
+        FrontMatter front = frontMatter(source);
+        return analyzeAnchors(front == null ? source : front.body()).anchors();
+    }
 
     public Optional<RegisteredMarkdownDocument> parseIfRegistered(String source, String relativePath) {
         FrontMatter front = frontMatter(source);
@@ -56,16 +67,67 @@ public final class RegisteredMarkdownCodec {
         String assetId = registeredId(quizforge);
         int[] namespace = namespaceRange(source, front);
         BodyAnalysis body = analyze(front.body());
-        if (body.addressed().isEmpty() && body.missing().isEmpty()) {
-            throw new IllegalArgumentException("NO_ADDRESSABLE_MARKDOWN_BLOCK");
-        }
+        AnchorAnalysis anchorAnalysis = analyzeAnchors(front.body());
         String title = title(yaml, body, relativePath);
         return Optional.of(new RegisteredMarkdownDocument(assetId,
                 contentId(source, namespace), relativePath, title,
-                body.addressed(), body.missing().size()));
+                body.addressed(), body.missing().size(), anchorAnalysis.anchors(),
+                anchorAnalysis.errors()));
     }
 
-    /** Adds only Front Matter metadata and comments before safely located top-level blocks. */
+    /** Inserts one named marker at a source-span-selected top-level block. */
+    public PreparedAnchor prepareAnchor(String source, String relativePath, int bodyLine,
+            int bodyColumn, String requestedName) {
+        String name = NamedMarkdownAnchor.validateName(requestedName);
+        FrontMatter front = frontMatter(source);
+        JsonNode yaml = front == null ? null : yaml(front);
+        if (yaml != null && yaml.has("quizforge_format")) {
+            throw new IllegalArgumentException("Legacy study-document metadata has a different contract");
+        }
+        JsonNode quizforge = yaml == null ? null : yaml.path("quizforge");
+        boolean registered = quizforge != null && !quizforge.isMissingNode();
+        String assetId = registered ? registeredId(quizforge)
+                : "doc_" + UUID.randomUUID().toString().replace("-", "");
+        if (registered) namespaceRange(source, front);
+        String body = front == null ? source : front.body();
+        MarkdownSourceRange target = blockRanges(body).stream()
+                .filter(range -> range.startLine() == bodyLine && range.startColumn() == bodyColumn)
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("MARKDOWN_BLOCK_CHANGED"));
+        AnchorAnalysis existing = analyzeAnchors(body);
+        if (!existing.errors().isEmpty()) throw new IllegalArgumentException(existing.errors().getFirst());
+        boolean alreadyThere = existing.anchors().stream().anyMatch(anchor ->
+                anchor.name().equals(name) && target.equals(anchor.blockRange()));
+        String eol = newline(source);
+        String updatedBody = body;
+        if (!alreadyThere) {
+            List<Line> bodyLines = lines(body);
+            int offset = bodyLines.get(bodyLine - 1).start();
+            if (bodyLine > 1 && ANCHOR.matcher(bodyLines.get(bodyLine - 2).text().trim()).matches()) {
+                offset = bodyLines.get(bodyLine - 2).start();
+            }
+            updatedBody = body.substring(0, offset) + "<!-- qf:anchor=" + name + " -->" + eol
+                    + body.substring(offset);
+        }
+        String candidate;
+        if (front == null) {
+            candidate = "---" + eol + namespace(assetId, eol) + "---" + eol + updatedBody;
+        } else {
+            candidate = source.substring(0, front.yamlStart())
+                    + source.substring(front.yamlStart(), front.closingStart())
+                    + (registered ? "" : namespace(assetId, eol))
+                    + source.substring(front.closingStart(), front.bodyStart()) + updatedBody;
+        }
+        RegisteredMarkdownDocument parsed = parseIfRegistered(candidate, relativePath)
+                .orElseThrow(() -> new IllegalArgumentException("Anchor metadata was not readable"));
+        NamedMarkdownAnchor created = parsed.anchors().stream()
+                .filter(anchor -> anchor.name().equals(name) && !anchor.orphan()
+                        && anchor.blockRange().startLine() == bodyLine + (alreadyThere ? 0 : 1))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("ORPHAN_ANCHOR"));
+        return new PreparedAnchor(candidate, parsed, created);
+    }
+
+    /** Legacy 1.1 fixture writer; the current source-reference flow uses prepareAnchor. */
+    @Deprecated
     public Prepared prepare(String source, String relativePath) {
         FrontMatter front = frontMatter(source);
         JsonNode yaml = front == null ? null : yaml(front);
@@ -193,6 +255,69 @@ public final class RegisteredMarkdownCodec {
         return new BodyAnalysis(addressed, missing, firstHeading);
     }
 
+    private List<MarkdownSourceRange> blockRanges(String body) {
+        List<MarkdownSourceRange> result = new ArrayList<>();
+        Node root = MARKDOWN.parse(body);
+        for (Node node = root.getFirstChild(); node != null; node = node.getNext()) {
+            if (type(node) == null) continue;
+            if (node.getSourceSpans().isEmpty()) throw new IllegalArgumentException("UNSAFE_MARKDOWN_SOURCE_POSITION");
+            SourceSpan first = node.getSourceSpans().getFirst();
+            SourceSpan last = node.getSourceSpans().getLast();
+            result.add(new MarkdownSourceRange(first.getLineIndex() + 1, first.getColumnIndex() + 1,
+                    last.getLineIndex() + 1, last.getColumnIndex() + last.getLength() + 1));
+        }
+        return result;
+    }
+
+    private AnchorAnalysis analyzeAnchors(String body) {
+        List<Line> lines = lines(body);
+        List<MarkdownSourceRange> blocks = blockRanges(body);
+        List<MarkdownSourceRange> codeRanges = new ArrayList<>();
+        Node root = MARKDOWN.parse(body);
+        for (Node node = root.getFirstChild(); node != null; node = node.getNext()) {
+            if (!(node instanceof FencedCodeBlock || node instanceof IndentedCodeBlock)
+                    || node.getSourceSpans().isEmpty()) continue;
+            SourceSpan first = node.getSourceSpans().getFirst();
+            SourceSpan last = node.getSourceSpans().getLast();
+            codeRanges.add(new MarkdownSourceRange(first.getLineIndex() + 1,
+                    first.getColumnIndex() + 1, last.getLineIndex() + 1,
+                    last.getColumnIndex() + last.getLength() + 1));
+        }
+        Map<Integer, MarkdownSourceRange> byLine = new HashMap<>();
+        blocks.forEach(range -> byLine.put(range.startLine(), range));
+        List<NamedMarkdownAnchor> found = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+        Map<String, Integer> counts = new HashMap<>();
+        for (int index = 0; index < lines.size(); index++) {
+            String line = lines.get(index).text();
+            if (!line.contains("qf:anchor=")) continue;
+            final int sourceLine = index + 1;
+            if (codeRanges.stream().anyMatch(range -> range.startLine() <= sourceLine
+                    && range.endLine() >= sourceLine)) continue;
+            Matcher marker = NAMED_ANCHOR.matcher(line);
+            if (!marker.matches()) {
+                errors.add("MALFORMED_ANCHOR at line " + (index + 1));
+                continue;
+            }
+            String name;
+            try { name = NamedMarkdownAnchor.validateName(marker.group(1)); }
+            catch (IllegalArgumentException error) {
+                errors.add(error.getMessage() + " at line " + (index + 1));
+                continue;
+            }
+            int occurrence = counts.merge(name, 1, Integer::sum);
+            int next = index + 1;
+            while (next < lines.size() && (lines.get(next).text().isBlank()
+                    || NAMED_ANCHOR.matcher(lines.get(next).text()).matches()
+                    || ANCHOR.matcher(lines.get(next).text().trim()).matches())) next++;
+            MarkdownSourceRange block = byLine.get(next + 1);
+            if (block == null) errors.add("ORPHAN_ANCHOR " + name + " #" + occurrence);
+            found.add(new NamedMarkdownAnchor(name, occurrence, block));
+        }
+        return new AnchorAnalysis(found, errors);
+    }
+
+
     private MarkdownBlockType type(Node node) {
         if (node instanceof Heading) return MarkdownBlockType.HEADING;
         if (node instanceof Paragraph) return MarkdownBlockType.PARAGRAPH;
@@ -299,4 +424,5 @@ public final class RegisteredMarkdownCodec {
     private record Insertion(int offset, String text) { }
     private record BodyAnalysis(List<AddressableMarkdownBlock> addressed,
             List<MissingBlock> missing, String firstHeading) { }
+    private record AnchorAnalysis(List<NamedMarkdownAnchor> anchors, List<String> errors) { }
 }

@@ -48,6 +48,37 @@ public final class FileDocumentNodeLookup implements DocumentNodeLookup {
         throw new IllegalArgumentException("Unsupported document format: " + path);
     }
 
+    @Override public AnchorResult lookupAnchor(WorkspaceId workspace, Asset document,
+            String anchorName, int occurrence) {
+        String path = document.currentPath();
+        String text = files.readText(workspace, path);
+        if (path.toLowerCase(Locale.ROOT).endsWith(".md")) {
+            var registered = markdown.parseIfRegistered(text, path);
+            if (registered.isPresent()) {
+                var parsed = registered.get();
+                if (!document.assetId().equals(parsed.documentAssetId()))
+                    throw new IllegalStateException("Document identity changed");
+                var match = parsed.anchors().stream().filter(anchor -> anchor.name().equals(anchorName)
+                        && anchor.occurrence() == occurrence).findFirst();
+                return new AnchorResult(parsed.contentId(), match.isPresent(),
+                        match.isPresent() && match.get().orphan());
+            }
+            var legacy = standard.parseIfStandard(text)
+                    .orElseThrow(() -> new IllegalStateException("Document is no longer reference-enabled"));
+            if (!document.assetId().equals(legacy.assetId()))
+                throw new IllegalStateException("Document identity changed");
+            boolean found = occurrence == 1 && Pattern.compile("<!--\\s*qf:id="
+                    + Pattern.quote(anchorName) + "\\s*-->").matcher(text).find();
+            return new AnchorResult(legacy.contentId(), found, false);
+        }
+        if (path.toLowerCase(Locale.ROOT).endsWith(".qdoc")) {
+            // QDoc sections remain addressable while the editor's legacy source picker is in use.
+            Result result = lookup(workspace, document, anchorName);
+            return new AnchorResult(result.contentId(), occurrence == 1 && result.containsNode(), false);
+        }
+        throw new IllegalArgumentException("Unsupported document format: " + path);
+    }
+
     private boolean contains(DocumentNode node, String id) {
         if (node.id().equals(id)) return true;
         for (DocumentElement child : node.children()) {

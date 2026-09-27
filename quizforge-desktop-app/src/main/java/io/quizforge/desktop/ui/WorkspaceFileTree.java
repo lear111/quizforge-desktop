@@ -26,6 +26,7 @@ import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.layout.StackPane;
 import javafx.scene.shape.SVGPath;
+import javafx.geometry.Pos;
 import javafx.util.Duration;
 
 final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
@@ -35,9 +36,16 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
         void copyPath(String path, boolean absolute);
         void rename(WorkspaceFileEntry entry);
         void delete(WorkspaceFileEntry entry);
+        void copyDocumentReference(WorkspaceFileEntry entry);
     }
 
     private final FileActions actions;
+
+    private static boolean isReferenceEnabledMarkdown(WorkspaceFileEntry entry) {
+        return entry.kind() == WorkspaceFileKind.STANDARD_DOCUMENT
+                && entry.relativePath().toLowerCase(java.util.Locale.ROOT).endsWith(".md")
+                && entry.assetId() != null;
+    }
 
     WorkspaceFileTree(Consumer<WorkspaceFileEntry> open, FileActions actions) {
         this.actions = actions;
@@ -129,8 +137,27 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
             };
             // Expansion reconfigures virtualized cells. Reuse styled graphics rather than
             // inserting a fresh, temporarily unstyled SVG on every updateItem call.
-            setGraphic(icons.computeIfAbsent(icon, UiTheme::icon));
+            setGraphic(icons.computeIfAbsent(isReferenceEnabledMarkdown(entry) ? "reference-enabled-markdown" : icon,
+                    this::iconGraphic));
             setContextMenu(menu(entry));
+        }
+
+        private Node iconGraphic(String name) {
+            if (!"reference-enabled-markdown".equals(name)) return UiTheme.icon(name);
+            StackPane graphic = new StackPane(UiTheme.icon("markdown"));
+            graphic.setMinSize(20, 20);
+            graphic.setPrefSize(20, 20);
+            graphic.setMaxSize(20, 20);
+            graphic.getStyleClass().add("reference-enabled-markdown-icon");
+            SVGPath link = new SVGPath();
+            link.setContent("M1 6 L3 4 Q4 3 5 4 L5.5 4.5 "
+                    + "M4.5 6.5 L5 7 Q6 8 7 7 L9 5 Q10 4 9 3 L8.5 2.5 M3 6.5 L7 2.5");
+            link.getStyleClass().add("reference-link-indicator");
+            StackPane.setAlignment(link, Pos.BOTTOM_RIGHT);
+            graphic.getChildren().add(link);
+            graphic.setAccessibleText("可引用文档");
+            Tooltip.install(graphic, new Tooltip("可引用文档"));
+            return graphic;
         }
 
         private ContextMenu menu(WorkspaceFileEntry entry) {
@@ -147,6 +174,11 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
                 menu.getItems().add(action("新建 .qdoc 文件", "folder-new-qdoc",
                         () -> actions.createFile(entry.relativePath(),
                                 io.quizforge.core.workspace.WorkspaceFileType.QDOC)));
+                menu.getItems().add(new SeparatorMenuItem());
+            }
+            if (isReferenceEnabledMarkdown(entry)) {
+                menu.getItems().add(action("Copy Document Reference", "copy-document-reference",
+                        () -> actions.copyDocumentReference(entry)));
                 menu.getItems().add(new SeparatorMenuItem());
             }
             Menu copy = new Menu("复制文件路径");

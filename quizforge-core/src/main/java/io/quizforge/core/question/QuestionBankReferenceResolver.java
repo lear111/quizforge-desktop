@@ -10,7 +10,7 @@ import java.util.List;
 /** Runtime resolution never mutates the portable QuestionBank's recorded source IDs. */
 public final class QuestionBankReferenceResolver {
     public enum Status { EXACT_MATCH, DIFFERENT_REVISION, EXACT_CONTENT_MATCH,
-        MISSING_DOCUMENT, MISSING_NODE, MISSING }
+        MISSING_DOCUMENT, MISSING_NODE, MISSING_ANCHOR, ORPHAN_ANCHOR, MISSING }
     public record Resolution(QuestionBankFile.SourceDocument source, Status status,
             List<Asset> candidates) {
         public Resolution { candidates = List.copyOf(candidates); }
@@ -48,6 +48,14 @@ public final class QuestionBankReferenceResolver {
             Asset document = byId.getFirst();
             if (!ref.documentContentId().equals(document.contentId()))
                 return new NodeResolution(ref, Status.DIFFERENT_REVISION, byId);
+            if (ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR) {
+                DocumentNodeLookup.AnchorResult found = nodes.lookupAnchor(workspaceId, document,
+                        ref.anchorName(), ref.occurrence());
+                if (!ref.documentContentId().equals(found.contentId()))
+                    return new NodeResolution(ref, Status.DIFFERENT_REVISION, byId);
+                return new NodeResolution(ref, !found.containsAnchor() ? Status.MISSING_ANCHOR
+                        : found.orphan() ? Status.ORPHAN_ANCHOR : Status.EXACT_MATCH, byId);
+            }
             DocumentNodeLookup.Result found = nodes.lookup(workspaceId, document, ref.nodeId());
             if (!ref.documentContentId().equals(found.contentId()))
                 return new NodeResolution(ref, Status.DIFFERENT_REVISION, byId);
@@ -57,10 +65,18 @@ public final class QuestionBankReferenceResolver {
                 .filter(asset -> ref.documentContentId().equals(asset.contentId())).toList();
         if (byContent.isEmpty()) return new NodeResolution(ref, Status.MISSING_DOCUMENT, List.of());
         List<Asset> matching = byContent.stream().filter(asset -> {
+            if (ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR) {
+                DocumentNodeLookup.AnchorResult found = nodes.lookupAnchor(workspaceId, asset,
+                        ref.anchorName(), ref.occurrence());
+                return ref.documentContentId().equals(found.contentId())
+                        && found.containsAnchor() && !found.orphan();
+            }
             DocumentNodeLookup.Result found = nodes.lookup(workspaceId, asset, ref.nodeId());
             return ref.documentContentId().equals(found.contentId()) && found.containsNode();
         }).toList();
-        return new NodeResolution(ref, matching.isEmpty() ? Status.MISSING_NODE : Status.EXACT_CONTENT_MATCH,
+        return new NodeResolution(ref, matching.isEmpty() ? ref.address().kind()
+                == QuestionSourceAddress.Kind.ANCHOR ? Status.MISSING_ANCHOR : Status.MISSING_NODE
+                : Status.EXACT_CONTENT_MATCH,
                 matching.isEmpty() ? byContent : matching);
     }
 

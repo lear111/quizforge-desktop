@@ -46,7 +46,8 @@ class QuestionBankFileEditIntegrationTest {
         }
         String revision = qdocs.contentId(document());
         var source = new QuestionBankFile.SourceDocument("doc_source", revision, "Source");
-        var ref = new QuestionBankFile.SourceRef("doc_source", revision, "section_one", "Source", "One");
+        var ref = new QuestionBankFile.SourceRef("doc_source", revision,
+                QuestionSourceAddress.section("section_one"), "Source", "One");
         var question = new QuestionBankFile.Entry("q_one", "SINGLE_CHOICE", "Original?", "Reason",
                 List.of(ref), new QuestionBankFile.Data(List.of(
                         new QuestionBankFile.Option("opt_a", "A"),
@@ -81,7 +82,8 @@ class QuestionBankFileEditIntegrationTest {
         var saved = service().save(workspace.id(), bankPath, codec.contentId(original), edit.bank());
         assertEquals(original.id(), saved.assetId());
         assertNotEquals(codec.contentId(original), saved.contentId());
-        assertEquals(upgraded(edit.bank()), codec.parse(banks.read(workspace.id(), bankPath)));
+        assertEquals(codec.parse(codec.write(upgraded(edit.bank()))),
+                codec.parse(banks.read(workspace.id(), bankPath)));
         assertEquals(saved, index.findById(workspace.id(), original.id()).orElseThrow());
         assertEquals(saved.contentId(), scanner.scan(workspace.id()).stream()
                 .filter(asset -> asset.assetId().equals(original.id())).findFirst().orElseThrow().contentId());
@@ -161,11 +163,17 @@ class QuestionBankFileEditIntegrationTest {
         var saved = service().save(workspace.id(), path, null, draft + "\n", edit.bank());
         assertEquals("qb_draft", saved.assetId());
         assertEquals(codec.contentId(upgraded(edit.bank())), saved.contentId());
-        assertEquals(upgraded(edit.bank()), codec.parse(banks.read(workspace.id(), path)));
+        assertEquals(codec.parse(codec.write(upgraded(edit.bank()))),
+                codec.parse(banks.read(workspace.id(), path)));
     }
 
     private QuestionBankFile upgraded(QuestionBankFile bank) {
-        return new QuestionBankFile(bank.format(), "1.1", bank.id(), bank.title(),
-                bank.sourceDocuments(), bank.questions());
+        var questions = bank.questions().stream().map(question -> new QuestionBankFile.Entry(
+                question.id(), question.type(), question.stem(), question.analysis(),
+                question.sourceRefs().stream().map(ref -> QuestionBankFile.SourceRef.anchor(
+                        ref.documentAssetId(), ref.documentContentId(), ref.address().value(), 1,
+                        ref.documentTitle(), ref.sectionTitle())).toList(), question.data())).toList();
+        return new QuestionBankFile(bank.format(), "1.2", bank.id(), bank.title(),
+                bank.sourceDocuments(), questions);
     }
 }

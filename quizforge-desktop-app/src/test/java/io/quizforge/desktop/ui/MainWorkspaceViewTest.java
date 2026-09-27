@@ -7,6 +7,9 @@ import io.quizforge.core.workspace.WorkspaceFileKind;
 import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentV1;
 import io.quizforge.infrastructure.filesystem.QDocV1Codec;
 import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
+import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
+import io.quizforge.core.document.registered.QuizForgeReference;
+import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
 import io.quizforge.core.document.qdoc.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,6 +23,7 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
@@ -421,10 +425,11 @@ class MainWorkspaceViewTest {
                             "rename-file-entry", "delete-file-entry"),
                     folderItems.stream().map(MenuItem::getId).toList());
             var fileItems = folderCell("Java/Java集合.md").getContextMenu().getItems();
-            assertEquals("copy-file-path", fileItems.getFirst().getId());
+            assertEquals("copy-document-reference", fileItems.getFirst().getId());
             assertTrue(fileItems.stream().noneMatch(item -> item.getId() != null
                     && item.getId().startsWith("folder-new-")));
-            Menu copy = (Menu) fileItems.getFirst();
+            Menu copy = (Menu) fileItems.stream().filter(item ->
+                    "copy-file-path".equals(item.getId())).findFirst().orElseThrow();
             assertEquals(List.of("copy-relative-path", "copy-absolute-path"),
                     copy.getItems().stream().map(MenuItem::getId).toList());
             var switcher = shell.sidebar().switcher().getItems();
@@ -451,6 +456,171 @@ class MainWorkspaceViewTest {
             }
             assertEquals("Java/Java集合.md", shell.filePane().currentFile().file().entry().relativePath());
         });
+    }
+
+    @Test void sourceReferenceCreationRegistersOnlyTheSelectedMarkdownBlock() throws Exception {
+        String path = "我的笔记/学习计划.md";
+        String original = Files.readString(fixture.alphaRoot.resolve(path));
+        fx(() -> {
+            open(path);
+            assertNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
+            assertTrue(folderCell(path).getContextMenu().getItems().stream()
+                    .noneMatch(item -> "register-markdown-document".equals(item.getId())));
+            Node paragraph = shell.lookup(".preview-prose");
+            ContextMenu menu = (ContextMenu) paragraph.getProperties().get("quizforge.sourceContextMenu");
+            assertEquals("create-source-reference", menu.getItems().getFirst().getId());
+            Platform.runLater(() -> answerDialog(ButtonType.CANCEL.getText()));
+            menu.getItems().getFirst().fire();
+            assertEquals(original, Files.readString(fixture.alphaRoot.resolve(path)));
+            assertEquals(WorkspaceFileKind.MARKDOWN, shell.filePane().currentFile().kind());
+
+            Platform.runLater(() -> {
+                DialogPane pane = currentDialog();
+                ((javafx.scene.control.TextField) pane.lookup(".text-field")).setText("学习计划来源");
+                answerDialog("Create and Copy");
+            });
+            menu.getItems().getFirst().fire();
+            assertEquals(path, shell.filePane().currentFile().file().entry().relativePath());
+            assertNotNull(Clipboard.getSystemClipboard().getString(),
+                    "Create and Copy must put the current anchor URI on the clipboard");
+            assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, shell.filePane().currentFile().kind());
+            assertNotNull(shell.filePane().currentFile().registeredMarkdown());
+            assertNotNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
+            assertTrue(Files.readString(fixture.alphaRoot.resolve(path)).contains("quizforge:"));
+            assertTrue(Files.readString(fixture.alphaRoot.resolve(path)).contains("<!-- qf:anchor=学习计划来源 -->"));
+            assertFalse(Files.readString(fixture.alphaRoot.resolve(path)).contains("qf:id=node_"));
+            shell.refresh();
+            open(path);
+            assertNotNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
+            assertNotNull(shell.filePane().currentFile().registeredMarkdown());
+            assertEquals("copy-document-reference", folderCell(path).getContextMenu().getItems()
+                    .getFirst().getId());
+            assertEquals("quizforge://document/" + shell.filePane().currentFile()
+                    .registeredMarkdown().documentAssetId(),
+                    new QuizForgeReferenceCodec().encode(QuizForgeReference.document(
+                            shell.filePane().currentFile().registeredMarkdown().documentAssetId())));
+            button("file-mode-toggle").fire();
+            assertTrue(((TextArea) shell.lookup("#markdown-source-text")).getText()
+                    .contains("<!-- qf:anchor=学习计划来源 -->"));
+        });
+    }
+
+    @Test void aBlockWithTwoAnchorsOffersAChoiceBeforeCopying() throws Exception {
+        String path = "Java/two-anchors.md";
+        fixture.write(path, "---\nquizforge:\n  format: document\n  version: 1\n"
+                + "  assetId: doc_two_anchors\n---\n# H\n\n<!-- qf:anchor=first -->\n"
+                + "<!-- qf:anchor=second -->\nParagraph.\n");
+        fx(() -> {
+            shell.refresh();
+            open(path);
+            Node paragraph = shell.lookup(".preview-prose");
+            ContextMenu menu = (ContextMenu) paragraph.getProperties().get("quizforge.sourceContextMenu");
+            assertEquals(List.of("create-source-reference", "copy-source-reference"),
+                    menu.getItems().stream().map(MenuItem::getId).toList());
+            Platform.runLater(() -> {
+                DialogPane pane = currentDialog();
+                ((javafx.scene.control.ComboBox<?>) pane.lookup(".combo-box"))
+                        .getSelectionModel().select(1);
+                answerDialog(ButtonType.OK.getText());
+            });
+            menu.getItems().get(1).fire();
+            assertEquals(new QuizForgeReferenceCodec().encode(QuizForgeReference.anchor(
+                            "doc_two_anchors", shell.filePane().currentFile().registeredMarkdown()
+                                    .contentId(), "second", 1)),
+                    Clipboard.getSystemClipboard().getString());
+        });
+    }
+
+    @Test void handWrittenAnchorInOrdinaryMarkdownCanBeCopiedOnDemand() throws Exception {
+        String path = "Java/manual-anchor.md";
+        fixture.write(path, "# H\n\n<!-- qf:anchor=手写来源 -->\nParagraph.\n");
+        fx(() -> {
+            shell.refresh();
+            open(path);
+            assertEquals(WorkspaceFileKind.MARKDOWN, shell.filePane().currentFile().kind());
+            Node paragraph = shell.lookup(".preview-prose");
+            ContextMenu menu = (ContextMenu) paragraph.getProperties().get("quizforge.sourceContextMenu");
+            assertEquals(List.of("create-source-reference", "copy-source-reference"),
+                    menu.getItems().stream().map(MenuItem::getId).toList());
+            menu.getItems().get(1).fire();
+            assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, shell.filePane().currentFile().kind());
+            assertNotNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
+            String saved = Files.readString(fixture.alphaRoot.resolve(path));
+            assertEquals(1, saved.split("qf:anchor=手写来源", -1).length - 1);
+            assertTrue(saved.contains("quizforge:"));
+            assertTrue(Clipboard.getSystemClipboard().getString().contains("/anchor/"));
+        });
+    }
+
+    @Test void fileTreeMarksOnlyReferenceEnabledMarkdown() throws Exception {
+        fixture.write("Java/registered-in-name.md", "# Ordinary Markdown\n");
+        fixture.write("Java/addressable.md", new RegisteredMarkdownCodec()
+                .prepare("# Registered\n\nAddressable paragraph.\n", "Java/addressable.md").source());
+        fx(() -> {
+            shell.refresh();
+            Node ordinary = folderCell("Java/registered-in-name.md").getGraphic();
+            assertNotNull(ordinary.lookup(".icon-markdown"));
+            assertNull(ordinary.lookup(".reference-link-indicator"));
+            Node registered = folderCell("Java/addressable.md").getGraphic();
+            assertNotNull(registered.lookup(".icon-markdown"));
+            assertNotNull(registered.lookup(".reference-link-indicator"));
+            assertEquals("可引用文档", registered.getAccessibleText());
+            assertTrue(registered.getProperties().values().stream().anyMatch(value ->
+                    value instanceof Tooltip tooltip && "可引用文档".equals(tooltip.getText())));
+        });
+    }
+
+    @Test void previewCopiesNamedAnchorOnTheCorrectRepeatedParagraph() throws Exception {
+        String source = "# Heading\n\nSame text.\n\nSame text.\n\n- Item\n\n> Quote\n\n```java\nint x = 1;\n```\n";
+        var prepared = new RegisteredMarkdownCodec().prepareAnchor(source,
+                "Java/References.md", 5, 1, "Repeated source");
+        fixture.write("Java/References.md", prepared.source());
+        fx(() -> {
+            shell.refresh();
+            open("Java/References.md");
+            var registered = shell.filePane().currentFile().registeredMarkdown();
+            assertNotNull(registered);
+            var paragraphs = shell.lookupAll(".preview-prose").stream()
+                    .filter(node -> "Same text.".equals(text(node).trim())).toList();
+            assertEquals(2, paragraphs.size());
+            assertNotNull(paragraphs.get(0).getProperties().get("quizforge.sourceBlock"));
+            assertNotNull(paragraphs.get(1).getProperties().get("quizforge.sourceBlock"));
+            assertTrue(shell.lookupAll(".preview-heading-1").stream().anyMatch(node ->
+                    node.getProperties().containsKey("quizforge.sourceBlock")));
+            assertTrue(shell.lookupAll(".preview-code").stream().anyMatch(node ->
+                    node.getProperties().containsKey("quizforge.sourceBlock")));
+            assertTrue(shell.lookupAll(".preview-quote").stream().anyMatch(node ->
+                    node.getProperties().containsKey("quizforge.sourceBlock")));
+            assertTrue(shell.lookupAll(".markdown-preview").stream().flatMap(node ->
+                    ((Parent) node).getChildrenUnmodifiable().stream()).anyMatch(node ->
+                    node.getProperties().containsKey("quizforge.sourceBlock")
+                            && node.getStyleClass().isEmpty()));
+            ContextMenu menu = (ContextMenu) paragraphs.get(1).getProperties()
+                    .get("quizforge.sourceContextMenu");
+            assertEquals("copy-source-reference", menu.getItems().get(1).getId());
+            menu.getItems().get(1).fire();
+            assertEquals(new QuizForgeReferenceCodec().encode(QuizForgeReference.anchor(
+                    registered.documentAssetId(), registered.contentId(), "Repeated source", 1)),
+                    Clipboard.getSystemClipboard().getString());
+            open("我的笔记/学习计划.md");
+            assertTrue(shell.lookupAll(".preview-prose").stream().anyMatch(node ->
+                    node.getProperties().containsKey("quizforge.sourceContextMenu")));
+        });
+    }
+
+    private static void answerDialog(String label) {
+        DialogPane pane = currentDialog();
+        ButtonType choice = pane.getButtonTypes().stream()
+                .filter(type -> label.equals(type.getText())).findFirst().orElseThrow();
+        ((Button) pane.lookupButton(choice)).fire();
+    }
+
+    private static DialogPane currentDialog() {
+        return javafx.stage.Window.getWindows().stream()
+                .filter(javafx.stage.Window::isShowing)
+                .map(window -> window.getScene() == null ? null : window.getScene().getRoot())
+                .filter(DialogPane.class::isInstance).map(DialogPane.class::cast)
+                .findFirst().orElseThrow();
     }
 
     @Test void refreshLoadsChangedRealMarkdownWithoutLegacyTables() throws Exception {

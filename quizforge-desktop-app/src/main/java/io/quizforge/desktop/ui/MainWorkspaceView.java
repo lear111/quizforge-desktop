@@ -2,6 +2,9 @@ package io.quizforge.desktop.ui;
 
 import io.quizforge.core.document.qdoc.QDocFileEditService;
 import io.quizforge.core.document.MarkdownFileEditService;
+import io.quizforge.core.document.registered.QuizForgeReference;
+import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
+import io.quizforge.core.port.MarkdownDocumentRegistration;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.Workspace;
@@ -23,6 +26,7 @@ final class MainWorkspaceView extends BorderPane {
     private final WorkspaceService workspaces;
     private final WorkspaceFileService files;
     private final WorkspaceHistory history;
+    private final QuizForgeReferenceCodec referenceCodec = new QuizForgeReferenceCodec();
     private final Stage stage;
     private final WorkspaceSidebar sidebar;
     private final FilePane filePane;
@@ -32,7 +36,7 @@ final class MainWorkspaceView extends BorderPane {
             FilePresentationLoader loader, QuestionBankReferenceResolver references, Stage stage,
             Runnable settings, BiConsumer<WorkspaceId, FilePresentation> ai,
             QDocFileEditService qdocEdits, QuestionBankFileEditService bankEdits,
-            MarkdownFileEditService markdownEdits) {
+            MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration) {
         this.workspaces = workspaces;
         this.files = files;
         this.history = history;
@@ -40,7 +44,7 @@ final class MainWorkspaceView extends BorderPane {
         setId("main-workspace");
         getStyleClass().add("workspace-shell");
         filePane = new FilePane(loader, references, ai, qdocEdits, bankEdits,
-                markdownEdits, this::refreshTree);
+                markdownEdits, registration, this::refreshTree);
         sidebar = new WorkspaceSidebar(entry -> {
             if (current != null) filePane.open(current.id(), entry.relativePath());
         }, new WorkspaceFileTree.FileActions() {
@@ -53,6 +57,9 @@ final class MainWorkspaceView extends BorderPane {
             }
             @Override public void rename(WorkspaceFileEntry entry) { MainWorkspaceView.this.rename(entry); }
             @Override public void delete(WorkspaceFileEntry entry) { MainWorkspaceView.this.delete(entry); }
+            @Override public void copyDocumentReference(WorkspaceFileEntry entry) {
+                MainWorkspaceView.this.copyDocumentReference(entry);
+            }
         }, settings);
         filePane.setMinWidth(320);
         SplitPane split = new SplitPane(sidebar, filePane);
@@ -111,10 +118,20 @@ final class MainWorkspaceView extends BorderPane {
     private void copyPath(String path, boolean absolute) {
         try {
             String value = absolute ? files.absolutePath(current.id(), path).toString() : path;
-            ClipboardContent content = new ClipboardContent();
-            content.putString(value);
-            Clipboard.getSystemClipboard().setContent(content);
+            copyText(value);
         } catch (RuntimeException error) { showFileError("无法复制文件路径", error); }
+    }
+
+    private void copyDocumentReference(WorkspaceFileEntry entry) {
+        try {
+            copyText(referenceCodec.encode(QuizForgeReference.document(entry.assetId())));
+        } catch (RuntimeException error) { showFileError("无法复制文档引用", error); }
+    }
+
+    private void copyText(String value) {
+        ClipboardContent content = new ClipboardContent();
+        content.putString(value);
+        Clipboard.getSystemClipboard().setContent(content);
     }
 
     private void rename(WorkspaceFileEntry entry) {

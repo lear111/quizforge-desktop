@@ -247,8 +247,8 @@ final class QuestionBankEditorView extends VBox {
             boolean valid = snapshot.chapters().stream().flatMap(chapter -> chapter.sections().stream())
                     .anyMatch(candidate -> candidate.id().equals(section.id()));
             if (!valid) { showError("Selected Section is no longer available."); return; }
-            var ref = new QuestionBankFile.SourceRef(snapshot.assetId(), snapshot.contentId(),
-                    section.id(), snapshot.title(), section.title());
+            var ref = QuestionBankFile.SourceRef.anchor(snapshot.assetId(), snapshot.contentId(),
+                    section.id(), 1, snapshot.title(), section.title());
             if (replaceIndex < 0) model.addSourceRef(index, ref);
             else model.replaceSourceRef(index, replaceIndex, ref);
             errors.getChildren().clear();

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.quizforge.core.question.QuestionSourceAddress;
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.port.QuestionBankFileCodec;
@@ -29,7 +30,7 @@ public final class QuestionBankV1Codec implements QuestionBankFileCodec {
         validate(bank);
         try {
             ObjectNode root = json.valueToTree(bank);
-            if ("1.0".equals(bank.schemaVersion())) remapRefs(root, "nodeId", "sectionId");
+            writeRefs(root, bank.schemaVersion());
             return json.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n";
         }
         catch (Exception error) { throw invalid("Could not serialize QuestionBank", error); }
@@ -40,8 +41,7 @@ public final class QuestionBankV1Codec implements QuestionBankFileCodec {
             JsonNode root = json.readTree(source);
             if (root == null || !root.isObject()) throw invalid("Invalid QuestionBank JSON", null);
             String version = root.path("schemaVersion").asText();
-            if ("1.0".equals(version)) remapRefs((ObjectNode) root, "sectionId", "nodeId");
-            else if ("1.1".equals(version)) rejectLegacyRefs(root);
+            readRefs((ObjectNode) root, version);
             QuestionBankFile bank = json.treeToValue(root, QuestionBankFile.class);
             validate(bank);
             return bank;
@@ -55,7 +55,8 @@ public final class QuestionBankV1Codec implements QuestionBankFileCodec {
         try {
             QuestionBankFile bank = json.readValue(source, QuestionBankFile.class);
             if (bank == null || !"quizforge-question-bank".equals(bank.format())
-                    || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion()))
+                    || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion())
+                            || "1.2".equals(bank.schemaVersion()))
                     || bank.id() == null
                     || !bank.id().matches("qb_[A-Za-z0-9_-]+") || bank.title() == null
                     || bank.title().isBlank() || !bank.questions().isEmpty()) {
@@ -95,7 +96,13 @@ public final class QuestionBankV1Codec implements QuestionBankFileCodec {
                 out.writeInt(question.sourceRefs().size());
                 for (var ref : question.sourceRefs()) {
                     value(out, ref.documentAssetId()); value(out, ref.documentContentId());
-                    value(out, ref.nodeId()); value(out, ref.documentTitle()); value(out, ref.sectionTitle());
+                    if ("1.2".equals(bank.schemaVersion())) {
+                        value(out, ref.anchorName());
+                        out.writeInt(ref.occurrence());
+                    } else {
+                        value(out, ref.nodeId());
+                        value(out, ref.documentTitle()); value(out, ref.sectionTitle());
+                    }
                 }
                 out.writeInt(question.data().options().size());
                 for (var option : question.data().options()) {
@@ -119,17 +126,58 @@ public final class QuestionBankV1Codec implements QuestionBankFileCodec {
         out.write(encoded);
     }
 
-    private void remapRefs(ObjectNode root, String from, String to) {
+    private void writeRefs(ObjectNode root, String version) {
         for (JsonNode question : root.path("questions")) for (JsonNode ref : question.path("sourceRefs")) {
-            if (!(ref instanceof ObjectNode object) || !object.has(from) || object.has(to))
-                throw invalid("Invalid QuestionBank sourceRef version", null);
-            object.set(to, object.remove(from));
+            ObjectNode object = (ObjectNode) ref;
+            JsonNode address = object.remove("address");
+            if ("1.2".equals(version)) {
+                if (!"ANCHOR".equals(address.path("kind").asText()))
+                    throw invalid("1.2 requires named anchor references", null);
+                object.set("anchorName", address.path("value"));
+                object.set("occurrence", address.path("occurrence"));
+                object.remove("documentTitle");
+                object.remove("sectionTitle");
+            } else {
+                if ("ANCHOR".equals(address.path("kind").asText()))
+                    throw invalid("Legacy banks require legacy references", null);
+                object.set("1.0".equals(version) ? "sectionId" : "nodeId", address.path("value"));
+            }
         }
     }
 
-    private void rejectLegacyRefs(JsonNode root) {
+    private void readRefs(ObjectNode root, String version) {
+        String field = switch (version) {
+            case "1.0" -> "sectionId";
+            case "1.1" -> "nodeId";
+            case "1.2" -> "anchorName";
+            default -> throw invalid("Unsupported QuestionBank schema version", null);
+        };
         for (JsonNode question : root.path("questions")) for (JsonNode ref : question.path("sourceRefs")) {
-            if (ref.has("sectionId")) throw invalid("1.1 sourceRefs must use nodeId", null);
+            if (!(ref instanceof ObjectNode object) || !object.has(field) || object.has("address")
+                    || object.has("1.0".equals(version) ? "nodeId" : "sectionId")
+                    || "1.2".equals(version) && (object.has("nodeId")
+                            || !object.path("occurrence").isIntegralNumber()
+                            || !object.path("anchorName").isTextual())
+                    || !"1.2".equals(version) && object.has("anchorName"))
+                throw invalid("Invalid QuestionBank sourceRef version", null);
+            ObjectNode address = json.createObjectNode();
+            address.put("kind", switch (version) {
+                case "1.0" -> QuestionSourceAddress.Kind.LEGACY_SECTION.name();
+                case "1.1" -> QuestionSourceAddress.Kind.LEGACY_NODE.name();
+                default -> QuestionSourceAddress.Kind.ANCHOR.name();
+            });
+            address.set("value", object.remove(field));
+            if ("1.2".equals(version)) {
+                address.set("occurrence", object.remove("occurrence"));
+                String assetId = object.path("documentAssetId").asText();
+                String title = "";
+                for (JsonNode source : root.path("sourceDocuments")) {
+                    if (assetId.equals(source.path("assetId").asText())) title = source.path("title").asText();
+                }
+                object.put("documentTitle", title);
+                object.put("sectionTitle", address.path("value").asText());
+            }
+            object.set("address", address);
         }
     }
 

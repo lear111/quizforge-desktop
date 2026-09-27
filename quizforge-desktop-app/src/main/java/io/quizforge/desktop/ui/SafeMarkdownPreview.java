@@ -1,8 +1,16 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.document.registered.RegisteredMarkdownDocument;
+import io.quizforge.core.document.registered.NamedMarkdownAnchor;
+import io.quizforge.core.document.registered.MarkdownSourceRange;
+import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
 import javafx.scene.layout.VBox;
 import org.commonmark.node.Code;
 import org.commonmark.node.FencedCodeBlock;
@@ -17,11 +25,20 @@ import org.commonmark.node.SoftLineBreak;
 import org.commonmark.node.HardLineBreak;
 import org.commonmark.node.Text;
 import org.commonmark.parser.Parser;
+import org.commonmark.parser.IncludeSourceSpans;
+import org.commonmark.node.SourceSpan;
 
 /** Renders Markdown into JavaFX labels, without an HTML or JavaScript execution engine. */
 final class SafeMarkdownPreview {
     record Block(String style, String text) { }
-    private static final Parser MARKDOWN = Parser.builder().build();
+    private record SourceLocation(int line, int column) { }
+    interface SourceActions {
+        void create(MarkdownSourceRange block);
+        void copy(List<NamedMarkdownAnchor> anchors);
+    }
+    private static final Parser MARKDOWN = Parser.builder()
+            .includeSourceSpans(IncludeSourceSpans.BLOCKS).build();
+    private final RegisteredMarkdownCodec anchorCodec = new RegisteredMarkdownCodec();
 
     List<Block> project(String markdown) {
         Node root = MARKDOWN.parse(withoutFrontMatter(markdown));
@@ -31,43 +48,58 @@ final class SafeMarkdownPreview {
     }
 
     javafx.scene.Node view(String markdown) {
+        return view(markdown, null, null);
+    }
+
+    javafx.scene.Node view(String markdown, RegisteredMarkdownDocument registered,
+            SourceActions actions) {
         VBox preview = new VBox(12);
         preview.getStyleClass().add("markdown-preview");
         preview.setMaxWidth(820);
         preview.setId("markdown-browse-view");
-        render(MARKDOWN.parse(withoutFrontMatter(markdown)), preview);
+        Map<SourceLocation, List<NamedMarkdownAnchor>> anchors = new HashMap<>();
+        List<NamedMarkdownAnchor> available = registered == null
+                ? anchorCodec.inspectAnchors(markdown) : registered.anchors();
+        if (!available.isEmpty()) {
+            available.stream().filter(anchor -> !anchor.orphan()).forEach(anchor ->
+                    anchors.computeIfAbsent(new SourceLocation(anchor.blockRange().startLine(),
+                            anchor.blockRange().startColumn()), ignored -> new ArrayList<>()).add(anchor));
+        }
+        render(MARKDOWN.parse(withoutFrontMatter(markdown)), preview, anchors, actions);
         javafx.scene.layout.StackPane centered = new javafx.scene.layout.StackPane(preview);
         centered.setAlignment(javafx.geometry.Pos.TOP_CENTER);
         return UiTheme.scroll(centered);
     }
 
-    private void render(Node parent, VBox page) {
+    private void render(Node parent, VBox page, Map<SourceLocation, List<NamedMarkdownAnchor>> anchors,
+            SourceActions actions) {
         for (Node node = parent.getFirstChild(); node != null; node = node.getNext()) {
             if (node instanceof HtmlBlock || node instanceof HtmlInline) continue;
             if (node instanceof Heading heading) {
-                page.getChildren().add(UiTheme.label(text(node), "preview-heading-" + heading.getLevel()));
+                add(page, UiTheme.label(text(node), "preview-heading-" + heading.getLevel()),
+                        node, anchors, actions);
             } else if (node instanceof FencedCodeBlock || node instanceof IndentedCodeBlock) {
                 String literal = node instanceof FencedCodeBlock code ? code.getLiteral() : ((IndentedCodeBlock) node).getLiteral();
                 Label code = UiTheme.label(literal.stripTrailing(), "preview-code");
                 code.setMaxWidth(Double.MAX_VALUE);
-                page.getChildren().add(code);
+                add(page, code, node, anchors, actions);
             } else if (node instanceof org.commonmark.node.BlockQuote) {
                 VBox quote = new VBox(8);
                 quote.getStyleClass().add("preview-quote");
-                render(node, quote);
-                page.getChildren().add(quote);
+                render(node, quote, anchors, null);
+                add(page, quote, node, anchors, actions);
             } else if (node instanceof org.commonmark.node.BulletList || node instanceof org.commonmark.node.OrderedList) {
                 int number = node instanceof org.commonmark.node.OrderedList ordered ? ordered.getStartNumber() : 0;
                 VBox list = new VBox(6);
                 for (Node item = node.getFirstChild(); item != null; item = item.getNext()) {
                     VBox content = new VBox(6);
-                    render(item, content);
+                    render(item, content, anchors, null);
                     javafx.scene.layout.HBox.setHgrow(content, javafx.scene.layout.Priority.ALWAYS);
                     content.setMinWidth(0);
                     Label marker = UiTheme.label(node instanceof org.commonmark.node.OrderedList ? number++ + "." : "•", "preview-list-marker");
                     list.getChildren().add(new javafx.scene.layout.HBox(10, marker, content));
                 }
-                page.getChildren().add(list);
+                add(page, list, node, anchors, actions);
             } else if (node instanceof org.commonmark.node.ThematicBreak) {
                 page.getChildren().add(new javafx.scene.control.Separator());
             } else if (node instanceof Paragraph) {
@@ -75,9 +107,38 @@ final class SafeMarkdownPreview {
                 flow.getStyleClass().add("preview-prose");
                 flow.setLineSpacing(6);
                 inline(node, flow, false, false, false);
-                page.getChildren().add(flow);
-            } else render(node, page);
+                add(page, flow, node, anchors, actions);
+            } else render(node, page, anchors, actions);
         }
+    }
+
+    private void add(VBox page, javafx.scene.Node rendered, Node source,
+            Map<SourceLocation, List<NamedMarkdownAnchor>> anchors, SourceActions actions) {
+        page.getChildren().add(rendered);
+        if (actions == null || source.getSourceSpans().isEmpty()) return;
+        SourceSpan start = source.getSourceSpans().getFirst();
+        SourceSpan end = source.getSourceSpans().getLast();
+        MarkdownSourceRange block = new MarkdownSourceRange(start.getLineIndex() + 1,
+                start.getColumnIndex() + 1, end.getLineIndex() + 1,
+                end.getColumnIndex() + end.getLength() + 1);
+        List<NamedMarkdownAnchor> existing = anchors.getOrDefault(new SourceLocation(
+                block.startLine(), block.startColumn()), List.of());
+        rendered.getProperties().put("quizforge.sourceBlock", block);
+        MenuItem create = new MenuItem("Create Source Reference...");
+        create.setId("create-source-reference");
+        create.setOnAction(event -> actions.create(block));
+        ContextMenu menu = new ContextMenu(create);
+        if (!existing.isEmpty()) {
+            MenuItem copy = new MenuItem("Copy Source Reference");
+            copy.setId("copy-source-reference");
+            copy.setOnAction(event -> actions.copy(existing));
+            menu.getItems().add(copy);
+        }
+        rendered.getProperties().put("quizforge.sourceContextMenu", menu);
+        rendered.setOnContextMenuRequested(event -> {
+            menu.show(page, event.getScreenX(), event.getScreenY());
+            event.consume();
+        });
     }
 
     private void inline(Node node, javafx.scene.text.TextFlow flow, boolean bold, boolean italic, boolean link) {

@@ -165,7 +165,7 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
             if (parser.nextToken() != null) throw new IllegalArgumentException("Trailing QuestionBank JSON");
         }
         if (!"quizforge-question-bank".equals(format)) return Optional.empty();
-        if (!("1.0".equals(version) || "1.1".equals(version))
+        if (!("1.0".equals(version) || "1.1".equals(version) || "1.2".equals(version))
                 || !id.matches("qb_[A-Za-z0-9_-]+") || title.isBlank()) {
             throw new IllegalArgumentException("Invalid QuestionBank metadata");
         }

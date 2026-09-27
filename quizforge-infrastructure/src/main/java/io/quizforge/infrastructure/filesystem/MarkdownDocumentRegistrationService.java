@@ -4,6 +4,7 @@ import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.asset.AssetType;
 import io.quizforge.core.document.registered.RegisteredMarkdownDocument;
+import io.quizforge.core.document.registered.NamedMarkdownAnchor;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
 import io.quizforge.core.port.WorkspaceAssetScanner;
 import io.quizforge.core.workspace.WorkspaceFileEntry;
@@ -19,7 +20,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.Optional;
 
-/** Safely registers a user-owned .md file, then refreshes the derived Workspace Registry. */
+/** Adds a source anchor on demand, registering the user-owned .md only on first use. */
 public final class MarkdownDocumentRegistrationService implements MarkdownDocumentRegistration {
     @FunctionalInterface
     interface Publisher {
@@ -43,37 +44,30 @@ public final class MarkdownDocumentRegistrationService implements MarkdownDocume
     }
 
     @Override
-    public RegisteredMarkdownDocument register(WorkspaceId workspaceId, String relativePath) {
-        Path file = checkedFile(workspaceId, relativePath);
-        try {
-            String original = Files.readString(file, StandardCharsets.UTF_8);
-            if (original.startsWith("\uFEFF")) {
-                throw new IllegalArgumentException("Markdown with a BOM cannot be safely registered");
-            }
-            RegisteredMarkdownCodec.Prepared prepared = codec.prepare(original, relativePath);
-            if (original.equals(prepared.source())) {
-                refresh(workspaceId, prepared.document());
-                return prepared.document();
-            }
-            publishAndRefresh(workspaceId, file, original, prepared);
-            return prepared.document();
-        } catch (IOException error) {
-            throw failure("register Markdown document", error);
-        }
-    }
-
-    @Override
-    public RegisteredMarkdownDocument ensureAddressing(WorkspaceId workspaceId, String relativePath) {
-        return register(workspaceId, relativePath);
-    }
-
-    @Override
     public Optional<RegisteredMarkdownDocument> inspect(WorkspaceId workspaceId, String relativePath) {
         try {
             return codec.parseIfRegistered(Files.readString(checkedFile(workspaceId, relativePath),
                     StandardCharsets.UTF_8), relativePath);
         } catch (IOException error) {
             throw failure("inspect Markdown document", error);
+        }
+    }
+
+    @Override
+    public NamedMarkdownAnchor createAnchor(WorkspaceId workspaceId, String relativePath,
+            String expectedSource, int bodyLine, int bodyColumn, String anchorName) {
+        Path file = checkedFile(workspaceId, relativePath);
+        try {
+            String original = Files.readString(file, StandardCharsets.UTF_8);
+            if (!original.equals(expectedSource)) throw new IllegalStateException("Markdown changed externally");
+            if (original.startsWith("\uFEFF")) throw new IllegalArgumentException("Markdown BOM is unsupported");
+            var prepared = codec.prepareAnchor(original, relativePath, bodyLine, bodyColumn, anchorName);
+            if (original.equals(prepared.source())) refresh(workspaceId, prepared.document());
+            else publishAndRefresh(workspaceId, file, original,
+                    new RegisteredMarkdownCodec.Prepared(prepared.source(), prepared.document()));
+            return prepared.anchor();
+        } catch (IOException error) {
+            throw failure("create Markdown source anchor", error);
         }
     }
 

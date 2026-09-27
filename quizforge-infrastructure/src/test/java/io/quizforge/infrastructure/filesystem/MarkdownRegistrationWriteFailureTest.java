@@ -20,7 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 class MarkdownRegistrationWriteFailureTest {
     @TempDir Path temporary;
 
-    @Test void failedPublishLeavesOriginalMarkdownAndNoTemporaryFiles() throws Exception {
+    @Test void failedFirstAnchorPublishLeavesOriginalMarkdownAndNoTemporaryFiles() throws Exception {
         var data = new QuizForgeDataDirectory(temporary.resolve("data"));
         var paths = new WorkspacePathResolver(data);
         var workspace = new WorkspaceService(
@@ -34,10 +34,12 @@ class MarkdownRegistrationWriteFailureTest {
                 (candidate, target) -> { throw new IOException("Simulated publish failure"); });
 
         assertThrows(QuizForgeException.class,
-                () -> service.register(workspace.id(), "documents/study.md"));
+                () -> service.createAnchor(workspace.id(), "documents/study.md", original,
+                        3, 1, "source"));
         assertEquals(original, Files.readString(file));
         try (var files = Files.list(file.getParent())) {
             assertEquals(List.of(file), files.toList());
         }
     }
+
 }

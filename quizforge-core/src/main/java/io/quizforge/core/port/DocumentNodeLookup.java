@@ -6,5 +6,7 @@ import io.quizforge.core.workspace.WorkspaceId;
 /** Resolves an addressable node from the document file currently on disk. */
 public interface DocumentNodeLookup {
     record Result(String contentId, boolean containsNode) { }
+    record AnchorResult(String contentId, boolean containsAnchor, boolean orphan) { }
     Result lookup(WorkspaceId workspace, Asset document, String nodeId);
+    AnchorResult lookupAnchor(WorkspaceId workspace, Asset document, String anchorName, int occurrence);
 }
