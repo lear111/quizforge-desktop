@@ -11,7 +11,8 @@ import java.util.Set;
 public final class QuestionBankValidator {
     public void validate(QuestionBankFile bank) {
         if (bank == null || !"quizforge-question-bank".equals(bank.format())
-                || !"1.0".equals(bank.schemaVersion()) || !id(bank.id(), "qb_")
+                || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion()))
+                || !id(bank.id(), "qb_")
                 || blank(bank.title()) || bank.sourceDocuments().isEmpty()
                 || bank.questions().isEmpty()) fail("Invalid QuestionBank metadata");
         Map<String, String> sources = new HashMap<>();
@@ -34,10 +35,10 @@ public final class QuestionBankValidator {
             Set<String> refs = new HashSet<>();
             for (QuestionBankFile.SourceRef ref : entry.sourceRefs()) {
                 if (ref == null || !id(ref.documentAssetId(), "doc_")
-                        || !contentId(ref.documentContentId()) || !id(ref.sectionId(), "section_")
+                        || !contentId(ref.documentContentId()) || !nodeId(ref.nodeId())
                         || blank(ref.documentTitle()) || blank(ref.sectionTitle())
                         || !ref.documentContentId().equals(sources.get(ref.documentAssetId()))
-                        || !refs.add(ref.documentAssetId() + "\0" + ref.sectionId())) {
+                        || !refs.add(ref.documentAssetId() + "\0" + ref.nodeId())) {
                     fail("Invalid sourceRefs");
                 }
             }
@@ -60,7 +61,10 @@ public final class QuestionBankValidator {
         return value != null && value.matches(prefix + "[A-Za-z0-9_-]+");
     }
     private boolean contentId(String value) {
-        return value != null && value.matches("qfd:v1:[0-9a-f]{64}");
+        return value != null && value.matches("qfd:v[12]:[0-9a-f]{64}");
+    }
+    private boolean nodeId(String value) {
+        return value != null && value.matches("[A-Za-z][A-Za-z0-9_-]*");
     }
     private boolean blank(String value) { return value == null || value.isBlank(); }
     private void fail(String message) {

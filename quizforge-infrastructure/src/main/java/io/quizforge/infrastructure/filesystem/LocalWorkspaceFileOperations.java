@@ -171,7 +171,7 @@ public final class LocalWorkspaceFileOperations implements WorkspaceFileOperatio
     private String emptyQuestionBank(String title) {
         var root = json.createObjectNode();
         root.put("format", "quizforge-question-bank");
-        root.put("schemaVersion", "1.0");
+        root.put("schemaVersion", "1.1");
         root.put("id", "qb_" + UUID.randomUUID().toString().replace("-", ""));
         root.put("title", title);
         root.putArray("sourceDocuments");

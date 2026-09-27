@@ -48,7 +48,8 @@ final class AssetDetailsPopover {
                         case EXACT_MATCH -> "Exact";
                         case EXACT_CONTENT_MATCH -> "Exact content";
                         case DIFFERENT_REVISION -> "Changed";
-                        case MISSING -> "Missing";
+                        case MISSING, MISSING_DOCUMENT -> "Missing";
+                        case MISSING_NODE -> "Missing node";
                     };
                     row("Reference Status · " + resolution.source().title(), status + (resolution.ambiguous() ? " · ambiguous" : ""));
                 }

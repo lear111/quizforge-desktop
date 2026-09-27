@@ -154,7 +154,7 @@ class QDocWorkflowIntegrationTest {
         assertEquals(1, outcome.accepted());
         assertTrue(request.get().sourceContext().contains("sectionId: " + sectionId));
         assertEquals(document.asset().contentId(), outcome.bank().sourceDocuments().getFirst().contentId());
-        assertEquals(sectionId, outcome.bank().questions().getFirst().sourceRefs().getFirst().sectionId());
+        assertEquals(sectionId, outcome.bank().questions().getFirst().sourceRefs().getFirst().nodeId());
         assertEquals(document.asset().contentId(), outcome.bank().questions().getFirst().sourceRefs().getFirst().documentContentId());
         assertTrue(Files.exists(root().resolve(outcome.asset().currentPath())));
     }
@@ -205,7 +205,7 @@ class QDocWorkflowIntegrationTest {
         assertTrue(prompt.get().sourceContext().contains("Only selected knowledge."));
         assertFalse(prompt.get().sourceContext().contains("Excluded knowledge."));
         assertFalse(prompt.get().sourceContext().contains("Direct section knowledge."));
-        assertEquals("section_scope", result.bank().questions().getFirst().sourceRefs().getFirst().sectionId());
+        assertEquals("section_scope", result.bank().questions().getFirst().sourceRefs().getFirst().nodeId());
         assertThrows(RuntimeException.class, () -> service.create(workspace.id(), "Invalid",
                 List.of(new StandardDocumentSelection("doc_scope", GenerationScopeType.SUBSECTION,
                         "chapter_scope", "section_scope", "subsection_missing")),

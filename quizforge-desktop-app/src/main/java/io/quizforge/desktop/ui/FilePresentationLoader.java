@@ -69,13 +69,14 @@ final class FilePresentationLoader {
 
     private FilePresentation bankDraft(OpenedWorkspaceFile original, String source) throws Exception {
         QuestionBankFile bank = JSON.readValue(source, QuestionBankFile.class);
-        if (!"quizforge-question-bank".equals(bank.format()) || !"1.0".equals(bank.schemaVersion())
+        if (!"quizforge-question-bank".equals(bank.format())
+                || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion()))
                 || bank.id() == null || !bank.id().matches("qb_[A-Za-z0-9_-]+")
                 || bank.title() == null || bank.title().isBlank() || !bank.questions().isEmpty()) return null;
         Set<String> sources = new HashSet<>();
         for (var ref : bank.sourceDocuments()) {
             if (ref == null || ref.assetId() == null || !ref.assetId().matches("doc_[A-Za-z0-9_-]+")
-                    || ref.contentId() == null || !ref.contentId().matches("qfd:v1:[0-9a-f]{64}")
+                    || ref.contentId() == null || !ref.contentId().matches("qfd:v[12]:[0-9a-f]{64}")
                     || ref.title() == null || ref.title().isBlank() || !sources.add(ref.assetId())) return null;
         }
         return draft(original, source, WorkspaceFileKind.QUESTION_BANK, bank.id(), bank.title(), bank);

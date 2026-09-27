@@ -57,9 +57,11 @@ public final class QuestionBankFileEditService {
         workspaces.getWorkspace(workspace);
         if (path == null || !path.toLowerCase(java.util.Locale.ROOT).endsWith(".qbank"))
             throw new IllegalArgumentException("Only .qbank files can be edited here");
-        codec.validate(edited);
-        String content = codec.write(edited);
-        String revision = codec.contentId(edited);
+        QuestionBankFile saved = new QuestionBankFile(edited.format(), "1.1", edited.id(),
+                edited.title(), edited.sourceDocuments(), edited.questions());
+        codec.validate(saved);
+        String content = codec.write(saved);
+        String revision = codec.contentId(saved);
         String currentText = files.read(workspace, path);
         QuestionBankFile current = expectedContentId == null ? codec.parseEmptyDraft(currentText)
                 : codec.parse(currentText);
@@ -100,7 +102,7 @@ public final class QuestionBankFileEditService {
                     id -> source(workspace, id));
             if (!source.contentId().equals(ref.documentContentId()) || source.chapters().stream()
                     .flatMap(chapter -> chapter.sections().stream())
-                    .noneMatch(section -> section.id().equals(ref.sectionId()))) {
+                    .noneMatch(section -> section.id().equals(ref.nodeId()))) {
                 throw new IllegalArgumentException("Source reference is not in the selected QDoc revision");
             }
         }

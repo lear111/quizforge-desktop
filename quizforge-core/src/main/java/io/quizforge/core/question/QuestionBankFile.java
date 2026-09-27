@@ -11,7 +11,7 @@ public record QuestionBankFile(String format, String schemaVersion, String id, S
     }
 
     public record SourceDocument(String assetId, String contentId, String title) { }
-    public record SourceRef(String documentAssetId, String documentContentId, String sectionId,
+    public record SourceRef(String documentAssetId, String documentContentId, String nodeId,
             String documentTitle, String sectionTitle) { }
     public record Option(String id, String content) { }
     public record Data(List<Option> options, List<String> correctOptionIds) {

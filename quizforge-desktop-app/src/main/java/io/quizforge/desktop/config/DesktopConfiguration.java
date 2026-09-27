@@ -30,6 +30,7 @@ import io.quizforge.core.port.WorkspaceFileOperations;
 import io.quizforge.core.question.FileQuestionBankGenerationService;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
+import io.quizforge.core.port.DocumentNodeLookup;
 import io.quizforge.core.question.QuestionBankV1Assembler;
 import io.quizforge.core.workspace.WorkspaceFileService;
 import io.quizforge.core.question.QuestionGenerationService;
@@ -50,6 +51,7 @@ import io.quizforge.infrastructure.filesystem.LocalMaterialFileStorage;
 import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
 import io.quizforge.infrastructure.filesystem.QDocKnowledgeDocumentAssembler;
 import io.quizforge.infrastructure.filesystem.QDocV1Codec;
+import io.quizforge.infrastructure.filesystem.FileDocumentNodeLookup;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
@@ -273,8 +275,14 @@ public class DesktopConfiguration {
     }
 
     @Bean
-    public QuestionBankReferenceResolver questionBankReferenceResolver(WorkspaceAssetScanner scanner) {
-        return new QuestionBankReferenceResolver(scanner);
+    public DocumentNodeLookup documentNodeLookup(WorkspaceFileCatalog catalog) {
+        return new FileDocumentNodeLookup(catalog);
+    }
+
+    @Bean
+    public QuestionBankReferenceResolver questionBankReferenceResolver(WorkspaceAssetScanner scanner,
+            DocumentNodeLookup nodes) {
+        return new QuestionBankReferenceResolver(scanner, nodes);
     }
 
     @Bean

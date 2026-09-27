@@ -40,7 +40,7 @@ class QuestionBankExampleTest {
         for (var question : bank.questions()) for (var ref : question.sourceRefs()) {
             assertEquals(document.id(), ref.documentAssetId());
             assertEquals(qdocCodec.contentId(document), ref.documentContentId());
-            assertTrue(sections.contains(ref.sectionId()));
+            assertTrue(sections.contains(ref.nodeId()));
         }
 
         var directory = new QuizForgeDataDirectory(temp.resolve("data"));

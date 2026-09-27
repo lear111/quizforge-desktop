@@ -28,7 +28,7 @@ public final class QuestionBankV1Assembler {
             if (entry == null) rejected++;
             else accepted.add(entry);
         }
-        return new Result(new QuestionBankFile("quizforge-question-bank", "1.0",
+        return new Result(new QuestionBankFile("quizforge-question-bank", "1.1",
                 existingId == null ? "qb_" + UUID.randomUUID() : existingId,
                 title, sources, accepted), rejected);
     }

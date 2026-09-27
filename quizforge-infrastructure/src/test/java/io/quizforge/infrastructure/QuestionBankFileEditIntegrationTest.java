@@ -81,7 +81,7 @@ class QuestionBankFileEditIntegrationTest {
         var saved = service().save(workspace.id(), bankPath, codec.contentId(original), edit.bank());
         assertEquals(original.id(), saved.assetId());
         assertNotEquals(codec.contentId(original), saved.contentId());
-        assertEquals(edit.bank(), codec.parse(banks.read(workspace.id(), bankPath)));
+        assertEquals(upgraded(edit.bank()), codec.parse(banks.read(workspace.id(), bankPath)));
         assertEquals(saved, index.findById(workspace.id(), original.id()).orElseThrow());
         assertEquals(saved.contentId(), scanner.scan(workspace.id()).stream()
                 .filter(asset -> asset.assetId().equals(original.id())).findFirst().orElseThrow().contentId());
@@ -160,7 +160,12 @@ class QuestionBankFileEditIntegrationTest {
         assertEquals(draft + "\n", banks.read(workspace.id(), path));
         var saved = service().save(workspace.id(), path, null, draft + "\n", edit.bank());
         assertEquals("qb_draft", saved.assetId());
-        assertEquals(codec.contentId(edit.bank()), saved.contentId());
-        assertEquals(edit.bank(), codec.parse(banks.read(workspace.id(), path)));
+        assertEquals(codec.contentId(upgraded(edit.bank())), saved.contentId());
+        assertEquals(upgraded(edit.bank()), codec.parse(banks.read(workspace.id(), path)));
+    }
+
+    private QuestionBankFile upgraded(QuestionBankFile bank) {
+        return new QuestionBankFile(bank.format(), "1.1", bank.id(), bank.title(),
+                bank.sourceDocuments(), bank.questions());
     }
 }

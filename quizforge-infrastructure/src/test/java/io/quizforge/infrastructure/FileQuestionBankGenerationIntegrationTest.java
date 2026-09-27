@@ -84,7 +84,7 @@ class FileQuestionBankGenerationIntegrationTest {
         assertNotEquals("q_forged", bank.questions().getFirst().id());
         assertNotEquals("opt_forged", bank.questions().getFirst().data().options().getFirst().id());
         assertEquals("doc_a", bank.questions().getFirst().sourceRefs().getFirst().documentAssetId());
-        assertEquals("section_a", bank.questions().getFirst().sourceRefs().getFirst().sectionId());
+        assertEquals("section_a", bank.questions().getFirst().sourceRefs().getFirst().nodeId());
         assertEquals(bank.sourceDocuments().getFirst().contentId(),
                 bank.questions().getFirst().sourceRefs().getFirst().documentContentId());
         assertFalse(Files.readString(root.resolve(outcome.asset().currentPath())).contains("sourcePath"));
@@ -258,7 +258,7 @@ class FileQuestionBankGenerationIntegrationTest {
                         json.replace("SINGLE_CHOICE", "ESSAY"))).code());
         assertEquals(ErrorCode.QUESTION_BANK_FILE_INVALID,
                 assertThrows(QuizForgeException.class, () -> codec.parse(
-                        json.replace("section_a", "bad_section"))).code());
+                        json.replace("section_a", "bad section"))).code());
     }
 
     @Test void storageFailureAndRegistryFailurePreservePreviousFile() throws Exception {

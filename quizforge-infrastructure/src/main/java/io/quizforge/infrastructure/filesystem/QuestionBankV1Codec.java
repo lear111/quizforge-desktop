@@ -3,6 +3,8 @@ package io.quizforge.infrastructure.filesystem;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.port.QuestionBankFileCodec;
@@ -25,13 +27,22 @@ public final class QuestionBankV1Codec implements QuestionBankFileCodec {
 
     @Override public String write(QuestionBankFile bank) {
         validate(bank);
-        try { return json.writerWithDefaultPrettyPrinter().writeValueAsString(bank) + "\n"; }
+        try {
+            ObjectNode root = json.valueToTree(bank);
+            if ("1.0".equals(bank.schemaVersion())) remapRefs(root, "nodeId", "sectionId");
+            return json.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n";
+        }
         catch (Exception error) { throw invalid("Could not serialize QuestionBank", error); }
     }
 
     @Override public QuestionBankFile parse(String source) {
         try {
-            QuestionBankFile bank = json.readValue(source, QuestionBankFile.class);
+            JsonNode root = json.readTree(source);
+            if (root == null || !root.isObject()) throw invalid("Invalid QuestionBank JSON", null);
+            String version = root.path("schemaVersion").asText();
+            if ("1.0".equals(version)) remapRefs((ObjectNode) root, "sectionId", "nodeId");
+            else if ("1.1".equals(version)) rejectLegacyRefs(root);
+            QuestionBankFile bank = json.treeToValue(root, QuestionBankFile.class);
             validate(bank);
             return bank;
         } catch (QuizForgeException error) { throw error; }
@@ -44,7 +55,8 @@ public final class QuestionBankV1Codec implements QuestionBankFileCodec {
         try {
             QuestionBankFile bank = json.readValue(source, QuestionBankFile.class);
             if (bank == null || !"quizforge-question-bank".equals(bank.format())
-                    || !"1.0".equals(bank.schemaVersion()) || bank.id() == null
+                    || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion()))
+                    || bank.id() == null
                     || !bank.id().matches("qb_[A-Za-z0-9_-]+") || bank.title() == null
                     || bank.title().isBlank() || !bank.questions().isEmpty()) {
                 throw invalid("Invalid empty QuestionBank draft", null);
@@ -53,7 +65,7 @@ public final class QuestionBankV1Codec implements QuestionBankFileCodec {
             for (var ref : bank.sourceDocuments()) {
                 if (ref == null || ref.assetId() == null
                         || !ref.assetId().matches("doc_[A-Za-z0-9_-]+")
-                        || ref.contentId() == null || !ref.contentId().matches("qfd:v1:[0-9a-f]{64}")
+                        || ref.contentId() == null || !ref.contentId().matches("qfd:v[12]:[0-9a-f]{64}")
                         || ref.title() == null || ref.title().isBlank() || !ids.add(ref.assetId())) {
                     throw invalid("Invalid empty QuestionBank draft sources", null);
                 }
@@ -83,7 +95,7 @@ public final class QuestionBankV1Codec implements QuestionBankFileCodec {
                 out.writeInt(question.sourceRefs().size());
                 for (var ref : question.sourceRefs()) {
                     value(out, ref.documentAssetId()); value(out, ref.documentContentId());
-                    value(out, ref.sectionId()); value(out, ref.documentTitle()); value(out, ref.sectionTitle());
+                    value(out, ref.nodeId()); value(out, ref.documentTitle()); value(out, ref.sectionTitle());
                 }
                 out.writeInt(question.data().options().size());
                 for (var option : question.data().options()) {
@@ -105,6 +117,20 @@ public final class QuestionBankV1Codec implements QuestionBankFileCodec {
         byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
         out.writeInt(encoded.length);
         out.write(encoded);
+    }
+
+    private void remapRefs(ObjectNode root, String from, String to) {
+        for (JsonNode question : root.path("questions")) for (JsonNode ref : question.path("sourceRefs")) {
+            if (!(ref instanceof ObjectNode object) || !object.has(from) || object.has(to))
+                throw invalid("Invalid QuestionBank sourceRef version", null);
+            object.set(to, object.remove(from));
+        }
+    }
+
+    private void rejectLegacyRefs(JsonNode root) {
+        for (JsonNode question : root.path("questions")) for (JsonNode ref : question.path("sourceRefs")) {
+            if (ref.has("sectionId")) throw invalid("1.1 sourceRefs must use nodeId", null);
+        }
     }
 
     private QuizForgeException invalid(String message, Throwable error) {

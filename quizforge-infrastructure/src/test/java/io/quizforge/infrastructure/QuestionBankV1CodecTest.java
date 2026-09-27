@@ -86,7 +86,7 @@ class QuestionBankV1CodecTest {
                 new QuestionBankFile.SourceRef("doc_missing", REVISION, "section_one", "Other", "Section"),
                 new QuestionBankFile.SourceRef("doc_one", "qfd:v1:" + "b".repeat(64),
                         "section_one", "Document", "Section"),
-                new QuestionBankFile.SourceRef("doc_one", REVISION, "bad_section", "Document", "Section"))) {
+                new QuestionBankFile.SourceRef("doc_one", REVISION, "bad section", "Document", "Section"))) {
             var edited = new QuestionBankFile.Entry(question.id(), question.type(), question.stem(),
                     question.analysis(), List.of(invalid), question.data());
             assertThrows(RuntimeException.class,
