@@ -24,8 +24,10 @@ import java.util.regex.Pattern;
 public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
     private static final Pattern DECLARED_STANDARD = Pattern.compile(
             "(?m)^\\s*quizforge_format\\s*:\\s*[\"']?study-document(?:[\"']|\\s|$)");
+    private static final Pattern DECLARED_REGISTERED = Pattern.compile("(?m)^quizforge\\s*:");
     private final WorkspacePathResolver paths;
     private final StandardKnowledgeDocumentV1 documents = new StandardKnowledgeDocumentV1();
+    private final RegisteredMarkdownCodec registeredMarkdown = new RegisteredMarkdownCodec();
     private final QDocV1Codec qdocs = new QDocV1Codec();
     private final QuestionBankFileCodec banks;
     private final boolean legacyMarkdown;
@@ -119,18 +121,24 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
             }
         }
         if (lower.endsWith(".md")) {
-            if (!legacyMarkdown) {
-                return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.MARKDOWN,
-                        null, null, null, null);
-            }
             String source;
             try { source = Files.readString(file, StandardCharsets.UTF_8); }
             catch (IOException error) {
                 return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.MARKDOWN,
                         null, null, null, "Could not read Markdown: " + error.getMessage());
             }
-            boolean declared = declaresStandard(source);
+            boolean declared = declaresStandard(source) || declaresRegistered(source);
             try {
+                var registered = registeredMarkdown.parseIfRegistered(source, relative);
+                if (registered.isPresent()) {
+                    var document = registered.get();
+                    return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.STANDARD_DOCUMENT,
+                            document.documentAssetId(), document.contentId(), document.title(), null);
+                }
+                if (!legacyMarkdown) {
+                    return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.MARKDOWN,
+                            null, null, null, null);
+                }
                 var parsed = documents.parseIfStandard(source);
                 if (parsed.isPresent()) {
                     var asset = parsed.get();
@@ -165,6 +173,15 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
         String frontMatter = normalized.substring(4, end < 0
                 ? Math.min(normalized.length(), 64 * 1024) : Math.min(end, 64 * 1024));
         return DECLARED_STANDARD.matcher(frontMatter).find();
+    }
+
+    private boolean declaresRegistered(String source) {
+        String normalized = source.replace("\r\n", "\n").replace('\r', '\n');
+        if (!normalized.startsWith("---\n")) return false;
+        int end = normalized.indexOf("\n---\n", 4);
+        String frontMatter = normalized.substring(4, end < 0
+                ? Math.min(normalized.length(), 64 * 1024) : Math.min(end, 64 * 1024));
+        return DECLARED_REGISTERED.matcher(frontMatter).find();
     }
 
     private WorkspaceFileEntry other(Path root, Path file, String issue) {

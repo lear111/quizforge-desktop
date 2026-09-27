@@ -33,6 +33,7 @@ import java.util.Set;
 public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScanner {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final StandardKnowledgeDocumentV1 documents = new StandardKnowledgeDocumentV1();
+    private final RegisteredMarkdownCodec registeredMarkdown = new RegisteredMarkdownCodec();
     private final QDocV1Codec qdocs = new QDocV1Codec();
     private final QuestionBankV1Codec banks = new QuestionBankV1Codec();
 
@@ -113,9 +114,17 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
             return Optional.of(new Asset(document.id(), AssetType.STANDARD_DOCUMENT,
                     relative(root, file), document.title(), qdocs.contentId(document), document.schemaVersion()));
         }
-        if (legacyMarkdown && lower.endsWith(".md")) {
+        if (lower.endsWith(".md")) {
+            String source = Files.readString(file, StandardCharsets.UTF_8);
+            String relative = relative(root, file);
+            var registered = registeredMarkdown.parseIfRegistered(source, relative);
+            if (registered.isPresent()) {
+                var document = registered.get();
+                return Optional.of(new Asset(document.documentAssetId(), AssetType.STANDARD_DOCUMENT,
+                        relative, document.title(), document.contentId(), "1"));
+            }
             // Legacy formal Markdown remains discoverable until its compatibility path is retired.
-            return standardDocument(root, file);
+            return legacyMarkdown ? standardDocument(root, file) : Optional.empty();
         }
         if (lower.endsWith(".qbank")) {
             return questionBank(root, file);
