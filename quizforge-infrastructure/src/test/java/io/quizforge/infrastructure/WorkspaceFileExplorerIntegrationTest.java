@@ -142,20 +142,16 @@ class WorkspaceFileExplorerIntegrationTest {
         assertEquals(4, tree.childrenOf("").size());
     }
 
-    @Test void createsThreeUsableFileTypesInCustomFolderAndRefreshesRegistry() throws Exception {
+    @Test void createsMarkdownAndQuestionBankInCustomFolderAndRefreshesRegistry() throws Exception {
         String folder = service.createFolder(workspace.id(), "", "自定义");
         String markdown = service.createFile(workspace.id(), folder, "笔记", WorkspaceFileType.MARKDOWN);
-        String qdoc = service.createFile(workspace.id(), folder, "知识", WorkspaceFileType.QDOC);
         String qbank = service.createFile(workspace.id(), folder, "练习", WorkspaceFileType.QUESTION_BANK);
         assertEquals("自定义/笔记.md", markdown);
         assertEquals("", Files.readString(root.resolve(markdown)));
-        var document = new io.quizforge.infrastructure.filesystem.QDocV1Codec()
-                .parse(Files.readString(root.resolve(qdoc)));
-        assertEquals("知识", document.title());
         var bank = banks.parseEmptyDraft(Files.readString(root.resolve(qbank)));
         assertEquals("练习", bank.title());
-        assertEquals(3, service.refresh(workspace.id()).childrenOf(folder).size());
-        assertEquals(2, scanner.scan(workspace.id()).size());
+        assertEquals(2, service.refresh(workspace.id()).childrenOf(folder).size());
+        assertEquals(1, scanner.scan(workspace.id()).size());
         assertThrows(RuntimeException.class, () -> service.createFile(workspace.id(), folder,
                 "笔记", WorkspaceFileType.MARKDOWN));
         assertEquals("", Files.readString(root.resolve(markdown)));
@@ -163,17 +159,18 @@ class WorkspaceFileExplorerIntegrationTest {
 
     @Test void renameMoveAndDeleteKeepRegistryInSyncAndProtectOtherFiles() throws Exception {
         String folder = service.createFolder(workspace.id(), "", "My Folder");
-        String file = service.createFile(workspace.id(), folder, "Study", WorkspaceFileType.QDOC);
+        String file = service.createFile(workspace.id(), folder, "Study", WorkspaceFileType.MARKDOWN);
+        Files.writeString(root.resolve(file), formalDocument("doc_study", "Study", "Learning content."));
         String id = scanner.scan(workspace.id()).getFirst().assetId();
         assertEquals(root.resolve(file), service.absolutePath(workspace.id(), file));
-        String renamed = service.rename(workspace.id(), file, "Renamed.qdoc");
+        String renamed = service.rename(workspace.id(), file, "Renamed.md");
         String movedFolder = service.rename(workspace.id(), folder, "New Folder");
-        assertEquals("New Folder/Renamed.qdoc", movedFolder + "/Renamed.qdoc");
+        assertEquals("New Folder/Renamed.md", movedFolder + "/Renamed.md");
         assertEquals(id, scanner.scan(workspace.id()).getFirst().assetId());
-        assertEquals("New Folder/Renamed.qdoc", scanner.scan(workspace.id()).getFirst().currentPath());
+        assertEquals("New Folder/Renamed.md", scanner.scan(workspace.id()).getFirst().currentPath());
         write("New Folder/hidden.pdf", "hidden data");
         assertThrows(IllegalArgumentException.class,
-                () -> service.rename(workspace.id(), "New Folder/Renamed.qdoc", "Renamed.md"));
+                () -> service.rename(workspace.id(), "New Folder/Renamed.md", "Renamed.qbank"));
         service.delete(workspace.id(), movedFolder);
         assertFalse(Files.exists(root.resolve(movedFolder)));
         assertTrue(scanner.scan(workspace.id()).isEmpty());

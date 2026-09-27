@@ -4,7 +4,6 @@ import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
 import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
-import io.quizforge.core.document.qdoc.QDocFileEditService;
 import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.Workspace;
@@ -33,15 +32,11 @@ final class ShellFixture implements AutoCloseable {
 
     ShellFixture(Path temp) throws Exception {
         String previous = System.getProperty("quizforge.dataDir");
-        String previousLegacy = System.getProperty("quizforge.legacyMarkdownCompatibility");
         System.setProperty("quizforge.dataDir", temp.resolve("data").toString());
-        System.setProperty("quizforge.legacyMarkdownCompatibility", "true");
         try { context = new AnnotationConfigApplicationContext(DesktopConfiguration.class); }
         finally {
             if (previous == null) System.clearProperty("quizforge.dataDir");
             else System.setProperty("quizforge.dataDir", previous);
-            if (previousLegacy == null) System.clearProperty("quizforge.legacyMarkdownCompatibility");
-            else System.setProperty("quizforge.legacyMarkdownCompatibility", previousLegacy);
         }
         workspaces = context.getBean(WorkspaceService.class);
         files = context.getBean(WorkspaceFileService.class);
@@ -84,8 +79,7 @@ final class ShellFixture implements AutoCloseable {
         historyStore.visit(alpha);
         return new MainWorkspaceView(workspaces, files, historyStore, loader,
                 context.getBean(QuestionBankReferenceResolver.class), stage, settingsOpened::incrementAndGet,
-                (workspace, file) -> aiOpened.incrementAndGet(), context.getBean(QDocFileEditService.class),
-                context.getBean(QuestionBankFileEditService.class),
+                (workspace, file) -> aiOpened.incrementAndGet(), context.getBean(QuestionBankFileEditService.class),
                 context.getBean(MarkdownFileEditService.class),
                 context.getBean(MarkdownDocumentRegistration.class));
     }

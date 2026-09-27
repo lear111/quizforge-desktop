@@ -5,7 +5,6 @@ import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.ai.AiConnectionService;
 import io.quizforge.core.ai.AiSettingsService;
 import io.quizforge.core.document.DocumentNormalizationService;
-import io.quizforge.core.document.qdoc.QDocFileEditService;
 import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.material.MaterialService;
 import io.quizforge.core.port.AiProviderConfigRepository;
@@ -50,14 +49,13 @@ import io.quizforge.extensions.question.choice.DefaultChoiceQuestionGenerator;
 import io.quizforge.extensions.question.choice.SourceAwareChoiceQuestionGenerator;
 import io.quizforge.infrastructure.filesystem.LocalMaterialFileStorage;
 import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
-import io.quizforge.infrastructure.filesystem.QDocKnowledgeDocumentAssembler;
-import io.quizforge.infrastructure.filesystem.QDocV1Codec;
+import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentAssembler;
 import io.quizforge.infrastructure.filesystem.FileDocumentNodeLookup;
 import io.quizforge.infrastructure.filesystem.MarkdownDocumentRegistrationService;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
-import io.quizforge.infrastructure.filesystem.QDocFormalDocumentReader;
+import io.quizforge.infrastructure.filesystem.FormalMarkdownDocumentReader;
 import io.quizforge.infrastructure.filesystem.LocalQuestionBankFileStorage;
 import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
 import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileCatalog;
@@ -122,8 +120,7 @@ public class DesktopConfiguration {
     @Bean
     public WorkspaceAssetScanner workspaceAssetScanner(QuizForgeDataDirectory directory,
             AssetIndexRepository index, Clock clock) {
-        return new FileSystemWorkspaceAssetScanner(new WorkspacePathResolver(directory), index, clock,
-                Boolean.getBoolean("quizforge.legacyMarkdownCompatibility"));
+        return new FileSystemWorkspaceAssetScanner(new WorkspacePathResolver(directory), index, clock);
     }
 
     @Bean
@@ -189,12 +186,6 @@ public class DesktopConfiguration {
     }
 
     @Bean
-    public QDocFileEditService qdocFileEditService(WorkspaceService workspaces,
-            FileDocumentStorage files, WorkspaceAssetScanner scanner) {
-        return new QDocFileEditService(workspaces, files, scanner, new QDocV1Codec());
-    }
-
-    @Bean
     public MarkdownFileEditService markdownFileEditService(WorkspaceService workspaces,
             FileDocumentStorage files, WorkspaceAssetScanner scanner) {
         return new MarkdownFileEditService(workspaces, files, scanner);
@@ -202,7 +193,7 @@ public class DesktopConfiguration {
 
     @Bean
     public KnowledgeDocumentAssembler knowledgeDocumentAssembler() {
-        return new QDocKnowledgeDocumentAssembler();
+        return new StandardKnowledgeDocumentAssembler();
     }
 
     @Bean
@@ -239,7 +230,7 @@ public class DesktopConfiguration {
 
     @Bean
     public FormalDocumentReader formalDocumentReader(FileDocumentStorage files) {
-        return new QDocFormalDocumentReader(files);
+        return new FormalMarkdownDocumentReader(files);
     }
 
     @Bean
@@ -260,8 +251,7 @@ public class DesktopConfiguration {
     @Bean
     public WorkspaceFileCatalog workspaceFileCatalog(QuizForgeDataDirectory directory,
             QuestionBankFileCodec banks) {
-        return new LocalWorkspaceFileCatalog(new WorkspacePathResolver(directory), banks,
-                Boolean.getBoolean("quizforge.legacyMarkdownCompatibility"));
+        return new LocalWorkspaceFileCatalog(new WorkspacePathResolver(directory), banks);
     }
 
     @Bean
@@ -338,10 +328,10 @@ public class DesktopConfiguration {
             WorkspaceFileCatalog catalog, QuestionBankReferenceResolver references, MaterialService materials,
             io.quizforge.core.document.FileStandardDocumentGenerationService documents,
             AiSettingsService settings, AiConnectionService connections, QuizForgeDataDirectory directory,
-            QDocFileEditService qdocEdits, QuestionBankFileEditService bankEdits,
+            QuestionBankFileEditService bankEdits,
             MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration) {
         return new DesktopView(workspaces, files, catalog, references, materials, documents,
                 settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"),
-                qdocEdits, bankEdits, markdownEdits, registration);
+                bankEdits, markdownEdits, registration);
     }
 }

@@ -2,7 +2,6 @@ package io.quizforge.infrastructure;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.quizforge.core.document.qdoc.*;
 import io.quizforge.core.question.*;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceService;
@@ -26,7 +25,7 @@ class QuestionBankFileEditIntegrationTest {
     private FileSystemWorkspaceAssetScanner scanner;
     private SqliteAssetIndexRepository index;
     private final QuestionBankV1Codec codec = new QuestionBankV1Codec();
-    private final QDocV1Codec qdocs = new QDocV1Codec();
+    private final StandardKnowledgeDocumentV1 markdown = new StandardKnowledgeDocumentV1();
     private String bankPath;
     private String documentPath;
     private QuestionBankFile original;
@@ -40,11 +39,11 @@ class QuestionBankFileEditIntegrationTest {
         banks = new LocalQuestionBankFileStorage(directory);
         documents = new LocalStandardDocumentFileStorage(directory);
         index = new SqliteAssetIndexRepository(paths);
-        scanner = new FileSystemWorkspaceAssetScanner(paths, index, Clock.systemUTC(), false);
-        try (var staged = documents.stageCreate(workspace.id(), "Source", qdocs.write(document()))) {
+        scanner = new FileSystemWorkspaceAssetScanner(paths, index, Clock.systemUTC());
+        try (var staged = documents.stageCreate(workspace.id(), "Source", document())) {
             staged.publish(); staged.complete(); documentPath = staged.currentPath();
         }
-        String revision = qdocs.contentId(document());
+        String revision = markdown.parseIfStandard(document()).orElseThrow().contentId();
         var source = new QuestionBankFile.SourceDocument("doc_source", revision, "Source");
         var ref = new QuestionBankFile.SourceRef("doc_source", revision,
                 QuestionSourceAddress.section("section_one"), "Source", "One");
@@ -60,17 +59,16 @@ class QuestionBankFileEditIntegrationTest {
         scanner.scan(workspace.id());
     }
 
-    private QDocDocument document() {
-        var section = new DocumentNode("section_one", DocumentNodeType.SECTION, "One",
-                List.of(ContentBlock.text(ContentBlockType.PARAGRAPH, "Learning content")));
-        var chapter = new DocumentNode("chapter_one", DocumentNodeType.CHAPTER, "Chapter", List.of(section));
-        return new QDocDocument("quizforge-document", "1.0", "doc_source",
-                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "Source", "en-US", List.of(chapter));
+    private String document() {
+        return "---\nquizforge_format: \"study-document\"\nschema_version: \"1.0\"\n"
+                + "quizforge_id: \"doc_source\"\ntitle: \"Source\"\nlanguage: \"en-US\"\n---\n"
+                + "# Source\n\n## Chapter\n<!-- qf:id=chapter_one -->\n\n"
+                + "### One\n<!-- qf:id=section_one -->\n\nLearning content\n";
     }
 
     private QuestionBankFileEditService service() {
         return new QuestionBankFileEditService(workspaces, banks, codec, scanner,
-                new QDocFormalDocumentReader(documents));
+                new FormalMarkdownDocumentReader(documents));
     }
 
     @Test void saveRereadAndRescanKeepIdentityAndUpdateRevision() {
@@ -112,13 +110,13 @@ class QuestionBankFileEditIntegrationTest {
         edit.setTitle("Changed");
         var failing = new QuestionBankFileEditService(workspaces, banks, codec,
                 id -> { throw new IllegalStateException("Injected registry failure"); },
-                new QDocFormalDocumentReader(documents));
+                new FormalMarkdownDocumentReader(documents));
         assertThrows(IllegalStateException.class,
                 () -> failing.save(workspace.id(), bankPath, codec.contentId(original), edit.bank()));
         assertEquals(before, banks.read(workspace.id(), bankPath));
     }
 
-    @Test void onlyValidQDocSectionsCanBecomeNewReferences() {
+    @Test void onlyValidMarkdownSectionsCanBecomeNewReferences() {
         assertEquals("doc_source", service().availableSources(workspace.id()).getFirst().assetId());
         assertEquals("section_one", service().source(workspace.id(), "doc_source")
                 .chapters().getFirst().sections().getFirst().id());
@@ -134,15 +132,12 @@ class QuestionBankFileEditIntegrationTest {
     @Test void historicalReferencesRemainPortableWhenSourceChanges() throws Exception {
         var edit = new QuestionBankEditorModel(original);
         edit.setTitle("Edited after source change");
-        var changedSource = new QDocDocument("quizforge-document", "1.0", "doc_source",
-                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "Source", "en-US",
-                List.of(new DocumentNode("chapter_one", DocumentNodeType.CHAPTER, "Chapter",
-                        List.of(new DocumentNode("section_one", DocumentNodeType.SECTION, "One",
-                                List.of(ContentBlock.text(ContentBlockType.PARAGRAPH, "Revised")))))));
-        Files.writeString(paths.workspaceRoot(workspace.id()).resolve(documentPath), qdocs.write(changedSource));
+        String changedSource = document().replace("Learning content", "Revised");
+        Files.writeString(paths.workspaceRoot(workspace.id()).resolve(documentPath), changedSource);
         var saved = service().save(workspace.id(), bankPath, codec.contentId(original), edit.bank());
         assertEquals(original.sourceDocuments(), codec.parse(banks.read(workspace.id(), bankPath)).sourceDocuments());
-        assertNotEquals(qdocs.contentId(changedSource), saved.contentId());
+        assertNotEquals(markdown.parseIfStandard(changedSource).orElseThrow().contentId(),
+                original.sourceDocuments().getFirst().contentId());
     }
 
     @Test void emptyDraftCanBecomeFormalBankWithoutLosingExternalEditProtection() throws Exception {

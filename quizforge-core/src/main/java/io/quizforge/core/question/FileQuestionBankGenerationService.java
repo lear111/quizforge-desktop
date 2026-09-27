@@ -48,7 +48,9 @@ public final class FileQuestionBankGenerationService {
 
     public List<Asset> listDocuments(WorkspaceId workspaceId) {
         workspaces.getWorkspace(workspaceId);
-        return scanner.scan(workspaceId).stream().filter(a -> a.assetType() == AssetType.STANDARD_DOCUMENT).toList();
+        return scanner.scan(workspaceId).stream().filter(a -> a.assetType() == AssetType.STANDARD_DOCUMENT
+                && a.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".md")
+                && a.contentId() != null && a.contentId().startsWith("qfd:v1:")).toList();
     }
 
     public List<Asset> listBanks(WorkspaceId workspaceId) {

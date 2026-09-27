@@ -1,8 +1,6 @@
 package io.quizforge.infrastructure.filesystem;
 
 import io.quizforge.core.asset.Asset;
-import io.quizforge.core.document.qdoc.DocumentElement;
-import io.quizforge.core.document.qdoc.DocumentNode;
 import io.quizforge.core.port.DocumentNodeLookup;
 import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.workspace.WorkspaceId;
@@ -14,7 +12,6 @@ public final class FileDocumentNodeLookup implements DocumentNodeLookup {
     private final WorkspaceFileCatalog files;
     private final RegisteredMarkdownCodec markdown = new RegisteredMarkdownCodec();
     private final StandardKnowledgeDocumentV1 standard = new StandardKnowledgeDocumentV1();
-    private final QDocV1Codec qdocs = new QDocV1Codec();
 
     public FileDocumentNodeLookup(WorkspaceFileCatalog files) { this.files = files; }
 
@@ -37,13 +34,6 @@ public final class FileDocumentNodeLookup implements DocumentNodeLookup {
             boolean found = Pattern.compile("<!--\\s*qf:id=" + Pattern.quote(nodeId) + "\\s*-->")
                     .matcher(text).find();
             return new Result(parsed.contentId(), found);
-        }
-        if (path.toLowerCase(Locale.ROOT).endsWith(".qdoc")) {
-            var parsed = qdocs.parse(text);
-            if (!document.assetId().equals(parsed.id()))
-                throw new IllegalStateException("Document identity changed");
-            return new Result(qdocs.contentId(parsed), parsed.content().stream()
-                    .anyMatch(node -> contains(node, nodeId)));
         }
         throw new IllegalArgumentException("Unsupported document format: " + path);
     }
@@ -71,19 +61,6 @@ public final class FileDocumentNodeLookup implements DocumentNodeLookup {
                     + Pattern.quote(anchorName) + "\\s*-->").matcher(text).find();
             return new AnchorResult(legacy.contentId(), found, false);
         }
-        if (path.toLowerCase(Locale.ROOT).endsWith(".qdoc")) {
-            // QDoc sections remain addressable while the editor's legacy source picker is in use.
-            Result result = lookup(workspace, document, anchorName);
-            return new AnchorResult(result.contentId(), occurrence == 1 && result.containsNode(), false);
-        }
         throw new IllegalArgumentException("Unsupported document format: " + path);
-    }
-
-    private boolean contains(DocumentNode node, String id) {
-        if (node.id().equals(id)) return true;
-        for (DocumentElement child : node.children()) {
-            if (child instanceof DocumentNode nested && contains(nested, id)) return true;
-        }
-        return false;
     }
 }

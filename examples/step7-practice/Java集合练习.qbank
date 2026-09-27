@@ -6,7 +6,7 @@
   "sourceDocuments": [
     {
       "assetId": "doc_java_collections_demo",
-      "contentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+      "contentId": "qfd:v1:a1cacaff9b8466bc4050f0844c7232f1f5d0ddced169e76d4c052e952bfbff25",
       "title": "Java 集合示例"
     }
   ],
@@ -19,7 +19,7 @@
       "sourceRefs": [
         {
           "documentAssetId": "doc_java_collections_demo",
-          "documentContentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+          "documentContentId": "qfd:v1:a1cacaff9b8466bc4050f0844c7232f1f5d0ddced169e76d4c052e952bfbff25",
           "sectionId": "section_arraylist_demo",
           "documentTitle": "Java 集合示例",
           "sectionTitle": "ArrayList"
@@ -42,7 +42,7 @@
       "sourceRefs": [
         {
           "documentAssetId": "doc_java_collections_demo",
-          "documentContentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+          "documentContentId": "qfd:v1:a1cacaff9b8466bc4050f0844c7232f1f5d0ddced169e76d4c052e952bfbff25",
           "sectionId": "section_arraylist_demo",
           "documentTitle": "Java 集合示例",
           "sectionTitle": "ArrayList"
@@ -65,7 +65,7 @@
       "sourceRefs": [
         {
           "documentAssetId": "doc_java_collections_demo",
-          "documentContentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+          "documentContentId": "qfd:v1:a1cacaff9b8466bc4050f0844c7232f1f5d0ddced169e76d4c052e952bfbff25",
           "sectionId": "section_hashset_demo",
           "documentTitle": "Java 集合示例",
           "sectionTitle": "HashSet"
@@ -88,14 +88,14 @@
       "sourceRefs": [
         {
           "documentAssetId": "doc_java_collections_demo",
-          "documentContentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+          "documentContentId": "qfd:v1:a1cacaff9b8466bc4050f0844c7232f1f5d0ddced169e76d4c052e952bfbff25",
           "sectionId": "section_arraylist_demo",
           "documentTitle": "Java 集合示例",
           "sectionTitle": "ArrayList"
         },
         {
           "documentAssetId": "doc_java_collections_demo",
-          "documentContentId": "qfd:v1:2ab2708caad0acd040e3468f79636f83da54d74a8b2c1a8a61c6ae81b476341a",
+          "documentContentId": "qfd:v1:a1cacaff9b8466bc4050f0844c7232f1f5d0ddced169e76d4c052e952bfbff25",
           "sectionId": "section_hashset_demo",
           "documentTitle": "Java 集合示例",
           "sectionTitle": "HashSet"

@@ -5,12 +5,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.quizforge.core.workspace.WorkspaceFileEntry;
 import io.quizforge.core.workspace.WorkspaceFileKind;
 import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentV1;
-import io.quizforge.infrastructure.filesystem.QDocV1Codec;
 import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
 import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
 import io.quizforge.core.document.registered.QuizForgeReference;
 import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
-import io.quizforge.core.document.qdoc.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -72,104 +70,6 @@ class MainWorkspaceViewTest {
             var paths = paths(shell.sidebar().tree().getRoot());
             assertTrue(paths.contains("Spring.md"));
             assertFalse(paths.contains("我的笔记/学习计划.md"));
-        });
-    }
-
-    @Test void qdocBrowseRendersModelWithComputedNumberingInsteadOfJson() throws Exception {
-        var section = new DocumentNode("section_one", DocumentNodeType.SECTION, "ArrayList",
-                List.of(ContentBlock.text(ContentBlockType.PARAGRAPH, "数组支持按索引访问。")));
-        var chapter = new DocumentNode("chapter_one", DocumentNodeType.CHAPTER, "Java 集合", List.of(section));
-        var document = new QDocDocument("quizforge-document", "1.0", "doc_structured",
-                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "集合知识", "zh-CN", List.of(chapter));
-        fixture.write("Java/Structured.qdoc", new QDocV1Codec().write(document));
-        fx(() -> {
-            shell.refresh();
-            open("Java/Structured.qdoc");
-            assertNotNull(shell.lookup("#qdoc-browse-view"));
-            String rendered = text(shell.filePane().getCenter());
-            assertTrue(rendered.contains("1 Java 集合"));
-            assertTrue(rendered.contains("1.1 ArrayList"));
-            assertTrue(rendered.contains("数组支持按索引访问。"));
-            assertFalse(rendered.contains("schemaVersion"));
-            assertFalse(rendered.contains("doc_structured"));
-        });
-    }
-
-    @Test void qdocEditUsesStructuredControlsAndSaveReturnsToFreshBrowse() throws Exception {
-        var section = new DocumentNode("section_one", DocumentNodeType.SECTION, "ArrayList",
-                List.of(ContentBlock.text(ContentBlockType.PARAGRAPH, "Old content")));
-        var chapter = new DocumentNode("chapter_one", DocumentNodeType.CHAPTER, "Java", List.of(section));
-        var document = new QDocDocument("quizforge-document", "1.0", "doc_edit_ui",
-                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "Knowledge", "en-US", List.of(chapter));
-        fixture.write("Java/Editable.qdoc", new QDocV1Codec().write(document));
-        fx(() -> {
-            shell.refresh(); open("Java/Editable.qdoc");
-            String before = shell.filePane().currentFile().file().entry().contentId();
-            button("file-mode-toggle").fire();
-            shell.applyCss(); shell.layout();
-            assertNotNull(shell.lookup("#qdoc-editor-view"));
-            assertNull(shell.lookup("#editor-placeholder"));
-            assertNull(shell.lookup("#qdoc-empty-ai"));
-            ((TextArea) shell.lookup("#qdoc-block-text-0-0-0")).setText("New content");
-            button("qdoc-save").fire();
-            assertEquals(FileMode.BROWSE, shell.filePane().mode());
-            assertTrue(text(shell.filePane()).contains("New content"));
-            assertNotEquals(before, shell.filePane().currentFile().file().entry().contentId());
-            assertEquals("doc_edit_ui", new QDocV1Codec().parse(Files.readString(
-                    fixture.alphaRoot.resolve("Java/Editable.qdoc"))).id());
-        });
-    }
-
-    @Test void emptyQDocOffersAiAndAddMenuHidesInvalidBlockTypes() throws Exception {
-        var section = new DocumentNode("section_empty", DocumentNodeType.SECTION, "Empty", List.of());
-        var chapter = new DocumentNode("chapter_empty", DocumentNodeType.CHAPTER, "Chapter", List.of(section));
-        var document = new QDocDocument("quizforge-document", "1.0", "doc_empty_ui",
-                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "Empty Knowledge", "en-US", List.of(chapter));
-        fixture.write("Java/Empty.qdoc", new QDocV1Codec().write(document));
-        fx(() -> {
-            shell.refresh(); open("Java/Empty.qdoc");
-            assertNotNull(shell.lookup("#empty-asset-ai"));
-            button("file-mode-toggle").fire();
-            shell.applyCss(); shell.layout();
-            assertNotNull(shell.lookup("#qdoc-empty-state"));
-            button("qdoc-empty-ai").fire();
-            assertEquals(1, fixture.aiOpened.get());
-            MenuButton root = (MenuButton) shell.lookup("#qdoc-add-root");
-            assertEquals(List.of("CHAPTER"), root.getItems().stream().map(MenuItem::getUserData).toList());
-            MenuButton chapterMenu = (MenuButton) shell.lookup("#qdoc-add-0");
-            assertTrue(chapterMenu.getItems().stream().anyMatch(item -> "SECTION".equals(item.getUserData())));
-            assertFalse(chapterMenu.getItems().stream().anyMatch(item -> "CODE_BLOCK".equals(item.getUserData())));
-            MenuButton sectionMenu = (MenuButton) shell.lookup("#qdoc-add-0-0");
-            assertTrue(sectionMenu.getItems().stream().anyMatch(item -> "SUBSECTION".equals(item.getUserData())));
-            assertFalse(sectionMenu.getItems().stream().anyMatch(item -> "CHAPTER".equals(item.getUserData())));
-            sectionMenu.getItems().stream().filter(item -> "PARAGRAPH".equals(item.getUserData()))
-                    .findFirst().orElseThrow().fire();
-            shell.applyCss(); shell.layout();
-            assertNotNull(shell.lookup("#qdoc-block-0-0-0"));
-            assertNull(shell.lookup("#qdoc-empty-ai"));
-            ((MenuButton) shell.lookup("#qdoc-more-0-0-0")).getItems().getFirst().fire();
-            shell.applyCss(); shell.layout();
-            assertNotNull(shell.lookup("#qdoc-empty-ai"));
-        });
-    }
-
-    @Test void qdocInvalidEditShowsErrorAndLeavesFileIntact() throws Exception {
-        var section = new DocumentNode("section_one", DocumentNodeType.SECTION, "Section",
-                List.of(ContentBlock.text(ContentBlockType.PARAGRAPH, "Valid")));
-        var chapter = new DocumentNode("chapter_one", DocumentNodeType.CHAPTER, "Chapter", List.of(section));
-        var document = new QDocDocument("quizforge-document", "1.0", "doc_validation_ui",
-                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "Knowledge", "en-US", List.of(chapter));
-        String source = new QDocV1Codec().write(document);
-        fixture.write("Java/InvalidEdit.qdoc", source);
-        fx(() -> {
-            shell.refresh(); open("Java/InvalidEdit.qdoc");
-            button("file-mode-toggle").fire();
-            shell.applyCss(); shell.layout();
-            ((TextArea) shell.lookup("#qdoc-block-text-0-0-0")).setText("");
-            button("qdoc-save").fire();
-            assertTrue(text(shell.filePane()).contains("Document validation failed"));
-            assertEquals(source, Files.readString(fixture.alphaRoot.resolve("Java/InvalidEdit.qdoc")));
-            assertEquals(FileMode.EDIT, shell.filePane().mode());
         });
     }
 
@@ -421,7 +321,7 @@ class MainWorkspaceViewTest {
             open("Java/Java集合.md");
             var folderItems = folderCell("Java").getContextMenu().getItems();
             assertEquals(java.util.Arrays.asList("folder-new-folder", "folder-new-md", "folder-new-qbank",
-                            "folder-new-qdoc", null, "copy-file-path", null,
+                            null, "copy-file-path", null,
                             "rename-file-entry", "delete-file-entry"),
                     folderItems.stream().map(MenuItem::getId).toList());
             var fileItems = folderCell("Java/Java集合.md").getContextMenu().getItems();
@@ -436,7 +336,7 @@ class MainWorkspaceViewTest {
             assertTrue(switcher.stream().anyMatch(item -> "workspace-new-folder".equals(item.getId())));
             Menu newFile = (Menu) switcher.stream().filter(item -> "workspace-new-file".equals(item.getId()))
                     .findFirst().orElseThrow();
-            assertEquals(List.of(".md", ".qbank", ".qdoc"),
+            assertEquals(List.of(".md", ".qbank"),
                     newFile.getItems().stream().map(MenuItem::getText).toList());
             assertTrue(switcher.stream().anyMatch(item -> "refresh-workspace".equals(item.getId())));
         });
@@ -570,6 +470,84 @@ class MainWorkspaceViewTest {
         });
     }
 
+    @Test void richMarkdownUsesOneBoundedReaderForOrdinaryAndReferenceEnabledFiles() throws Exception {
+        String source = """
+                # Knowledge Notes
+
+                ## Concepts
+
+                ### Details
+
+                #### Fourth level
+
+                ##### Fifth level
+
+                ###### Sixth level
+
+                <!-- qf:anchor=Definition -->
+                中文 English 123 with **strong**, *emphasis*, `inline code`, and [a link](https://example.com).
+
+                - First item
+                  - Nested item
+                - Second item
+
+                1. Ordered item
+                2. Another item
+
+                > A short quotation.
+
+                ---
+
+                ```java
+                LONG_CODE
+                ```
+                """.replace("LONG_CODE", "System.out.println(\"QuizForge\");".repeat(25));
+        fixture.write("Java/Reader.md", source);
+        fixture.write("Java/Reader-reference.md", """
+                ---
+                quizforge:
+                  format: document
+                  version: 1
+                  assetId: doc_reader_reference
+                ---
+                """ + source);
+        fx(() -> {
+            assertTrue(stage.getScene().getStylesheets().contains(UiTheme.markdownStylesheet()));
+            shell.refresh();
+            stage.setWidth(1500);
+            for (String path : List.of("Java/Reader.md", "Java/Reader-reference.md")) {
+                open(path);
+                pulse(150);
+                var page = (javafx.scene.layout.VBox) shell.lookup(".markdown-preview");
+                assertNotNull(page);
+                assertTrue(page.getWidth() <= 940.5, "Reading column must stay bounded on a wide window");
+                for (int level = 1; level <= 6; level++)
+                    assertNotNull(shell.lookup(".preview-heading-" + level));
+                assertEquals(3, shell.lookupAll(".preview-list").size());
+                assertNotNull(shell.lookup(".preview-quote"));
+                assertNotNull(shell.lookup(".preview-rule"));
+                assertFalse(shell.lookupAll(".prose-code").isEmpty());
+                assertFalse(shell.lookupAll(".prose-link").isEmpty());
+                assertNotNull(((Label) shell.lookup(".prose-code")).getBackground());
+                var code = (ScrollPane) shell.lookup(".preview-code");
+                assertNotNull(code);
+                assertEquals(ScrollPane.ScrollBarPolicy.AS_NEEDED, code.getHbarPolicy());
+                assertTrue(code.getContent().prefWidth(-1) > code.getViewportBounds().getWidth());
+                assertFalse(text(shell.filePane().getCenter()).contains("qf:anchor"));
+            }
+            assertNotNull(shell.filePane().currentFile().registeredMarkdown());
+            stage.setWidth(650);
+            shell.applyCss(); shell.layout(); pulse(150);
+            var page = (javafx.scene.layout.VBox) shell.lookup(".markdown-preview");
+            var reader = (ScrollPane) shell.filePane().getCenter();
+            assertTrue(page.getWidth() <= reader.getViewportBounds().getWidth() + 1,
+                    "Reading column must shrink with a compact window");
+            button("file-mode-toggle").fire();
+            assertTrue(((TextArea) shell.lookup("#markdown-source-text")).getText()
+                    .contains("<!-- qf:anchor=Definition -->"));
+        });
+    }
+
     @Test void previewCopiesNamedAnchorOnTheCorrectRepeatedParagraph() throws Exception {
         String source = "# Heading\n\nSame text.\n\nSame text.\n\n- Item\n\n> Quote\n\n```java\nint x = 1;\n```\n";
         var prepared = new RegisteredMarkdownCodec().prepareAnchor(source,
@@ -594,7 +572,7 @@ class MainWorkspaceViewTest {
             assertTrue(shell.lookupAll(".markdown-preview").stream().flatMap(node ->
                     ((Parent) node).getChildrenUnmodifiable().stream()).anyMatch(node ->
                     node.getProperties().containsKey("quizforge.sourceBlock")
-                            && node.getStyleClass().isEmpty()));
+                            && node.getStyleClass().contains("preview-list")));
             ContextMenu menu = (ContextMenu) paragraphs.get(1).getProperties()
                     .get("quizforge.sourceContextMenu");
             assertEquals("copy-source-reference", menu.getItems().get(1).getId());

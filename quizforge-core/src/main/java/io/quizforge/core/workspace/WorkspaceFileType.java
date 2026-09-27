@@ -1,7 +1,7 @@
 package io.quizforge.core.workspace;
 
 public enum WorkspaceFileType {
-    MARKDOWN(".md"), QUESTION_BANK(".qbank"), QDOC(".qdoc");
+    MARKDOWN(".md"), QUESTION_BANK(".qbank");
 
     private final String extension;
 

@@ -51,7 +51,7 @@ final class QuestionBankEditorView extends VBox {
 
     private void showError(String message) {
         errors.getChildren().setAll(UiTheme.label(message == null ? "Could not save QuestionBank" : message,
-                "qdoc-error"));
+                "editor-error"));
     }
 
     private void render() {
@@ -194,7 +194,7 @@ final class QuestionBankEditorView extends VBox {
     private void chooseSource(int replaceIndex) {
         try {
             List<Asset> available = edits.availableSources(workspace);
-            if (available.isEmpty()) { showError("No valid QDoc source is available."); return; }
+            if (available.isEmpty()) { showError("No valid Markdown source is available."); return; }
             ChoiceBox<Asset> documents = new ChoiceBox<>(FXCollections.observableArrayList(available));
             documents.setConverter(new javafx.util.StringConverter<>() {
                 @Override public String toString(Asset asset) { return asset == null ? "" : asset.title(); }
@@ -234,7 +234,7 @@ final class QuestionBankEditorView extends VBox {
                     UiTheme.label("Chapter", "field-label"), chapters,
                     UiTheme.label("Section", "field-label"), sections);
             Dialog<ButtonType> dialog = new Dialog<>();
-            dialog.setTitle("Select QDoc source");
+            dialog.setTitle("Select Markdown source");
             UiTheme.apply(dialog);
             dialog.getDialogPane().setContent(form);
             ButtonType choose = new ButtonType("Use source", ButtonBar.ButtonData.OK_DONE);

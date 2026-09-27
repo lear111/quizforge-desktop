@@ -171,9 +171,6 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
                 menu.getItems().add(action("新建 .qbank 文件", "folder-new-qbank",
                         () -> actions.createFile(entry.relativePath(),
                                 io.quizforge.core.workspace.WorkspaceFileType.QUESTION_BANK)));
-                menu.getItems().add(action("新建 .qdoc 文件", "folder-new-qdoc",
-                        () -> actions.createFile(entry.relativePath(),
-                                io.quizforge.core.workspace.WorkspaceFileType.QDOC)));
                 menu.getItems().add(new SeparatorMenuItem());
             }
             if (isReferenceEnabledMarkdown(entry)) {

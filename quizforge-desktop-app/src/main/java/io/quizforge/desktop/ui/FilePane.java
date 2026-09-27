@@ -1,6 +1,5 @@
 package io.quizforge.desktop.ui;
 
-import io.quizforge.core.document.qdoc.QDocFileEditService;
 import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.document.registered.QuizForgeReference;
 import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
@@ -28,7 +27,6 @@ final class FilePane extends BorderPane {
     private final FilePresentationLoader loader;
     private final QuestionBankReferenceResolver references;
     private final BiConsumer<WorkspaceId, FilePresentation> aiAction;
-    private final QDocFileEditService qdocEdits;
     private final QuestionBankFileEditService bankEdits;
     private final MarkdownFileEditService markdownEdits;
     private final MarkdownDocumentRegistration registration;
@@ -41,18 +39,16 @@ final class FilePane extends BorderPane {
     private FileMode mode = FileMode.BROWSE;
     private FileHeader header;
     private Node browseContent;
-    private QDocEditorView qdocEditor;
     private QuestionBankEditorView bankEditor;
     private MarkdownSourceEditorView markdownEditor;
 
     FilePane(FilePresentationLoader loader, QuestionBankReferenceResolver references,
-            BiConsumer<WorkspaceId, FilePresentation> aiAction, QDocFileEditService qdocEdits,
+            BiConsumer<WorkspaceId, FilePresentation> aiAction,
             QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
             MarkdownDocumentRegistration registration, Runnable refreshTree) {
         this.loader = loader;
         this.references = references;
         this.aiAction = aiAction;
-        this.qdocEdits = qdocEdits;
         this.bankEdits = bankEdits;
         this.markdownEdits = markdownEdits;
         this.registration = registration;
@@ -90,8 +86,7 @@ final class FilePane extends BorderPane {
 
     private void toggleMode() {
         details.hide();
-        if (mode == FileMode.EDIT && (qdocEditor != null && qdocEditor.dirty()
-                || bankEditor != null && bankEditor.dirty()
+        if (mode == FileMode.EDIT && (bankEditor != null && bankEditor.dirty()
                 || markdownEditor != null && markdownEditor.dirty())) {
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
                     "Unsaved changes will be discarded.", ButtonType.CANCEL, ButtonType.OK);
@@ -106,11 +101,6 @@ final class FilePane extends BorderPane {
         if (mode == FileMode.EDIT && markdownSource()) {
             markdownEditor = new MarkdownSourceEditorView(current.file().sourceText(), this::saveMarkdown);
             setCenter(new StackPane(markdownEditor));
-        } else if (mode == FileMode.EDIT && current.document() != null) {
-            qdocEditor = new QDocEditorView(current.document(), this::saveQDoc, this::invokeAi);
-            StackPane centered = new StackPane(qdocEditor);
-            centered.setAlignment(Pos.TOP_CENTER);
-            setCenter(UiTheme.scroll(centered));
         } else if (mode == FileMode.EDIT && current.kind() == io.quizforge.core.workspace.WorkspaceFileKind.QUESTION_BANK
                 && current.file().questionBank() != null) {
             bankEditor = new QuestionBankEditorView(current.file().questionBank(), workspace,
@@ -215,12 +205,6 @@ final class FilePane extends BorderPane {
         open(workspace, path);
     }
 
-    private void saveQDoc(io.quizforge.core.document.qdoc.QDocDocument edited) {
-        String path = current.file().entry().relativePath();
-        qdocEdits.save(workspace, path, current.file().entry().contentId(), edited);
-        open(workspace, path);
-    }
-
     private void saveBank(io.quizforge.core.question.QuestionBankFile edited) {
         String path = current.file().entry().relativePath();
         bankEdits.save(workspace, path, current.file().entry().contentId(), current.file().sourceText(), edited);
@@ -228,7 +212,7 @@ final class FilePane extends BorderPane {
     }
 
     private void invokeAi() {
-        if (qdocEditor != null && qdocEditor.dirty()) {
+        if (markdownEditor != null && markdownEditor.dirty()) {
             Alert warning = new Alert(Alert.AlertType.INFORMATION,
                     "Save or leave edit mode before generating content.", ButtonType.OK);
             UiTheme.apply(warning);
@@ -249,7 +233,6 @@ final class FilePane extends BorderPane {
         current = null;
         workspace = null;
         browseContent = null;
-        qdocEditor = null;
         bankEditor = null;
         markdownEditor = null;
         mode = FileMode.BROWSE;
@@ -259,8 +242,7 @@ final class FilePane extends BorderPane {
 
     FilePresentation currentFile() { return current; }
     boolean hasUnsavedChanges() {
-        return qdocEditor != null && qdocEditor.dirty()
-                || bankEditor != null && bankEditor.dirty()
+        return bankEditor != null && bankEditor.dirty()
                 || markdownEditor != null && markdownEditor.dirty();
     }
     FileMode mode() { return mode; }

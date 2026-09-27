@@ -5,12 +5,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import io.quizforge.core.asset.Asset;
 import io.quizforge.core.asset.AssetType;
 import io.quizforge.core.asset.WorkspaceScanResult;
-import io.quizforge.core.document.qdoc.ContentBlock;
-import io.quizforge.core.document.qdoc.ContentBlockType;
-import io.quizforge.core.document.qdoc.DocumentNode;
-import io.quizforge.core.document.qdoc.DocumentNodeType;
-import io.quizforge.core.document.qdoc.DocumentTemplate;
-import io.quizforge.core.document.qdoc.QDocDocument;
 import io.quizforge.core.document.registered.MarkdownBlockType;
 import io.quizforge.core.port.WorkspaceAssetScanner;
 import io.quizforge.core.port.WorkspaceFileCatalog;
@@ -19,7 +13,7 @@ import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.workspace.WorkspaceFileEntry;
 import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.infrastructure.filesystem.FileDocumentNodeLookup;
-import io.quizforge.infrastructure.filesystem.QDocV1Codec;
+import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentV1;
 import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
 import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
 import java.util.List;
@@ -95,18 +89,16 @@ class GenericQuestionBankSourceReferenceTest {
                 .orElseThrow().addressableBlocks().getFirst().nodeId());
     }
 
-    @Test void legacyQDocSectionStillResolvesByItsNodeId() {
-        var section = new DocumentNode("section_old", DocumentNodeType.SECTION, "Section",
-                List.of(ContentBlock.text(ContentBlockType.PARAGRAPH, "Body")));
-        var chapter = new DocumentNode("chapter_old", DocumentNodeType.CHAPTER, "Chapter",
-                List.of(section));
-        var document = new QDocDocument("quizforge-document", "1.0", "doc_legacy",
-                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), "Legacy", "zh-CN", List.of(chapter));
-        var qdocs = new QDocV1Codec();
-        String revision = qdocs.contentId(document);
-        var legacy = banks.parse(banks.write(bank("1.0", document.id(), revision, section.id())));
-        var source = new AtomicReference<>(qdocs.write(document));
-        var assets = new AtomicReference<>(List.of(asset(document.id(), revision, "old.qdoc", "1.0")));
+    @Test void legacyMarkdownSectionStillResolvesByItsNodeId() {
+        String markdown = "---\nquizforge_format: \"study-document\"\nschema_version: \"1.0\"\n"
+                + "quizforge_id: \"doc_legacy\"\ntitle: \"Legacy\"\nlanguage: \"zh-CN\"\n---\n"
+                + "# Legacy\n\n## Chapter\n<!-- qf:id=chapter_old -->\n\n"
+                + "### Section\n<!-- qf:id=section_old -->\n\nBody\n";
+        String revision = new StandardKnowledgeDocumentV1().parseIfStandard(markdown)
+                .orElseThrow().contentId();
+        var legacy = banks.parse(banks.write(bank("1.0", "doc_legacy", revision, "section_old")));
+        var source = new AtomicReference<>(markdown);
+        var assets = new AtomicReference<>(List.of(asset("doc_legacy", revision, "old.md", "1.0")));
         assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
                 resolver(source, assets).resolveRefs(workspace, legacy).getFirst().status());
     }

@@ -34,7 +34,7 @@ class MarkdownFileEditIntegrationTest {
         workspace = workspaces.createWorkspace("Markdown editor");
         root = paths.workspaceRoot(workspace.id());
         scanner = new FileSystemWorkspaceAssetScanner(paths, new SqliteAssetIndexRepository(paths),
-                Clock.systemUTC(), true);
+                Clock.systemUTC());
         edits = new MarkdownFileEditService(workspaces, new LocalStandardDocumentFileStorage(data), scanner);
     }
 

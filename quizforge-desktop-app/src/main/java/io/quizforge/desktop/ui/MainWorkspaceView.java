@@ -1,6 +1,5 @@
 package io.quizforge.desktop.ui;
 
-import io.quizforge.core.document.qdoc.QDocFileEditService;
 import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.document.registered.QuizForgeReference;
 import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
@@ -35,7 +34,7 @@ final class MainWorkspaceView extends BorderPane {
     MainWorkspaceView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceHistory history,
             FilePresentationLoader loader, QuestionBankReferenceResolver references, Stage stage,
             Runnable settings, BiConsumer<WorkspaceId, FilePresentation> ai,
-            QDocFileEditService qdocEdits, QuestionBankFileEditService bankEdits,
+            QuestionBankFileEditService bankEdits,
             MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration) {
         this.workspaces = workspaces;
         this.files = files;
@@ -43,7 +42,7 @@ final class MainWorkspaceView extends BorderPane {
         this.stage = stage;
         setId("main-workspace");
         getStyleClass().add("workspace-shell");
-        filePane = new FilePane(loader, references, ai, qdocEdits, bankEdits,
+        filePane = new FilePane(loader, references, ai, bankEdits,
                 markdownEdits, registration, this::refreshTree);
         sidebar = new WorkspaceSidebar(entry -> {
             if (current != null) filePane.open(current.id(), entry.relativePath());

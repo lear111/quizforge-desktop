@@ -58,7 +58,7 @@ public final class LocalStandardDocumentFileStorage implements StandardDocumentF
             Files.createDirectories(folder);
             if (!folder.toRealPath().startsWith(root)) throw failure("access document directory", null);
             String base = safeFileName(title);
-            String extension = content.stripLeading().startsWith("{") ? ".qdoc" : ".md";
+            String extension = ".md";
             Path target = folder.resolve(base + extension);
             for (int suffix = 2; Files.exists(target, LinkOption.NOFOLLOW_LINKS); suffix++) {
                 target = folder.resolve(base + " (" + suffix + ")" + extension);
@@ -74,8 +74,7 @@ public final class LocalStandardDocumentFileStorage implements StandardDocumentF
             String currentPath, String content) {
         Path root = paths.workspaceRoot(workspaceId);
         Path target = assetPath(root, currentPath);
-        if (currentPath.toLowerCase(java.util.Locale.ROOT).endsWith(".qdoc")
-                && !content.stripLeading().startsWith("{")) {
+        if (!currentPath.toLowerCase(java.util.Locale.ROOT).endsWith(".md")) {
             throw failure("replace a document with a different file format", null);
         }
         if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(target)) {

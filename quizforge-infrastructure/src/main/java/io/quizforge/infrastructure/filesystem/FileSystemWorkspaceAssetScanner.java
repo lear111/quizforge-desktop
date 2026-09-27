@@ -34,25 +34,17 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
     private static final ObjectMapper JSON = new ObjectMapper();
     private final StandardKnowledgeDocumentV1 documents = new StandardKnowledgeDocumentV1();
     private final RegisteredMarkdownCodec registeredMarkdown = new RegisteredMarkdownCodec();
-    private final QDocV1Codec qdocs = new QDocV1Codec();
     private final QuestionBankV1Codec banks = new QuestionBankV1Codec();
 
     private final WorkspacePathResolver paths;
     private final AssetIndexRepository index;
     private final Clock clock;
-    private final boolean legacyMarkdown;
 
     public FileSystemWorkspaceAssetScanner(WorkspacePathResolver paths,
             AssetIndexRepository index, Clock clock) {
-        this(paths, index, clock, true);
-    }
-
-    public FileSystemWorkspaceAssetScanner(WorkspacePathResolver paths,
-            AssetIndexRepository index, Clock clock, boolean legacyMarkdown) {
         this.paths = paths;
         this.index = index;
         this.clock = clock;
-        this.legacyMarkdown = legacyMarkdown;
     }
 
     @Override
@@ -109,11 +101,6 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
     private Optional<Asset> recognize(Path root, Path file) throws IOException {
         String name = file.getFileName().toString();
         String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".qdoc")) {
-            var document = qdocs.parse(Files.readString(file, StandardCharsets.UTF_8));
-            return Optional.of(new Asset(document.id(), AssetType.STANDARD_DOCUMENT,
-                    relative(root, file), document.title(), qdocs.contentId(document), document.schemaVersion()));
-        }
         if (lower.endsWith(".md")) {
             String source = Files.readString(file, StandardCharsets.UTF_8);
             String relative = relative(root, file);
@@ -123,8 +110,7 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
                 return Optional.of(new Asset(document.documentAssetId(), AssetType.STANDARD_DOCUMENT,
                         relative, document.title(), document.contentId(), "1"));
             }
-            // Legacy formal Markdown remains discoverable until its compatibility path is retired.
-            return legacyMarkdown ? standardDocument(root, file) : Optional.empty();
+            return standardDocument(root, file);
         }
         if (lower.endsWith(".qbank")) {
             return questionBank(root, file);

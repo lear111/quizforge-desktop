@@ -3,10 +3,6 @@ package io.quizforge.infrastructure.filesystem;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
-import io.quizforge.core.document.qdoc.DocumentNode;
-import io.quizforge.core.document.qdoc.DocumentNodeType;
-import io.quizforge.core.document.qdoc.DocumentTemplate;
-import io.quizforge.core.document.qdoc.QDocDocument;
 import io.quizforge.core.port.WorkspaceFileOperations;
 import io.quizforge.core.workspace.WorkspaceFileEntry;
 import io.quizforge.core.workspace.WorkspaceFileKind;
@@ -28,7 +24,6 @@ import java.util.stream.Stream;
 /** Workspace-relative filesystem actions; no operation follows links or touches .quizforge. */
 public final class LocalWorkspaceFileOperations implements WorkspaceFileOperations {
     private final WorkspacePathResolver paths;
-    private final QDocV1Codec qdocs = new QDocV1Codec();
     private final QuestionBankV1Codec banks = new QuestionBankV1Codec();
     private final ObjectMapper json = new ObjectMapper();
 
@@ -55,7 +50,6 @@ public final class LocalWorkspaceFileOperations implements WorkspaceFileOperatio
         String title = fileName.substring(0, fileName.length() - type.extension().length());
         String content = switch (type) {
             case MARKDOWN -> "";
-            case QDOC -> emptyQDoc(title);
             case QUESTION_BANK -> emptyQuestionBank(title);
         };
         try { Files.writeString(target, content, StandardCharsets.UTF_8,
@@ -73,7 +67,7 @@ public final class LocalWorkspaceFileOperations implements WorkspaceFileOperatio
             String next = candidate.toLowerCase(Locale.ROOT);
             boolean sameType = List.of(WorkspaceFileType.values()).stream().anyMatch(type ->
                     old.endsWith(type.extension()) && next.endsWith(type.extension()));
-            if (!sameType) throw new IllegalArgumentException("Keep the file's .md, .qdoc or .qbank extension");
+            if (!sameType) throw new IllegalArgumentException("Keep the file's .md or .qbank extension");
         }
         Path target = source.resolveSibling(candidate);
         if (source.equals(target)) return relativePath;
@@ -157,15 +151,6 @@ public final class LocalWorkspaceFileOperations implements WorkspaceFileOperatio
                 || value.equalsIgnoreCase(".quizforge"))
             throw new IllegalArgumentException("Reserved file or folder name");
         return value;
-    }
-
-    private String emptyQDoc(String title) {
-        String suffix = UUID.randomUUID().toString().replace("-", "");
-        var section = new DocumentNode("section_" + suffix, DocumentNodeType.SECTION, "小节", List.of());
-        var chapter = new DocumentNode("chapter_" + suffix, DocumentNodeType.CHAPTER, "章节", List.of(section));
-        return qdocs.write(new QDocDocument("quizforge-document", "1.0",
-                "doc_" + UUID.randomUUID().toString().replace("-", ""),
-                DocumentTemplate.GENERAL_KNOWLEDGE.reference(), title, "zh-CN", List.of(chapter)));
     }
 
     private String emptyQuestionBank(String title) {

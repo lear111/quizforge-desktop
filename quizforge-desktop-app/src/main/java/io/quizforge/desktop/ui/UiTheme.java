@@ -20,8 +20,13 @@ final class UiTheme {
         return Objects.requireNonNull(UiTheme.class.getResource("workspace.css")).toExternalForm();
     }
 
+    static String markdownStylesheet() {
+        return Objects.requireNonNull(UiTheme.class.getResource("markdown-preview.css")).toExternalForm();
+    }
+
     static void apply(Scene scene) {
         scene.getStylesheets().add(stylesheet());
+        scene.getStylesheets().add(markdownStylesheet());
     }
 
     static void apply(Dialog<?> dialog) {

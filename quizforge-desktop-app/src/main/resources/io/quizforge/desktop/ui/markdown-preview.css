@@ -1,0 +1,68 @@
+/* Markdown reading surface. Kept separate from the workspace shell and editors. */
+.markdown-preview {
+    -fx-font-family: "System";
+    -fx-padding: 44 40 80 40;
+    -fx-spacing: 16;
+}
+
+.markdown-preview .preview-heading-1,
+.markdown-preview .preview-heading-2,
+.markdown-preview .preview-heading-3,
+.markdown-preview .preview-heading-4,
+.markdown-preview .preview-heading-5,
+.markdown-preview .preview-heading-6 {
+    -fx-text-fill: #33312e;
+}
+.markdown-preview .preview-heading-1 { -fx-font-size: 31px; -fx-font-weight: bold; -fx-padding: 8 0 6 0; }
+.markdown-preview .preview-heading-2 { -fx-font-size: 25px; -fx-font-weight: bold; -fx-padding: 20 0 4 0; }
+.markdown-preview .preview-heading-3 { -fx-font-size: 21px; -fx-font-weight: bold; -fx-padding: 14 0 2 0; }
+.markdown-preview .preview-heading-4 { -fx-font-size: 18px; -fx-font-weight: bold; -fx-padding: 10 0 0 0; }
+.markdown-preview .preview-heading-5 { -fx-font-size: 16px; -fx-font-weight: bold; -fx-padding: 8 0 0 0; }
+.markdown-preview .preview-heading-6 { -fx-font-size: 15px; -fx-font-weight: normal; -fx-padding: 8 0 0 0; }
+
+.markdown-preview .preview-prose { -fx-line-spacing: 9; }
+.markdown-preview .prose-text { -fx-font-size: 16px; -fx-fill: #48453f; }
+.markdown-preview .prose-strong { -fx-font-weight: bold; -fx-fill: #36332e; }
+.markdown-preview .prose-emphasis { -fx-font-style: italic; }
+.markdown-preview .prose-link { -fx-fill: #705d89; -fx-underline: true; }
+.markdown-preview .prose-code {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 14px;
+    -fx-text-fill: #674e7d;
+    -fx-background-color: #efebe5;
+    -fx-background-radius: 4;
+    -fx-padding: 1 5 2 5;
+}
+
+.markdown-preview .preview-code {
+    -fx-background-color: #f2f0eb;
+    -fx-background-radius: 7;
+    -fx-background-insets: 0;
+    -fx-border-color: #e8e4dc;
+    -fx-border-radius: 7;
+    -fx-padding: 0;
+}
+.markdown-preview .preview-code > .viewport { -fx-background-color: #f2f0eb; }
+.markdown-preview .preview-code-content {
+    -fx-font-family: "Consolas";
+    -fx-font-size: 14px;
+    -fx-line-spacing: 5;
+    -fx-text-fill: #45423d;
+    -fx-padding: 18 20;
+}
+
+.markdown-preview .preview-list { -fx-spacing: 7; }
+.markdown-preview .preview-list-row { -fx-spacing: 10; -fx-alignment: top-left; }
+.markdown-preview .preview-list-content { -fx-spacing: 6; }
+.markdown-preview .preview-list .preview-list { -fx-padding: 5 0 0 12; }
+.markdown-preview .preview-list-marker { -fx-min-width: 24; -fx-font-size: 16px; -fx-text-fill: #827a70; }
+
+.markdown-preview .preview-quote {
+    -fx-background-color: #f5f3ee;
+    -fx-border-color: #c7bbd4;
+    -fx-border-width: 0 0 0 3;
+    -fx-padding: 9 16;
+    -fx-spacing: 6;
+}
+.markdown-preview .preview-rule { -fx-padding: 10 0; }
+.markdown-preview .preview-rule .line { -fx-border-color: #e3ded6; -fx-border-width: 1 0 0 0; }

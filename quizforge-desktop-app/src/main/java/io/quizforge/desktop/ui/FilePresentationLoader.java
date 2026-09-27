@@ -4,9 +4,6 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import io.quizforge.core.document.qdoc.DocumentTemplate;
-import io.quizforge.core.document.qdoc.QDocEditorModel;
-import io.quizforge.infrastructure.filesystem.QDocV1Codec;
 import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
 import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.question.QuestionBankFile;
@@ -21,7 +18,6 @@ final class FilePresentationLoader {
     private final WorkspaceFileService files;
     private final WorkspaceFileCatalog catalog;
     private final SafeMarkdownPreview markdown = new SafeMarkdownPreview();
-    private final QDocV1Codec qdocs = new QDocV1Codec();
     private final RegisteredMarkdownCodec registeredMarkdown = new RegisteredMarkdownCodec();
 
     FilePresentationLoader(WorkspaceFileService files, WorkspaceFileCatalog catalog) {
@@ -33,13 +29,8 @@ final class FilePresentationLoader {
         OpenedWorkspaceFile file = files.open(workspace, path);
         var kind = file.entry().kind();
         if (kind == WorkspaceFileKind.STANDARD_DOCUMENT) {
-            if (path.toLowerCase(java.util.Locale.ROOT).endsWith(".qdoc")) {
-                var document = qdocs.parse(file.sourceText());
-                boolean empty = !new QDocEditorModel(document, DocumentTemplate.GENERAL_KNOWLEDGE).hasContent();
-                return new FilePresentation(file, empty, false, document);
-            }
             var registered = registeredMarkdown.parseIfRegistered(file.sourceText(), path);
-            return new FilePresentation(file, emptyMarkdown(file.sourceText()), false, null,
+            return new FilePresentation(file, emptyMarkdown(file.sourceText()), false,
                     registered.orElse(null));
         }
         if (kind == WorkspaceFileKind.QUESTION_BANK) return new FilePresentation(file, file.questionBank().questions().isEmpty(), false);

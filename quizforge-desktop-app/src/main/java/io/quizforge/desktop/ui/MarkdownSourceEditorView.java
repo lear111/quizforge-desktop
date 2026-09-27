@@ -10,7 +10,7 @@ import javafx.scene.layout.VBox;
 final class MarkdownSourceEditorView extends VBox {
     private final String original;
     private final TextArea source;
-    private final Label error = UiTheme.label("", "qdoc-error");
+    private final Label error = UiTheme.label("", "editor-error");
 
     MarkdownSourceEditorView(String original, Consumer<String> save) {
         this.original = original;

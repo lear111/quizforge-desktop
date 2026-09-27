@@ -40,4 +40,26 @@ class SafeMarkdownPreviewTest {
         assertEquals("Knowledge", blocks.getFirst().text());
         assertTrue(blocks.stream().noneMatch(block -> block.text().contains("quizforge_format")));
     }
+
+    @Test void projectsEveryHeadingLevelWhileKeepingNamedAnchorsInvisible() {
+        var blocks = preview.project("""
+                # One
+                ## Two
+                ### Three
+                #### Four
+                ##### Five
+                ###### Six
+
+                <!-- qf:anchor=Source -->
+                Paragraph with `inline code` and **strong** text.
+
+                > Quoted text
+                """);
+        for (int level = 1; level <= 6; level++) {
+            String style = "preview-heading-" + level;
+            assertTrue(blocks.stream().anyMatch(block -> block.style().equals(style)), style);
+        }
+        assertTrue(blocks.stream().anyMatch(block -> block.text().contains("inline code")));
+        assertTrue(blocks.stream().noneMatch(block -> block.text().contains("qf:anchor")));
+    }
 }

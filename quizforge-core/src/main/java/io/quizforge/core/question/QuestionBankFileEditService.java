@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.ArrayList;
 
-/** Edits a portable bank in place; new references must resolve to current valid QDocs. */
+/** Edits a portable bank in place; new references must resolve to current valid Markdown documents. */
 public final class QuestionBankFileEditService {
     private final WorkspaceService workspaces;
     private final QuestionBankFileStorage files;
@@ -36,16 +36,17 @@ public final class QuestionBankFileEditService {
         workspaces.getWorkspace(workspace);
         return scanner.scan(workspace).stream().filter(asset ->
                 asset.assetType() == AssetType.STANDARD_DOCUMENT
-                        && asset.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".qdoc"))
+                        && asset.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".md")
+                        && asset.contentId() != null && asset.contentId().startsWith("qfd:v1:"))
                 .toList();
     }
 
     public SourceDocumentSnapshot source(WorkspaceId workspace, String assetId) {
         Asset asset = availableSources(workspace).stream().filter(item -> item.assetId().equals(assetId))
-                .findFirst().orElseThrow(() -> new IllegalArgumentException("Source QDoc is unavailable"));
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("Source Markdown document is unavailable"));
         SourceDocumentSnapshot snapshot = documents.read(workspace, asset.currentPath());
         if (!snapshot.assetId().equals(asset.assetId()) || !snapshot.contentId().equals(asset.contentId()))
-            throw new IllegalStateException("Source QDoc changed during lookup");
+            throw new IllegalStateException("Source Markdown document changed during lookup");
         return snapshot;
     }
 
@@ -104,7 +105,7 @@ public final class QuestionBankFileEditService {
             if (!source.contentId().equals(ref.documentContentId()) || source.chapters().stream()
                     .flatMap(chapter -> chapter.sections().stream())
                     .noneMatch(section -> section.id().equals(ref.address().value()))) {
-                throw new IllegalArgumentException("Source reference is not in the selected QDoc revision");
+                throw new IllegalArgumentException("Source reference is not in the selected Markdown revision");
             }
         }
     }
@@ -121,9 +122,8 @@ public final class QuestionBankFileEditService {
                 if (ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR) refs.add(ref);
                 else {
                     Asset source = sources.get(ref.documentAssetId());
-                    if (source == null || !(source.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".qdoc")
-                            || source.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".md")
-                                    && ref.documentContentId().startsWith("qfd:v1:")))
+                    if (source == null || !(source.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".md")
+                            && ref.documentContentId().startsWith("qfd:v1:")))
                         throw new IllegalArgumentException("Legacy node references need explicit migration");
                     refs.add(QuestionBankFile.SourceRef.anchor(ref.documentAssetId(),
                             ref.documentContentId(), ref.address().value(), 1,

@@ -11,6 +11,7 @@ import java.util.HashMap;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.VBox;
 import org.commonmark.node.Code;
 import org.commonmark.node.FencedCodeBlock;
@@ -53,9 +54,11 @@ final class SafeMarkdownPreview {
 
     javafx.scene.Node view(String markdown, RegisteredMarkdownDocument registered,
             SourceActions actions) {
-        VBox preview = new VBox(12);
+        VBox preview = new VBox();
         preview.getStyleClass().add("markdown-preview");
-        preview.setMaxWidth(820);
+        // 940px including page padding leaves an 860px reading column.
+        preview.setMaxWidth(940);
+        preview.setMinWidth(0);
         preview.setId("markdown-browse-view");
         Map<SourceLocation, List<NamedMarkdownAnchor>> anchors = new HashMap<>();
         List<NamedMarkdownAnchor> available = registered == null
@@ -68,6 +71,7 @@ final class SafeMarkdownPreview {
         render(MARKDOWN.parse(withoutFrontMatter(markdown)), preview, anchors, actions);
         javafx.scene.layout.StackPane centered = new javafx.scene.layout.StackPane(preview);
         centered.setAlignment(javafx.geometry.Pos.TOP_CENTER);
+        centered.setMinWidth(0);
         return UiTheme.scroll(centered);
     }
 
@@ -80,32 +84,47 @@ final class SafeMarkdownPreview {
                         node, anchors, actions);
             } else if (node instanceof FencedCodeBlock || node instanceof IndentedCodeBlock) {
                 String literal = node instanceof FencedCodeBlock code ? code.getLiteral() : ((IndentedCodeBlock) node).getLiteral();
-                Label code = UiTheme.label(literal.stripTrailing(), "preview-code");
-                code.setMaxWidth(Double.MAX_VALUE);
-                add(page, code, node, anchors, actions);
+                Label code = UiTheme.label(literal.stripTrailing(), "preview-code-content");
+                code.setWrapText(false);
+                code.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+                ScrollPane codeScroll = new ScrollPane(code);
+                codeScroll.getStyleClass().add("preview-code");
+                codeScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+                codeScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+                codeScroll.setFitToHeight(true);
+                codeScroll.setMinWidth(0);
+                codeScroll.setMaxWidth(Double.MAX_VALUE);
+                add(page, codeScroll, node, anchors, actions);
             } else if (node instanceof org.commonmark.node.BlockQuote) {
-                VBox quote = new VBox(8);
+                VBox quote = new VBox();
                 quote.getStyleClass().add("preview-quote");
                 render(node, quote, anchors, null);
                 add(page, quote, node, anchors, actions);
             } else if (node instanceof org.commonmark.node.BulletList || node instanceof org.commonmark.node.OrderedList) {
                 int number = node instanceof org.commonmark.node.OrderedList ordered ? ordered.getStartNumber() : 0;
-                VBox list = new VBox(6);
+                VBox list = new VBox();
+                list.getStyleClass().add("preview-list");
                 for (Node item = node.getFirstChild(); item != null; item = item.getNext()) {
-                    VBox content = new VBox(6);
+                    VBox content = new VBox();
+                    content.getStyleClass().add("preview-list-content");
                     render(item, content, anchors, null);
                     javafx.scene.layout.HBox.setHgrow(content, javafx.scene.layout.Priority.ALWAYS);
                     content.setMinWidth(0);
                     Label marker = UiTheme.label(node instanceof org.commonmark.node.OrderedList ? number++ + "." : "•", "preview-list-marker");
-                    list.getChildren().add(new javafx.scene.layout.HBox(10, marker, content));
+                    javafx.scene.layout.HBox row = new javafx.scene.layout.HBox(marker, content);
+                    row.getStyleClass().add("preview-list-row");
+                    row.setMinWidth(0);
+                    list.getChildren().add(row);
                 }
                 add(page, list, node, anchors, actions);
             } else if (node instanceof org.commonmark.node.ThematicBreak) {
-                page.getChildren().add(new javafx.scene.control.Separator());
+                javafx.scene.control.Separator rule = new javafx.scene.control.Separator();
+                rule.getStyleClass().add("preview-rule");
+                page.getChildren().add(rule);
             } else if (node instanceof Paragraph) {
                 javafx.scene.text.TextFlow flow = new javafx.scene.text.TextFlow();
                 flow.getStyleClass().add("preview-prose");
-                flow.setLineSpacing(6);
+                flow.setMinWidth(0);
                 inline(node, flow, false, false, false);
                 add(page, flow, node, anchors, actions);
             } else render(node, page, anchors, actions);
@@ -146,13 +165,18 @@ final class SafeMarkdownPreview {
         String literal = node instanceof Text text ? text.getLiteral() : node instanceof Code code ? code.getLiteral()
                 : node instanceof SoftLineBreak ? " " : node instanceof HardLineBreak ? "\n" : null;
         if (literal != null) {
-            javafx.scene.text.Text span = new javafx.scene.text.Text(literal);
-            span.getStyleClass().add("prose-text");
-            if (bold) span.getStyleClass().add("prose-strong");
-            if (italic) span.getStyleClass().add("prose-emphasis");
-            if (link) span.getStyleClass().add("prose-link");
-            if (node instanceof Code) span.getStyleClass().add("prose-code");
-            flow.getChildren().add(span);
+            if (node instanceof Code) {
+                Label code = UiTheme.label(literal, "prose-code");
+                code.setWrapText(false);
+                flow.getChildren().add(code);
+            } else {
+                javafx.scene.text.Text span = new javafx.scene.text.Text(literal);
+                span.getStyleClass().add("prose-text");
+                if (bold) span.getStyleClass().add("prose-strong");
+                if (italic) span.getStyleClass().add("prose-emphasis");
+                if (link) span.getStyleClass().add("prose-link");
+                flow.getChildren().add(span);
+            }
         }
         for (Node child = node.getFirstChild(); child != null; child = child.getNext()) {
             inline(child, flow, bold || node instanceof org.commonmark.node.StrongEmphasis,

@@ -62,7 +62,7 @@ class MarkdownDocumentRegistrationIntegrationTest {
         assertEquals(document.contentId(), asset.contentId());
         assertEquals("custom/notes/study.md", asset.currentPath());
         assertEquals("1", asset.schemaVersion());
-        var catalog = new LocalWorkspaceFileCatalog(paths, new QuestionBankV1Codec(), false);
+        var catalog = new LocalWorkspaceFileCatalog(paths, new QuestionBankV1Codec());
         assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT,
                 catalog.inspect(workspace, "custom/notes/study.md").kind());
 
