@@ -3,22 +3,27 @@ package io.quizforge.desktop.ui;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.layout.StackPane;
+import java.util.List;
+import java.util.function.Consumer;
 
 /** File kind and mode route independently; no business navigation or metadata panels. */
 final class FileViewerRouter {
     private final SafeMarkdownPreview markdown = new SafeMarkdownPreview();
     private final SafeMarkdownPreview.SourceActions sourceActions;
+    private final Consumer<MarkdownOutline.Entry> copyLink;
 
-    FileViewerRouter(SafeMarkdownPreview.SourceActions sourceActions) {
+    FileViewerRouter(SafeMarkdownPreview.SourceActions sourceActions,
+            Consumer<MarkdownOutline.Entry> copyLink) {
         this.sourceActions = sourceActions;
+        this.copyLink = copyLink;
     }
 
     Node view(FilePresentation file, FileMode mode) {
         return switch (file.kind()) {
-            case MARKDOWN -> markdown.view(file.file().sourceText(), null, sourceActions);
+            case MARKDOWN -> markdown.view(file.file().sourceText(), null, sourceActions, copyLink);
             case STANDARD_DOCUMENT -> file.empty()
                     ? UiTheme.quietState("此文档暂无内容", "开始编辑，或使用 AI 生成")
-                    : markdown.view(file.file().sourceText(), file.registeredMarkdown(), sourceActions);
+                    : markdown.view(file.file().sourceText(), file.registeredMarkdown(), sourceActions, copyLink);
             case QUESTION_BANK -> file.empty()
                     ? UiTheme.quietState("该题库暂无题目", "开始编辑，或使用 AI 生成") : practice(file);
             case DIRECTORY -> welcome();
@@ -26,6 +31,10 @@ final class FileViewerRouter {
                     file.file().entry().issue() == null ? "文件未通过格式校验。" : file.file().entry().issue());
             case OTHER -> UiTheme.quietState("暂不支持预览此类文件", "文件仍保存在当前工作区中。");
         };
+    }
+
+    List<MarkdownOutline.Entry> outlineEntries(FilePresentation file) {
+        return markdown.outlineEntries(file.file().sourceText(), file.registeredMarkdown());
     }
 
     Node welcome() { return UiTheme.quietState("打开一个文件", "从左侧文件树中选择，开始阅读或练习。"); }

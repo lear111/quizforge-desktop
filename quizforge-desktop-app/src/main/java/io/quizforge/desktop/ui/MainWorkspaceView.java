@@ -1,8 +1,6 @@
 package io.quizforge.desktop.ui;
 
 import io.quizforge.core.document.MarkdownFileEditService;
-import io.quizforge.core.document.registered.QuizForgeReference;
-import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
@@ -23,7 +21,6 @@ final class MainWorkspaceView extends BorderPane {
     private final WorkspaceService workspaces;
     private final WorkspaceFileService files;
     private final WorkspaceHistory history;
-    private final QuizForgeReferenceCodec referenceCodec = new QuizForgeReferenceCodec();
     private final Stage stage;
     private final TextClipboard clipboard;
     private final WorkspaceSidebar sidebar;
@@ -57,8 +54,8 @@ final class MainWorkspaceView extends BorderPane {
             }
             @Override public void rename(WorkspaceFileEntry entry) { MainWorkspaceView.this.rename(entry); }
             @Override public void delete(WorkspaceFileEntry entry) { MainWorkspaceView.this.delete(entry); }
-            @Override public void copyDocumentReference(WorkspaceFileEntry entry) {
-                MainWorkspaceView.this.copyDocumentReference(entry);
+            @Override public void copyLink(WorkspaceFileEntry entry) {
+                filePane.copyAssetLink(current.id(), entry);
             }
         }, settings);
         filePane.setMinWidth(320);
@@ -120,12 +117,6 @@ final class MainWorkspaceView extends BorderPane {
             String value = absolute ? files.absolutePath(current.id(), path).toString() : path;
             copyText(value);
         } catch (RuntimeException error) { showFileError("无法复制文件路径", error); }
-    }
-
-    private void copyDocumentReference(WorkspaceFileEntry entry) {
-        try {
-            copyText(referenceCodec.encode(QuizForgeReference.document(entry.assetId())));
-        } catch (RuntimeException error) { showFileError("无法复制文档引用", error); }
     }
 
     private void copyText(String value) {

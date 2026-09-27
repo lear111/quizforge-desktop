@@ -4,7 +4,9 @@ import io.quizforge.core.document.registered.MarkdownSourceRange;
 import io.quizforge.core.document.registered.NamedMarkdownAnchor;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.commonmark.node.Code;
 import org.commonmark.node.Heading;
 import org.commonmark.node.Node;
@@ -17,7 +19,7 @@ final class MarkdownOutline {
     enum Kind { HEADING, ANCHOR }
 
     record Entry(String runtimeId, Kind kind, String label, int level, int depth,
-            int sourceLine, MarkdownSourceRange target, boolean orphan) { }
+            int sourceLine, MarkdownSourceRange target, boolean orphan, int occurrence) { }
 
     private record Candidate(Kind kind, String label, int level, int sourceLine,
             MarkdownSourceRange target, boolean orphan, int order) { }
@@ -33,6 +35,8 @@ final class MarkdownOutline {
                 .thenComparingInt(Candidate::order));
         List<Entry> result = new ArrayList<>();
         List<Integer> headingLevels = new ArrayList<>();
+        Map<String, Integer> headingCounts = new HashMap<>();
+        Map<String, Integer> anchorCounts = new HashMap<>();
         for (Candidate candidate : candidates) {
             int depth;
             if (candidate.kind() == Kind.HEADING) {
@@ -41,9 +45,11 @@ final class MarkdownOutline {
                 depth = headingLevels.size();
                 headingLevels.add(candidate.level());
             } else depth = headingLevels.size();
+            int occurrence = (candidate.kind() == Kind.HEADING ? headingCounts : anchorCounts)
+                    .merge(candidate.label(), 1, Integer::sum);
             result.add(new Entry("qf-nav-" + result.size(), candidate.kind(), candidate.label(),
                     candidate.level(), depth, candidate.sourceLine(), candidate.target(),
-                    candidate.orphan()));
+                    candidate.orphan(), occurrence));
         }
         return List.copyOf(result);
     }

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.function.Consumer;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
@@ -56,6 +57,11 @@ final class SafeMarkdownPreview {
 
     javafx.scene.Node view(String markdown, RegisteredMarkdownDocument registered,
             SourceActions actions) {
+        return view(markdown, registered, actions, null);
+    }
+
+    javafx.scene.Node view(String markdown, RegisteredMarkdownDocument registered,
+            SourceActions actions, Consumer<MarkdownOutline.Entry> copyLink) {
         VBox preview = new VBox();
         preview.getStyleClass().add("markdown-preview");
         // 940px including page padding leaves an 860px reading column.
@@ -63,8 +69,7 @@ final class SafeMarkdownPreview {
         preview.setMinWidth(0);
         preview.setId("markdown-browse-view");
         Map<SourceLocation, List<NamedMarkdownAnchor>> anchors = new HashMap<>();
-        List<NamedMarkdownAnchor> available = registered == null
-                ? anchorCodec.inspectAnchors(markdown) : registered.anchors();
+        List<NamedMarkdownAnchor> available = anchors(markdown, registered);
         if (!available.isEmpty()) {
             available.stream().filter(anchor -> !anchor.orphan()).forEach(anchor ->
                     anchors.computeIfAbsent(new SourceLocation(anchor.blockRange().startLine(),
@@ -79,7 +84,7 @@ final class SafeMarkdownPreview {
         MarkdownDocumentNavigator navigator = new MarkdownDocumentNavigator(scroll);
         render(parsed, preview, anchors, actions, navigator);
         MarkdownOutlineView outline = new MarkdownOutlineView(
-                MarkdownOutline.extract(parsed, available), navigator);
+                MarkdownOutline.extract(parsed, available), navigator, copyLink);
         HBox layout = new HBox(scroll, outline);
         layout.setId("markdown-browse-layout");
         layout.getStyleClass().add("markdown-browse-layout");
@@ -87,6 +92,15 @@ final class SafeMarkdownPreview {
         scroll.setMinWidth(0);
         HBox.setHgrow(scroll, Priority.ALWAYS);
         return layout;
+    }
+
+    List<MarkdownOutline.Entry> outlineEntries(String markdown, RegisteredMarkdownDocument registered) {
+        return MarkdownOutline.extract(MARKDOWN.parse(withoutFrontMatter(markdown)),
+                anchors(markdown, registered));
+    }
+
+    private List<NamedMarkdownAnchor> anchors(String markdown, RegisteredMarkdownDocument registered) {
+        return registered == null ? anchorCodec.inspectAnchors(markdown) : registered.anchors();
     }
 
     private void render(Node parent, VBox page, Map<SourceLocation, List<NamedMarkdownAnchor>> anchors,

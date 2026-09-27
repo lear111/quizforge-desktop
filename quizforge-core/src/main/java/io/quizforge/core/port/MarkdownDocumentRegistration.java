@@ -8,6 +8,10 @@ import java.util.Optional;
 public interface MarkdownDocumentRegistration {
     Optional<RegisteredMarkdownDocument> inspect(WorkspaceId workspaceId, String relativePath);
 
+    /** Registers document identity without adding node IDs or source anchors. */
+    RegisteredMarkdownDocument registerDocument(WorkspaceId workspaceId, String relativePath,
+            String expectedSource);
+
     /** Adds metadata and one named anchor only when the user requests a source reference. */
     NamedMarkdownAnchor createAnchor(WorkspaceId workspaceId, String relativePath,
             String expectedSource, int bodyLine, int bodyColumn, String anchorName);

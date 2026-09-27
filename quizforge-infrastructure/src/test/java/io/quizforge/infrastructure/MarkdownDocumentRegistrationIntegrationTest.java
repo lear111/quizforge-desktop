@@ -48,6 +48,43 @@ class MarkdownDocumentRegistrationIntegrationTest {
         registration = new MarkdownDocumentRegistrationService(paths, scanner);
     }
 
+    @Test void documentOnlyRegistrationPreservesFrontMatterHeadingsAndHandwrittenAnchors() throws Exception {
+        Path file = root.resolve("documents/navigation.md");
+        String original = "---\r\ntitle: User title\r\ntags:\r\n  - java\r\n---\r\n"
+                + "# Java\r\n## 示例\r\n正文 A\r\n## 示例\r\n正文 B\r\n"
+                + "<!-- qf:anchor=定义 -->\r\n内容 A\r\n"
+                + "<!-- qf:anchor=定义 -->\r\n内容 B\r\n";
+        Files.writeString(file, original);
+        var document = registration.registerDocument(workspace, "documents/navigation.md", original);
+        String registered = Files.readString(file);
+        assertTrue(document.documentAssetId().startsWith("doc_"));
+        assertTrue(registered.startsWith("---\r\ntitle: User title\r\ntags:\r\n  - java\r\n"
+                + "quizforge:\r\n  format: document\r\n  version: 1\r\n  assetId: "));
+        assertEquals(original.substring(original.indexOf("# Java")),
+                registered.substring(registered.indexOf("# Java")));
+        assertFalse(registered.contains("qf:id="));
+        assertEquals(2, document.anchors().size());
+        assertEquals(2, document.anchors().getLast().occurrence());
+        assertEquals("documents/navigation.md",
+                index.findById(workspace, document.documentAssetId()).orElseThrow().currentPath());
+        assertEquals(document.documentAssetId(), registration.registerDocument(workspace,
+                "documents/navigation.md", registered).documentAssetId());
+        assertEquals(registered, Files.readString(file));
+    }
+
+    @Test void documentOnlyRegistrationRejectsStaleSourceAndRollsBackOnRegistryFailure() throws Exception {
+        Path file = root.resolve("documents/navigation-failure.md");
+        String original = "# Keep this source\n\nParagraph.\n";
+        Files.writeString(file, original);
+        assertThrows(IllegalStateException.class, () -> registration.registerDocument(workspace,
+                "documents/navigation-failure.md", "# Stale\n"));
+        WorkspaceAssetScanner broken = id -> { throw new IllegalStateException("Registry unavailable"); };
+        var failing = new MarkdownDocumentRegistrationService(paths, broken);
+        assertThrows(IllegalStateException.class, () -> failing.registerDocument(workspace,
+                "documents/navigation-failure.md", original));
+        assertEquals(original, Files.readString(file));
+    }
+
     @Test void ordinaryMarkdownIsNotIndexedUntilFirstAnchorAndThenCanMove() throws Exception {
         Path source = Files.createDirectories(root.resolve("custom/notes")).resolve("study.md");
         Files.writeString(source, "# Study\n\nA paragraph.\n");

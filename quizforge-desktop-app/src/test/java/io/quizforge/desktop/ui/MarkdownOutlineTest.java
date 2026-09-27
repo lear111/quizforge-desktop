@@ -48,6 +48,14 @@ class MarkdownOutlineTest {
                 .map(MarkdownOutline.Entry::label).toList());
         assertNotEquals(entries.get(1).runtimeId(), entries.get(2).runtimeId());
         assertNotEquals(entries.get(1).target(), entries.get(2).target());
+        assertEquals(1, entries.get(1).occurrence());
+        assertEquals(2, entries.get(2).occurrence());
+    }
+
+    @Test void repeatedHeadingOccurrenceCountsAcrossTheWholeSource() {
+        var entries = extract("# 示例\n## Other\n### 示例\n## 示例\n");
+        assertEquals(List.of(1, 1, 2, 3), entries.stream()
+                .map(MarkdownOutline.Entry::occurrence).toList());
     }
 
     @Test void multipleAnchorsOnOneBlockRemainSeparateEntriesWithOneTarget() {

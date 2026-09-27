@@ -9,6 +9,8 @@ import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
 import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
 import io.quizforge.core.document.registered.QuizForgeReference;
 import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
+import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
+import io.quizforge.core.document.navigation.QuizForgeNavigationLinkCodec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -364,7 +366,7 @@ class MainWorkspaceViewTest {
                             "rename-file-entry", "delete-file-entry"),
                     folderItems.stream().map(MenuItem::getId).toList());
             var fileItems = folderCell("Java/Java集合.md").getContextMenu().getItems();
-            assertEquals("copy-document-reference", fileItems.getFirst().getId());
+            assertEquals("copy-link", fileItems.getFirst().getId());
             assertTrue(fileItems.stream().noneMatch(item -> item.getId() != null
                     && item.getId().startsWith("folder-new-")));
             Menu copy = (Menu) fileItems.stream().filter(item ->
@@ -381,15 +383,89 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void copyDocumentReferenceWritesTheExactDocumentUri() throws Exception {
+    @Test void fileTreeCopyLinkWritesTheRevisionAgnosticAssetUri() throws Exception {
         fx(() -> {
             open("Java/Java集合.md");
             var entry = shell.filePane().currentFile().file().entry();
-            assertEquals("copy-document-reference",
+            assertEquals("copy-link",
                     folderCell("Java/Java集合.md").getContextMenu().getItems().getFirst().getId());
             folderCell("Java/Java集合.md").getContextMenu().getItems().getFirst().fire();
-            assertEquals(new QuizForgeReferenceCodec().encode(
-                    QuizForgeReference.document(entry.assetId())), fixture.copiedText.get());
+            assertEquals(new QuizForgeNavigationLinkCodec().encode(
+                    QuizForgeNavigationLink.asset(entry.assetId())), fixture.copiedText.get());
+        });
+    }
+
+    @Test void ordinaryMarkdownFileTreeCopyLinkRegistersWithoutOpeningIt() throws Exception {
+        String path = "我的笔记/学习计划.md";
+        String before = Files.readString(fixture.alphaRoot.resolve(path));
+        fx(() -> {
+            open("Java/Java集合.md");
+            folderCell(path).getContextMenu().getItems().getFirst().fire();
+            assertEquals("Java/Java集合.md", shell.filePane().currentFile()
+                    .file().entry().relativePath());
+            var registered = fixture.files.open(fixture.alpha.id(), path).entry();
+            assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, registered.kind());
+            assertEquals(new QuizForgeNavigationLinkCodec().encode(
+                    QuizForgeNavigationLink.asset(registered.assetId())), fixture.copiedText.get());
+            assertTrue(Files.readString(fixture.alphaRoot.resolve(path)).endsWith(before));
+            assertFalse(Files.readString(fixture.alphaRoot.resolve(path)).contains("qf:anchor="));
+        });
+    }
+
+    @Test void outlineCopyLinkUsesFinalOccurrenceAndRegistersOnlyDocumentIdentity() throws Exception {
+        String path = "Java/navigation-links.md";
+        String source = "---\ntitle: User note\n---\n# Java\n\n## 示例\n正文 A。\n\n"
+                + "## 示例\n正文 B。\n\n<!-- qf:anchor=定义 -->\n内容 A。\n\n"
+                + "<!-- qf:anchor=定义 -->\n内容 B。\n\n<!-- qf:anchor=孤立 -->\n";
+        fixture.write(path, source);
+        fx(() -> {
+            shell.refresh();
+            open(path);
+            assertEquals(WorkspaceFileKind.MARKDOWN, shell.filePane().currentFile().kind());
+            assertEquals("示例", button("qf-nav-2").getAccessibleText());
+            assertNull(button("qf-nav-5").getContextMenu());
+            assertTrue(button("qf-nav-5").isDisabled());
+            button("qf-nav-2").getContextMenu().getItems().getFirst().fire();
+            var registered = shell.filePane().currentFile();
+            String assetId = registered.file().entry().assetId();
+            assertTrue(assetId.startsWith("doc_"));
+            assertEquals(path, registered.file().entry().relativePath());
+            assertEquals(new QuizForgeNavigationLinkCodec().encode(
+                    QuizForgeNavigationLink.heading(assetId, "示例", 2)), fixture.copiedText.get());
+            String saved = Files.readString(fixture.alphaRoot.resolve(path));
+            assertTrue(saved.contains("title: User note"));
+            assertTrue(saved.endsWith(source.substring(source.indexOf("# Java"))));
+            assertFalse(saved.contains("qf:id="));
+            assertEquals(2, saved.split("qf:anchor=定义", -1).length - 1);
+            var previewLayout = (javafx.scene.layout.HBox) shell.filePane().getCenter();
+            var reader = (ScrollPane) previewLayout.getChildren().getFirst();
+            var page = (javafx.scene.layout.StackPane) reader.getContent();
+            assertTrue(text(page).contains("内容 B"));
+            assertFalse(text(page).contains("qf:anchor"));
+            assertEquals("示例", button("qf-nav-2").getAccessibleText());
+            button("qf-nav-4").getContextMenu().getItems().getFirst().fire();
+            assertEquals(new QuizForgeNavigationLinkCodec().encode(
+                    QuizForgeNavigationLink.anchor(assetId, "定义", 2)), fixture.copiedText.get());
+            assertEquals(saved, Files.readString(fixture.alphaRoot.resolve(path)));
+            assertEquals(assetId, shell.filePane().currentFile().file().entry().assetId());
+        });
+    }
+
+    @Test void handwrittenAnchorCopyLinkRegistersWithoutAddingAnotherAnchor() throws Exception {
+        String path = "Java/handwritten-navigation.md";
+        String source = "# H\n\n<!-- qf:anchor=手写来源 -->\nParagraph.\n";
+        fixture.write(path, source);
+        fx(() -> {
+            shell.refresh();
+            open(path);
+            button("qf-nav-1").getContextMenu().getItems().getFirst().fire();
+            var entry = shell.filePane().currentFile().file().entry();
+            assertEquals(new QuizForgeNavigationLinkCodec().encode(
+                    QuizForgeNavigationLink.anchor(entry.assetId(), "手写来源", 1)),
+                    fixture.copiedText.get());
+            String saved = Files.readString(fixture.alphaRoot.resolve(path));
+            assertTrue(saved.endsWith(source));
+            assertEquals(1, saved.split("qf:anchor=手写来源", -1).length - 1);
         });
     }
 
@@ -447,7 +523,7 @@ class MainWorkspaceViewTest {
             open(path);
             assertNotNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
             assertNotNull(shell.filePane().currentFile().registeredMarkdown());
-            assertEquals("copy-document-reference", folderCell(path).getContextMenu().getItems()
+            assertEquals("copy-link", folderCell(path).getContextMenu().getItems()
                     .getFirst().getId());
             assertEquals("quizforge://document/" + shell.filePane().currentFile()
                     .registeredMarkdown().documentAssetId(),

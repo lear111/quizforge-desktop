@@ -75,6 +75,33 @@ public final class RegisteredMarkdownCodec {
                 anchorAnalysis.errors()));
     }
 
+    /** Adds only the document namespace; existing Markdown body and anchors remain unchanged. */
+    public Prepared prepareRegistration(String source, String relativePath) {
+        FrontMatter front = frontMatter(source);
+        JsonNode yaml = front == null ? null : yaml(front);
+        if (yaml != null && yaml.has("quizforge_format")) {
+            throw new IllegalArgumentException("Legacy study-document metadata has a different contract");
+        }
+        JsonNode quizforge = yaml == null ? null : yaml.path("quizforge");
+        boolean registered = quizforge != null && !quizforge.isMissingNode();
+        if (registered) {
+            registeredId(quizforge);
+            namespaceRange(source, front);
+        }
+        String candidate = source;
+        if (!registered) {
+            String eol = newline(source);
+            String assetId = "doc_" + UUID.randomUUID().toString().replace("-", "");
+            if (front == null) candidate = "---" + eol + namespace(assetId, eol)
+                    + "---" + eol + source;
+            else candidate = source.substring(0, front.closingStart()) + namespace(assetId, eol)
+                    + source.substring(front.closingStart());
+        }
+        RegisteredMarkdownDocument document = parseIfRegistered(candidate, relativePath)
+                .orElseThrow(() -> new IllegalArgumentException("Registration metadata was not readable"));
+        return new Prepared(candidate, document);
+    }
+
     /** Inserts one named marker at a source-span-selected top-level block. */
     public PreparedAnchor prepareAnchor(String source, String relativePath, int bodyLine,
             int bodyColumn, String requestedName) {

@@ -36,7 +36,7 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
         void copyPath(String path, boolean absolute);
         void rename(WorkspaceFileEntry entry);
         void delete(WorkspaceFileEntry entry);
-        void copyDocumentReference(WorkspaceFileEntry entry);
+        void copyLink(WorkspaceFileEntry entry);
     }
 
     private final FileActions actions;
@@ -45,6 +45,12 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
         return entry.kind() == WorkspaceFileKind.STANDARD_DOCUMENT
                 && entry.relativePath().toLowerCase(java.util.Locale.ROOT).endsWith(".md")
                 && entry.assetId() != null;
+    }
+
+    private static boolean isLinkableMarkdown(WorkspaceFileEntry entry) {
+        return (entry.kind() == WorkspaceFileKind.MARKDOWN
+                || entry.kind() == WorkspaceFileKind.STANDARD_DOCUMENT)
+                && entry.relativePath().toLowerCase(java.util.Locale.ROOT).endsWith(".md");
     }
 
     WorkspaceFileTree(Consumer<WorkspaceFileEntry> open, FileActions actions) {
@@ -173,9 +179,9 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
                                 io.quizforge.core.workspace.WorkspaceFileType.QUESTION_BANK)));
                 menu.getItems().add(new SeparatorMenuItem());
             }
-            if (isReferenceEnabledMarkdown(entry)) {
-                menu.getItems().add(action("Copy Document Reference", "copy-document-reference",
-                        () -> actions.copyDocumentReference(entry)));
+            if (isLinkableMarkdown(entry)) {
+                menu.getItems().add(action("Copy Link", "copy-link",
+                        () -> actions.copyLink(entry)));
                 menu.getItems().add(new SeparatorMenuItem());
             }
             Menu copy = new Menu("复制文件路径");

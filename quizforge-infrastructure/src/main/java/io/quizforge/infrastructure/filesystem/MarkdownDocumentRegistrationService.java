@@ -54,6 +54,23 @@ public final class MarkdownDocumentRegistrationService implements MarkdownDocume
     }
 
     @Override
+    public RegisteredMarkdownDocument registerDocument(WorkspaceId workspaceId,
+            String relativePath, String expectedSource) {
+        Path file = checkedFile(workspaceId, relativePath);
+        try {
+            String original = Files.readString(file, StandardCharsets.UTF_8);
+            if (!original.equals(expectedSource)) throw new IllegalStateException("Markdown changed externally");
+            if (original.startsWith("\uFEFF")) throw new IllegalArgumentException("Markdown BOM is unsupported");
+            var prepared = codec.prepareRegistration(original, relativePath);
+            if (original.equals(prepared.source())) refresh(workspaceId, prepared.document());
+            else publishAndRefresh(workspaceId, file, original, prepared);
+            return prepared.document();
+        } catch (IOException error) {
+            throw failure("register Markdown document", error);
+        }
+    }
+
+    @Override
     public NamedMarkdownAnchor createAnchor(WorkspaceId workspaceId, String relativePath,
             String expectedSource, int bodyLine, int bodyColumn, String anchorName) {
         Path file = checkedFile(workspaceId, relativePath);

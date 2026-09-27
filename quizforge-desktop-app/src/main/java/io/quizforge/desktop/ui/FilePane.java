@@ -1,6 +1,8 @@
 package io.quizforge.desktop.ui;
 
 import io.quizforge.core.document.MarkdownFileEditService;
+import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
+import io.quizforge.core.document.navigation.QuizForgeNavigationLinkCodec;
 import io.quizforge.core.document.registered.QuizForgeReference;
 import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
 import io.quizforge.core.document.registered.NamedMarkdownAnchor;
@@ -9,6 +11,8 @@ import io.quizforge.core.port.MarkdownDocumentRegistration;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.WorkspaceId;
+import io.quizforge.core.workspace.WorkspaceFileEntry;
+import io.quizforge.core.workspace.WorkspaceFileKind;
 import java.util.function.BiConsumer;
 import java.util.List;
 import javafx.scene.Node;
@@ -19,6 +23,7 @@ import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
+import javafx.scene.control.ScrollPane;
 import javafx.geometry.Pos;
 
 final class FilePane extends BorderPane {
@@ -32,6 +37,7 @@ final class FilePane extends BorderPane {
     private final TextClipboard clipboard;
     private final FileViewerRouter router;
     private final QuizForgeReferenceCodec referencesCodec = new QuizForgeReferenceCodec();
+    private final QuizForgeNavigationLinkCodec navigationCodec = new QuizForgeNavigationLinkCodec();
     private final AssetDetailsPopover details = new AssetDetailsPopover();
     private WorkspaceId workspace;
     private FilePresentation current;
@@ -56,7 +62,7 @@ final class FilePane extends BorderPane {
         this.router = new FileViewerRouter(new SafeMarkdownPreview.SourceActions() {
             @Override public void create(MarkdownSourceRange block) { createSourceReference(block); }
             @Override public void copy(List<NamedMarkdownAnchor> anchors) { copySourceReference(anchors); }
-        });
+        }, this::copyNavigationLink);
         setId("file-pane");
         clear();
     }
@@ -186,6 +192,85 @@ final class FilePane extends BorderPane {
                 document.contentId(), anchor.name(), anchor.occurrence()));
         clipboard.write(uri);
     }
+
+    void copyAssetLink(WorkspaceId targetWorkspace, WorkspaceFileEntry entry) {
+        try {
+            String path = entry.relativePath();
+            boolean active = current != null && workspace != null && workspace.equals(targetWorkspace)
+                    && current.file().entry().relativePath().equals(path);
+            if (active && hasUnsavedChanges() && entry.assetId() == null)
+                throw new IllegalStateException("Save Markdown changes before creating a link");
+            ReadyLink ready = readyForLink(targetWorkspace, path, null);
+            if (ready.registeredNow()) {
+                refreshTree.run();
+                if (active && mode == FileMode.BROWSE) reopenPreviewPreservingScroll(path);
+            }
+            clipboard.write(navigationCodec.encode(QuizForgeNavigationLink.asset(
+                    ready.file().file().entry().assetId())));
+        } catch (RuntimeException error) { showNavigationError(error); }
+    }
+
+    private void copyNavigationLink(MarkdownOutline.Entry selected) {
+        if (current == null || selected.orphan()) return;
+        try {
+            String path = current.file().entry().relativePath();
+            ReadyLink ready = readyForLink(workspace, path, current.file().sourceText());
+            MarkdownOutline.Entry target = router.outlineEntries(ready.file()).stream()
+                    .filter(entry -> entry.kind() == selected.kind()
+                            && entry.label().equals(selected.label())
+                            && entry.occurrence() == selected.occurrence() && !entry.orphan())
+                    .findFirst().orElseThrow(() -> new IllegalStateException(
+                            "Navigation target changed; reopen the document"));
+            String assetId = ready.file().file().entry().assetId();
+            QuizForgeNavigationLink link = target.kind() == MarkdownOutline.Kind.HEADING
+                    ? QuizForgeNavigationLink.heading(assetId, target.label(), target.occurrence())
+                    : QuizForgeNavigationLink.anchor(assetId, target.label(), target.occurrence());
+            if (ready.registeredNow()) {
+                refreshTree.run();
+                reopenPreviewPreservingScroll(path);
+            }
+            clipboard.write(navigationCodec.encode(link));
+        } catch (RuntimeException error) { showNavigationError(error); }
+    }
+
+    private ReadyLink readyForLink(WorkspaceId targetWorkspace, String path, String expectedSource) {
+        FilePresentation fresh = loader.load(targetWorkspace, path);
+        if (!path.toLowerCase(java.util.Locale.ROOT).endsWith(".md")
+                || fresh.kind() != WorkspaceFileKind.MARKDOWN
+                        && fresh.kind() != WorkspaceFileKind.STANDARD_DOCUMENT)
+            throw new IllegalArgumentException("Only readable Markdown can be linked");
+        if (expectedSource != null && !expectedSource.equals(fresh.file().sourceText()))
+            throw new IllegalStateException("Markdown changed externally; reopen before copying");
+        boolean registeredNow = fresh.file().entry().assetId() == null;
+        if (registeredNow) {
+            registration.registerDocument(targetWorkspace, path, fresh.file().sourceText());
+            fresh = loader.load(targetWorkspace, path);
+        }
+        if (fresh.file().entry().assetId() == null)
+            throw new IllegalStateException("Markdown document was not indexed");
+        return new ReadyLink(fresh, registeredNow);
+    }
+
+    private void reopenPreviewPreservingScroll(String path) {
+        ScrollPane reader = (ScrollPane) lookup("#markdown-preview-scroll");
+        ScrollPane outline = (ScrollPane) lookup(".markdown-outline-scroll");
+        double readingPosition = reader == null ? 0 : reader.getVvalue();
+        double outlinePosition = outline == null ? 0 : outline.getVvalue();
+        open(workspace, path);
+        ScrollPane renewedReader = (ScrollPane) lookup("#markdown-preview-scroll");
+        ScrollPane renewedOutline = (ScrollPane) lookup(".markdown-outline-scroll");
+        if (renewedReader != null) renewedReader.setVvalue(readingPosition);
+        if (renewedOutline != null) renewedOutline.setVvalue(outlinePosition);
+    }
+
+    private void showNavigationError(RuntimeException error) {
+        Alert alert = new Alert(Alert.AlertType.ERROR, error.getMessage(), ButtonType.OK);
+        alert.setHeaderText("无法复制链接");
+        UiTheme.apply(alert);
+        alert.showAndWait();
+    }
+
+    private record ReadyLink(FilePresentation file, boolean registeredNow) { }
 
     private void showReferenceError(RuntimeException error) {
         Alert alert = new Alert(Alert.AlertType.ERROR, error.getMessage(), ButtonType.OK);
