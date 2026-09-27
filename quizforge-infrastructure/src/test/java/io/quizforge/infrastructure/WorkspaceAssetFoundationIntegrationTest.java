@@ -112,24 +112,27 @@ class WorkspaceAssetFoundationIntegrationTest {
 
     @Test void scansDeclaredAssetsAndSkipsOrdinaryAndInternalFiles() throws Exception {
         Path custom = Files.createDirectories(root.resolve("notes/semester-one"));
-        Files.writeString(custom.resolve("study.markdown"), DOCUMENT, StandardCharsets.UTF_8);
+        Files.writeString(custom.resolve("study.md"), DOCUMENT, StandardCharsets.UTF_8);
         Files.writeString(root.resolve("question-banks/quiz.qbank"),
                 "{\"format\":\"quizforge-question-bank\",\"schemaVersion\":\"1.0\","
                 + "\"id\":\"qb_java\",\"title\":\"Java Quiz\","
                 + "\"questions\":[{\"stem\":\"Example\"}]}");
         Files.writeString(root.resolve("sources/plain.md"), "# An ordinary note");
+        Files.writeString(root.resolve("documents/ignored.markdown"),
+                DOCUMENT.replace("doc_java", "doc_ignored"));
         Files.writeString(root.resolve(".quizforge/internal.md"), DOCUMENT);
         var assets = scanner.scan(workspace.id());
         assertEquals(2, assets.size());
         var document = index.findById(workspace.id(), "doc_java").orElseThrow();
         assertEquals(AssetType.STANDARD_DOCUMENT, document.assetType());
-        assertEquals("notes/semester-one/study.markdown", document.currentPath());
+        assertEquals("notes/semester-one/study.md", document.currentPath());
         assertEquals("Java Study", document.title());
         var bank = index.findById(workspace.id(), "qb_java").orElseThrow();
         assertEquals(AssetType.QUESTION_BANK, bank.assetType());
         assertEquals("question-banks/quiz.qbank", bank.currentPath());
         assertEquals("Java Quiz", bank.title());
         assertEquals(assets, index.list(workspace.id()));
+        assertTrue(index.findById(workspace.id(), "doc_ignored").isEmpty());
     }
 
     @Test void renameAndMoveUpdatePathWithoutChangingAssetId() throws Exception {
@@ -140,10 +143,10 @@ class WorkspaceAssetFoundationIntegrationTest {
                 .orElseThrow().currentPath());
         String originalContentId = index.findById(workspace.id(), "doc_java")
                 .orElseThrow().contentId();
-        Path renamed = root.resolve("documents/renamed.markdown");
+        Path renamed = root.resolve("documents/renamed.md");
         Files.move(original, renamed);
         scanner.scan(workspace.id());
-        assertEquals("documents/renamed.markdown", index.findById(workspace.id(), "doc_java")
+        assertEquals("documents/renamed.md", index.findById(workspace.id(), "doc_java")
                 .orElseThrow().currentPath());
         assertEquals(originalContentId, index.findById(workspace.id(), "doc_java")
                 .orElseThrow().contentId());

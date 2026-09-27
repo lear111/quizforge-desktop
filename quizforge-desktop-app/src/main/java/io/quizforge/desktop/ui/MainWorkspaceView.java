@@ -1,14 +1,20 @@
 package io.quizforge.desktop.ui;
 
 import io.quizforge.core.document.qdoc.QDocFileEditService;
+import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceFileService;
+import io.quizforge.core.workspace.WorkspaceFileEntry;
+import io.quizforge.core.workspace.WorkspaceFileKind;
+import io.quizforge.core.workspace.WorkspaceFileType;
 import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.core.workspace.WorkspaceService;
 import java.util.function.BiConsumer;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 
@@ -25,15 +31,29 @@ final class MainWorkspaceView extends BorderPane {
     MainWorkspaceView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceHistory history,
             FilePresentationLoader loader, QuestionBankReferenceResolver references, Stage stage,
             Runnable settings, BiConsumer<WorkspaceId, FilePresentation> ai,
-            QDocFileEditService qdocEdits, QuestionBankFileEditService bankEdits) {
+            QDocFileEditService qdocEdits, QuestionBankFileEditService bankEdits,
+            MarkdownFileEditService markdownEdits) {
         this.workspaces = workspaces;
         this.files = files;
         this.history = history;
         this.stage = stage;
         setId("main-workspace");
         getStyleClass().add("workspace-shell");
-        filePane = new FilePane(loader, references, ai, qdocEdits, bankEdits);
-        sidebar = new WorkspaceSidebar(entry -> { if (current != null) filePane.open(current.id(), entry.relativePath()); }, settings);
+        filePane = new FilePane(loader, references, ai, qdocEdits, bankEdits,
+                markdownEdits, this::refreshTree);
+        sidebar = new WorkspaceSidebar(entry -> {
+            if (current != null) filePane.open(current.id(), entry.relativePath());
+        }, new WorkspaceFileTree.FileActions() {
+            @Override public void createFolder(String parent) { MainWorkspaceView.this.createFolder(parent); }
+            @Override public void createFile(String parent, WorkspaceFileType type) {
+                MainWorkspaceView.this.createFile(parent, type);
+            }
+            @Override public void copyPath(String path, boolean absolute) {
+                MainWorkspaceView.this.copyPath(path, absolute);
+            }
+            @Override public void rename(WorkspaceFileEntry entry) { MainWorkspaceView.this.rename(entry); }
+            @Override public void delete(WorkspaceFileEntry entry) { MainWorkspaceView.this.delete(entry); }
+        }, settings);
         filePane.setMinWidth(320);
         SplitPane split = new SplitPane(sidebar, filePane);
         split.setId("workspace-split");
@@ -64,7 +84,106 @@ final class MainWorkspaceView extends BorderPane {
 
     private void updateSwitcher() {
         sidebar.switcher().update(current, history.order(workspaces.listWorkspaces()), this::switchWorkspace,
-                this::openWorkspace, this::newWorkspace, this::refresh);
+                this::openWorkspace, this::newWorkspace, this::refresh,
+                () -> createFolder(""), type -> createFile("", type));
+    }
+
+    private void createFolder(String parent) {
+        askName("新建文件夹", "文件夹名称", "").ifPresent(name -> {
+            try {
+                String path = files.createFolder(current.id(), parent, name);
+                refreshTree();
+                selectPath(path);
+            } catch (RuntimeException error) { showFileError("无法新建文件夹", error); }
+        });
+    }
+
+    private void createFile(String parent, WorkspaceFileType type) {
+        askName("新建 " + type.extension() + " 文件", "文件名称", "").ifPresent(name -> {
+            try {
+                String path = files.createFile(current.id(), parent, name, type);
+                refreshTree();
+                selectPath(path);
+            } catch (RuntimeException error) { showFileError("无法新建文件", error); }
+        });
+    }
+
+    private void copyPath(String path, boolean absolute) {
+        try {
+            String value = absolute ? files.absolutePath(current.id(), path).toString() : path;
+            ClipboardContent content = new ClipboardContent();
+            content.putString(value);
+            Clipboard.getSystemClipboard().setContent(content);
+        } catch (RuntimeException error) { showFileError("无法复制文件路径", error); }
+    }
+
+    private void rename(WorkspaceFileEntry entry) {
+        askName("重命名", "新名称", entry.name()).ifPresent(name -> {
+            String active = activePath();
+            boolean affectsActive = contains(entry.relativePath(), active);
+            if (affectsActive && filePane.hasUnsavedChanges() && !confirmDiscard()) return;
+            try {
+                String renamed = files.rename(current.id(), entry.relativePath(), name);
+                if (affectsActive) filePane.clear();
+                refreshTree();
+                if (affectsActive) selectPath(renamed + active.substring(entry.relativePath().length()));
+                else selectPath(renamed);
+            } catch (RuntimeException error) { showFileError("无法重命名", error); }
+        });
+    }
+
+    private void delete(WorkspaceFileEntry entry) {
+        boolean folder = entry.kind() == WorkspaceFileKind.DIRECTORY;
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                folder ? "将永久删除此文件夹及其中所有文件，包括文件树中隐藏的文件。"
+                        : "将永久删除此文件。",
+                ButtonType.CANCEL, ButtonType.OK);
+        confirm.initOwner(stage);
+        confirm.setHeaderText("删除 “" + entry.name() + "”？");
+        UiTheme.apply(confirm);
+        if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+        boolean affectsActive = contains(entry.relativePath(), activePath());
+        if (affectsActive && filePane.hasUnsavedChanges() && !confirmDiscard()) return;
+        try {
+            files.delete(current.id(), entry.relativePath());
+            if (affectsActive) filePane.clear();
+            refreshTree();
+        } catch (RuntimeException error) { showFileError("无法删除", error); }
+    }
+
+    private boolean confirmDiscard() {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "当前文件有未保存的修改，继续操作会丢弃这些修改。", ButtonType.CANCEL, ButtonType.OK);
+        confirm.initOwner(stage);
+        confirm.setHeaderText("继续操作？");
+        UiTheme.apply(confirm);
+        return confirm.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK;
+    }
+
+    private String activePath() {
+        return filePane.currentFile() == null ? null : filePane.currentFile().file().entry().relativePath();
+    }
+
+    private boolean contains(String path, String active) {
+        return active != null && (active.equals(path) || active.startsWith(path + "/"));
+    }
+
+    private java.util.Optional<String> askName(String title, String label, String initial) {
+        TextInputDialog dialog = new TextInputDialog(initial);
+        dialog.initOwner(stage);
+        UiTheme.apply(dialog);
+        dialog.setTitle(title);
+        dialog.setHeaderText(title);
+        dialog.setContentText(label);
+        return dialog.showAndWait();
+    }
+
+    private void showFileError(String title, RuntimeException error) {
+        Alert alert = new Alert(Alert.AlertType.ERROR, error.getMessage(), ButtonType.OK);
+        alert.initOwner(stage);
+        UiTheme.apply(alert);
+        alert.setHeaderText(title);
+        alert.showAndWait();
     }
 
     private void refreshTree() {
@@ -80,6 +199,7 @@ final class MainWorkspaceView extends BorderPane {
     }
 
     void refresh() {
+        if (filePane.hasUnsavedChanges() && !confirmDiscard()) return;
         String path = filePane.currentFile() == null ? null : filePane.currentFile().file().entry().relativePath();
         filePane.clear();
         refreshTree();

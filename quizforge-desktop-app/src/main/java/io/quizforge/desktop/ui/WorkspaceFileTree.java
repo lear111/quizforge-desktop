@@ -11,6 +11,10 @@ import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.OverrunStyle;
+import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.animation.Interpolator;
 import javafx.animation.Timeline;
 import javafx.animation.KeyFrame;
@@ -19,12 +23,24 @@ import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.layout.StackPane;
 import javafx.scene.shape.SVGPath;
 import javafx.util.Duration;
 
 final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
-    WorkspaceFileTree(Consumer<WorkspaceFileEntry> open) {
+    interface FileActions {
+        void createFolder(String parentPath);
+        void createFile(String parentPath, io.quizforge.core.workspace.WorkspaceFileType type);
+        void copyPath(String path, boolean absolute);
+        void rename(WorkspaceFileEntry entry);
+        void delete(WorkspaceFileEntry entry);
+    }
+
+    private final FileActions actions;
+
+    WorkspaceFileTree(Consumer<WorkspaceFileEntry> open, FileActions actions) {
+        this.actions = actions;
         setId("workspace-file-tree");
         setShowRoot(false);
         setCellFactory(ignored -> new FileCell());
@@ -58,6 +74,11 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
             // Handle the whole folder row, including its disclosure node, exactly once per click.
             // Suppress the default TreeCell double-click behavior for folders only.
             addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+                if (event.getButton() == MouseButton.SECONDARY) {
+                    // Opening the context menu must not switch away from an unsaved editor.
+                    event.consume();
+                    return;
+                }
                 if (!folderClick(event)) return;
                 getTreeView().requestFocus();
                 getTreeView().getSelectionModel().select(getTreeItem());
@@ -65,12 +86,26 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
                 event.consume();
             });
             addEventFilter(MouseEvent.MOUSE_RELEASED, event -> {
+                if (event.getButton() == MouseButton.SECONDARY) {
+                    event.consume();
+                    return;
+                }
                 if (folderClick(event)) event.consume();
             });
             addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
+                if (event.getButton() == MouseButton.SECONDARY) {
+                    event.consume();
+                    return;
+                }
                 if (!folderClick(event)) return;
                 if (event.isStillSincePress()) getTreeItem().setExpanded(!getTreeItem().isExpanded());
                 event.consume();
+            });
+            addEventFilter(ContextMenuEvent.CONTEXT_MENU_REQUESTED, event -> {
+                if (!isEmpty() && getContextMenu() != null) {
+                    getContextMenu().show(this, event.getScreenX(), event.getScreenY());
+                    event.consume();
+                }
             });
         }
 
@@ -80,7 +115,9 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
         }
         @Override protected void updateItem(WorkspaceFileEntry entry, boolean empty) {
             super.updateItem(entry, empty);
-            if (empty || entry == null) { setText(null); setGraphic(null); setTooltip(null); return; }
+            if (empty || entry == null) {
+                setText(null); setGraphic(null); setTooltip(null); setContextMenu(null); return;
+            }
             filename.setText(entry.name());
             setTooltip(filename);
             setText(entry.name());
@@ -93,6 +130,42 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
             // Expansion reconfigures virtualized cells. Reuse styled graphics rather than
             // inserting a fresh, temporarily unstyled SVG on every updateItem call.
             setGraphic(icons.computeIfAbsent(icon, UiTheme::icon));
+            setContextMenu(menu(entry));
+        }
+
+        private ContextMenu menu(WorkspaceFileEntry entry) {
+            ContextMenu menu = new ContextMenu();
+            if (entry.kind() == WorkspaceFileKind.DIRECTORY) {
+                menu.getItems().add(action("新建文件夹", "folder-new-folder",
+                        () -> actions.createFolder(entry.relativePath())));
+                menu.getItems().add(action("新建 .md 文件", "folder-new-md",
+                        () -> actions.createFile(entry.relativePath(),
+                                io.quizforge.core.workspace.WorkspaceFileType.MARKDOWN)));
+                menu.getItems().add(action("新建 .qbank 文件", "folder-new-qbank",
+                        () -> actions.createFile(entry.relativePath(),
+                                io.quizforge.core.workspace.WorkspaceFileType.QUESTION_BANK)));
+                menu.getItems().add(action("新建 .qdoc 文件", "folder-new-qdoc",
+                        () -> actions.createFile(entry.relativePath(),
+                                io.quizforge.core.workspace.WorkspaceFileType.QDOC)));
+                menu.getItems().add(new SeparatorMenuItem());
+            }
+            Menu copy = new Menu("复制文件路径");
+            copy.setId("copy-file-path");
+            copy.getItems().addAll(action("复制相对路径", "copy-relative-path",
+                    () -> actions.copyPath(entry.relativePath(), false)),
+                    action("复制绝对路径", "copy-absolute-path",
+                            () -> actions.copyPath(entry.relativePath(), true)));
+            menu.getItems().addAll(copy, new SeparatorMenuItem(),
+                    action("重命名", "rename-file-entry", () -> actions.rename(entry)),
+                    action("删除", "delete-file-entry", () -> actions.delete(entry)));
+            return menu;
+        }
+
+        private MenuItem action(String text, String id, Runnable run) {
+            MenuItem item = new MenuItem(text);
+            item.setId(id);
+            item.setOnAction(event -> run.run());
+            return item;
         }
     }
 

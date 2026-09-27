@@ -11,13 +11,14 @@ final class WorkspaceSidebar extends VBox {
     private final WorkspaceSwitcher switcher = new WorkspaceSwitcher();
     private final WorkspaceFileTree tree;
 
-    WorkspaceSidebar(Consumer<WorkspaceFileEntry> open, Runnable settings) {
+    WorkspaceSidebar(Consumer<WorkspaceFileEntry> open, WorkspaceFileTree.FileActions actions,
+            Runnable settings) {
         setId("workspace-sidebar");
         getStyleClass().add("workspace-sidebar");
         setMinWidth(190);
         setPrefWidth(250);
         setMaxWidth(600);
-        tree = new WorkspaceFileTree(open);
+        tree = new WorkspaceFileTree(open, actions);
         tree.setMinHeight(0);
         VBox.setVgrow(tree, Priority.ALWAYS);
         Button settingsButton = UiTheme.iconButton("settings", "设置", settings);

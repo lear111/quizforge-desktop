@@ -9,6 +9,8 @@ import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.geometry.Pos;
+import javafx.application.Platform;
 
 /** A small block editor backed only by the structured QDoc model. */
 final class QDocEditorView extends VBox {
@@ -25,10 +27,11 @@ final class QDocEditorView extends VBox {
         setId("qdoc-editor-view");
         getStyleClass().add("qdoc-editor");
         setSpacing(16);
-        setMaxWidth(880);
-        Button saveButton = UiTheme.button("Save", "check", "qdoc-save", this::save);
-        saveButton.setId("qdoc-save");
-        getChildren().addAll(saveButton, errors, body);
+        setMaxWidth(820);
+        errors.setManaged(false);
+        errors.managedProperty().bind(javafx.beans.binding.Bindings.isNotEmpty(errors.getChildren()));
+        getChildren().addAll(EditorUi.toolbar("模板文档 · 通用知识", "qdoc-save", this::save), errors, body);
+        EditorUi.saveShortcut(this, this::save);
         render();
     }
 
@@ -60,35 +63,39 @@ final class QDocEditorView extends VBox {
     private void render() {
         body.getChildren().clear();
         TextField title = new TextField(model.document().title());
-        title.setPromptText("Document title");
+        title.setPromptText("文档标题");
+        title.getStyleClass().add("editor-document-title");
         title.setId("qdoc-document-title");
         title.textProperty().addListener((obs, old, value) -> model.setDocumentTitle(value));
         body.getChildren().add(title);
         if (!model.hasContent()) {
-            VBox empty = UiTheme.quietState("Empty document", "Add a block to begin.");
+            VBox empty = UiTheme.quietState("开始组织你的文档", "点击章节旁的 + 添加模板块，再填写内容。样式由模板统一呈现。");
             empty.setId("qdoc-empty-state");
-            Button generate = UiTheme.button("Generate with AI", "spark", "qdoc-ai-action", ai);
+            Button generate = UiTheme.button("使用 AI 生成", "spark", "qdoc-ai-action", ai);
             generate.setId("qdoc-empty-ai");
             empty.getChildren().add(generate);
             body.getChildren().add(empty);
         }
-        body.getChildren().add(addMenu(List.of()));
         int number = 0;
         for (DocumentNode node : model.document().content()) {
             number++;
             body.getChildren().add(renderNode(node, List.of(number - 1), String.valueOf(number)));
         }
+        body.getChildren().add(addMenu(List.of()));
     }
 
     private VBox renderNode(DocumentNode node, List<Integer> path, String number) {
         VBox card = new VBox(8);
-        card.getStyleClass().add("qdoc-block");
+        card.getStyleClass().addAll("qdoc-node", "qdoc-depth-" + path.size());
         card.setId("qdoc-node-" + key(path));
         TextField title = new TextField(node.title());
+        title.setMinWidth(40);
+        title.setPromptText(nodeLabel(node.type()) + "标题");
+        title.getStyleClass().add("qdoc-heading-input");
         title.setId("qdoc-node-title-" + key(path));
         title.textProperty().addListener((obs, old, value) -> model.setNodeTitle(path, value));
-        HBox heading = new HBox(8, UiTheme.label(number, "qdoc-number"),
-                UiTheme.label(node.type().name(), "qdoc-type"), title, addMenu(path), deleteMenu(path));
+        HBox heading = new HBox(6, UiTheme.label(number, "qdoc-number"), title, addMenu(path), deleteMenu(path));
+        heading.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(title, Priority.ALWAYS);
         card.getChildren().add(heading);
         int childNumber = 0;
@@ -107,18 +114,24 @@ final class QDocEditorView extends VBox {
         VBox card = new VBox(5);
         card.getStyleClass().add("qdoc-block");
         card.setId("qdoc-block-" + key(path));
-        HBox header = new HBox(8, UiTheme.label(block.type().name(), "qdoc-type"), deleteMenu(path));
+        var caption = UiTheme.label(blockLabel(block.type()), "qdoc-type");
+        caption.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(caption, Priority.ALWAYS);
+        HBox header = new HBox(8, caption, deleteMenu(path));
+        header.setAlignment(Pos.CENTER_LEFT);
         card.getChildren().add(header);
         if (block.type() == ContentBlockType.BULLET_LIST || block.type() == ContentBlockType.ORDERED_LIST) {
             for (int i = 0; i < block.items().size(); i++) {
                 final int item = i;
                 TextField field = new TextField(block.items().get(i));
                 field.setId("qdoc-list-item-" + key(path) + "-" + i);
+                field.setMinWidth(40);
+                HBox.setHgrow(field, Priority.ALWAYS);
                 field.textProperty().addListener((obs, old, value) -> model.setListItem(path, item, value));
                 card.getChildren().add(new HBox(8, UiTheme.label(block.type() == ContentBlockType.BULLET_LIST
                         ? "•" : (i + 1) + ".", "qdoc-number"), field));
             }
-            Button addItem = UiTheme.button("+ List item", "plus", "qdoc-add-item", () -> {
+            Button addItem = UiTheme.button("添加列表项", "plus", "qdoc-add-item", () -> {
                 model.addListItem(path); render();
             });
             addItem.setId("qdoc-add-item-" + key(path));
@@ -126,13 +139,13 @@ final class QDocEditorView extends VBox {
         } else {
             if (block.type() == ContentBlockType.CODE_BLOCK) {
                 TextField language = new TextField(block.language() == null ? "" : block.language());
-                language.setPromptText("Language (optional)");
+                language.setPromptText("代码语言（可选）");
+                language.getStyleClass().add("qdoc-code-language");
                 language.textProperty().addListener((obs, old, value) -> model.setCodeLanguage(path, value));
                 card.getChildren().add(language);
             }
-            TextArea content = new TextArea(block.text());
-            content.setId("qdoc-block-text-" + key(path));
-            content.setPrefRowCount(block.type() == ContentBlockType.CODE_BLOCK ? 6 : 3);
+            TextArea content = EditorUi.content(block.text(), "qdoc-block-text-" + key(path), block.type() == ContentBlockType.CODE_BLOCK);
+            content.setPromptText("填写" + blockLabel(block.type()) + "内容…");
             content.textProperty().addListener((obs, old, value) -> model.setBlockText(path, value));
             card.getChildren().add(content);
         }
@@ -140,30 +153,41 @@ final class QDocEditorView extends VBox {
     }
 
     private MenuButton addMenu(List<Integer> parent) {
-        MenuButton menu = new MenuButton("+");
+        MenuButton menu = EditorUi.menu("plus", parent.isEmpty() ? "添加章节" : "添加模板块");
+        if (parent.isEmpty()) menu.setText("添加章节");
         menu.setId("qdoc-add-" + key(parent));
-        menu.setAccessibleText("Add Block");
         menu.getStyleClass().add("qdoc-add-block");
         for (DocumentNodeType type : DocumentNodeType.values()) {
             if (!model.allowedNodes(parent).contains(type)) continue;
-            MenuItem item = new MenuItem(type.name());
-            item.setOnAction(event -> { model.addNode(parent, type); render(); });
+            MenuItem item = new MenuItem(nodeLabel(type));
+            item.setUserData(type.name());
+            item.setOnAction(event -> {
+                int next = parent.isEmpty() ? model.document().content().size() : ((DocumentNode) model.element(parent)).children().size();
+                model.addNode(parent, type); render();
+                focus("qdoc-node-title-" + key(childPath(parent, next)));
+            });
             menu.getItems().add(item);
         }
         for (ContentBlockType type : ContentBlockType.values()) {
             if (!model.allowedBlocks(parent).contains(type)) continue;
-            MenuItem item = new MenuItem(type.name());
-            item.setOnAction(event -> { model.addBlock(parent, type); render(); });
+            MenuItem item = new MenuItem(blockLabel(type));
+            item.setUserData(type.name());
+            item.setOnAction(event -> {
+                int next = ((DocumentNode) model.element(parent)).children().size();
+                model.addBlock(parent, type); render();
+                String path = key(childPath(parent, next));
+                focus(type == ContentBlockType.BULLET_LIST || type == ContentBlockType.ORDERED_LIST
+                        ? "qdoc-list-item-" + path + "-0" : "qdoc-block-text-" + path);
+            });
             menu.getItems().add(item);
         }
         return menu;
     }
 
     private MenuButton deleteMenu(List<Integer> path) {
-        MenuButton menu = new MenuButton("⋯");
+        MenuButton menu = EditorUi.menu("more", "模板块操作");
         menu.setId("qdoc-more-" + key(path));
-        menu.setAccessibleText("Block actions");
-        MenuItem delete = new MenuItem("Delete");
+        MenuItem delete = new MenuItem("删除此块");
         delete.setOnAction(event -> {
             DocumentElement target = model.element(path);
             if (target instanceof DocumentNode node && !node.children().isEmpty()) {
@@ -180,6 +204,24 @@ final class QDocEditorView extends VBox {
         });
         menu.getItems().add(delete);
         return menu;
+    }
+
+    private void focus(String id) {
+        Platform.runLater(() -> {
+            Node target = lookup("#" + id);
+            if (target instanceof TextInputControl input) { input.requestFocus(); input.selectAll(); }
+        });
+    }
+
+    private String nodeLabel(DocumentNodeType type) {
+        return switch (type) { case CHAPTER -> "章节"; case SECTION -> "小节"; case SUBSECTION -> "子节"; };
+    }
+
+    private String blockLabel(ContentBlockType type) {
+        return switch (type) {
+            case PARAGRAPH -> "正文"; case BULLET_LIST -> "无序列表"; case ORDERED_LIST -> "有序列表";
+            case CODE_BLOCK -> "代码"; case QUOTE -> "引用";
+        };
     }
 
     private int[] countChildren(DocumentNode node) {

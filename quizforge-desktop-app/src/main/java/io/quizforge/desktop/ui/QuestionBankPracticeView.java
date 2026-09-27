@@ -9,8 +9,6 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 /** One question at a time; answer state never alters the .qbank file. */
@@ -38,7 +36,8 @@ final class QuestionBankPracticeView extends VBox {
         ProgressBar progress = new ProgressBar((session.index() + 1.0) / session.bank().questions().size());
         progress.setMaxWidth(Double.MAX_VALUE);
         getChildren().addAll(position, progress, UiTheme.label(question.stem(), "question-stem"));
-        Button submit = new Button("确认答案");
+        Button submit = UiTheme.iconButton("check", "确认答案", () -> { });
+        submit.getStyleClass().add("practice-submit");
         submit.setId("submit-answer");
         submit.setDisable(state != QuestionBankPracticeSession.State.SELECTED);
         ToggleGroup group = new ToggleGroup();
@@ -73,7 +72,6 @@ final class QuestionBankPracticeView extends VBox {
         }
         getChildren().add(options);
         submit.setOnAction(event -> { session.submit(); render(); });
-        getChildren().add(submit);
         if (state == QuestionBankPracticeSession.State.SUBMITTED) {
             VBox feedback = new VBox(12, UiTheme.label(session.correct() ? "回答正确" : "回答错误",
                     session.correct() ? "answer" : "incorrect"),
@@ -85,19 +83,20 @@ final class QuestionBankPracticeView extends VBox {
                     "来源：" + ref.documentTitle() + " / " + ref.sectionTitle(), "muted"));
             getChildren().add(feedback);
         }
-        Button previous = new Button("上一题");
+        Button previous = UiTheme.iconButton("arrow-left", "上一题", () -> { });
         previous.setId("previous-question");
         previous.setDisable(session.index() == 0);
         previous.setOnAction(event -> { session.previous(); render(); });
-        Button next = new Button(session.index() == session.bank().questions().size() - 1 ? "完成练习" : "下一题");
+        boolean last = session.index() == session.bank().questions().size() - 1;
+        Button next = UiTheme.iconButton(last ? "finish" : "arrow", last ? "完成练习" : "下一题", () -> { });
         next.setId("next-question");
         next.setDisable(session.index() == session.bank().questions().size() - 1
                 && !session.canFinish());
         next.setOnAction(event -> { session.next(); render(); });
-        Region space = new Region();
-        HBox.setHgrow(space, Priority.ALWAYS);
-        HBox navigation = new HBox(previous, space, next);
-        navigation.setAlignment(Pos.CENTER_LEFT);
+        HBox navigation = new HBox(52, previous, submit, next);
+        navigation.setId("practice-navigation");
+        navigation.getStyleClass().add("practice-navigation");
+        navigation.setAlignment(Pos.CENTER);
         getChildren().add(navigation);
     }
 

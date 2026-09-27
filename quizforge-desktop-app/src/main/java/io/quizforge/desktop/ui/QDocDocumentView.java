@@ -53,9 +53,13 @@ final class QDocDocumentView {
                 page.getChildren().add(UiTheme.label(marker + block.items().get(i), "preview-paragraph"));
             }
         } else {
-            String value = block.type() == ContentBlockType.QUOTE ? "❝ " + block.text() : block.text();
-            page.getChildren().add(UiTheme.label(value,
-                    block.type() == ContentBlockType.CODE_BLOCK ? "preview-code" : "preview-paragraph"));
+            var text = UiTheme.label(block.text(), block.type() == ContentBlockType.CODE_BLOCK ? "preview-code" : "preview-paragraph");
+            text.setMaxWidth(Double.MAX_VALUE);
+            if (block.type() == ContentBlockType.QUOTE) {
+                VBox quote = new VBox(text);
+                quote.getStyleClass().add("preview-quote");
+                page.getChildren().add(quote);
+            } else page.getChildren().add(text);
         }
     }
 }

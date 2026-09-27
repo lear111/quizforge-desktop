@@ -74,7 +74,8 @@ public final class LocalStandardDocumentFileStorage implements StandardDocumentF
             String currentPath, String content) {
         Path root = paths.workspaceRoot(workspaceId);
         Path target = assetPath(root, currentPath);
-        if (content.stripLeading().startsWith("{") != currentPath.toLowerCase(java.util.Locale.ROOT).endsWith(".qdoc")) {
+        if (currentPath.toLowerCase(java.util.Locale.ROOT).endsWith(".qdoc")
+                && !content.stripLeading().startsWith("{")) {
             throw failure("replace a document with a different file format", null);
         }
         if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(target)) {

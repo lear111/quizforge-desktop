@@ -46,7 +46,7 @@ class MainWorkspaceViewTest {
             stage.setScene(scene);
             stage.setOpacity(0);
             stage.show();
-        });
+        }, 120); // Native JavaFX window initialization can be slow on a busy Windows desktop.
     }
 
     @AfterEach void close() throws Exception {
@@ -131,14 +131,14 @@ class MainWorkspaceViewTest {
             button("qdoc-empty-ai").fire();
             assertEquals(1, fixture.aiOpened.get());
             MenuButton root = (MenuButton) shell.lookup("#qdoc-add-root");
-            assertEquals(List.of("CHAPTER"), root.getItems().stream().map(MenuItem::getText).toList());
+            assertEquals(List.of("CHAPTER"), root.getItems().stream().map(MenuItem::getUserData).toList());
             MenuButton chapterMenu = (MenuButton) shell.lookup("#qdoc-add-0");
-            assertTrue(chapterMenu.getItems().stream().anyMatch(item -> item.getText().equals("SECTION")));
-            assertFalse(chapterMenu.getItems().stream().anyMatch(item -> item.getText().equals("CODE_BLOCK")));
+            assertTrue(chapterMenu.getItems().stream().anyMatch(item -> "SECTION".equals(item.getUserData())));
+            assertFalse(chapterMenu.getItems().stream().anyMatch(item -> "CODE_BLOCK".equals(item.getUserData())));
             MenuButton sectionMenu = (MenuButton) shell.lookup("#qdoc-add-0-0");
-            assertTrue(sectionMenu.getItems().stream().anyMatch(item -> item.getText().equals("SUBSECTION")));
-            assertFalse(sectionMenu.getItems().stream().anyMatch(item -> item.getText().equals("CHAPTER")));
-            sectionMenu.getItems().stream().filter(item -> item.getText().equals("PARAGRAPH"))
+            assertTrue(sectionMenu.getItems().stream().anyMatch(item -> "SUBSECTION".equals(item.getUserData())));
+            assertFalse(sectionMenu.getItems().stream().anyMatch(item -> "CHAPTER".equals(item.getUserData())));
+            sectionMenu.getItems().stream().filter(item -> "PARAGRAPH".equals(item.getUserData()))
                     .findFirst().orElseThrow().fire();
             shell.applyCss(); shell.layout();
             assertNotNull(shell.lookup("#qdoc-block-0-0-0"));
@@ -219,9 +219,39 @@ class MainWorkspaceViewTest {
             assertEquals(FileMode.EDIT, shell.filePane().mode());
             assertEquals("book-pen", toggle.getGraphic().getAccessibleText());
             assertEquals("切换到浏览模式", toggle.getTooltip().getText());
-            assertNotNull(shell.lookup("#editor-placeholder"));
+            TextArea source = (TextArea) shell.lookup("#markdown-source-text");
+            assertTrue(source.getText().contains("# 本周学习计划"));
             toggle.fire();
             assertEquals(FileMode.BROWSE, shell.filePane().mode());
+        });
+    }
+
+    @Test void markdownSourceEditSavesRealFileAndReloadsBrowse() throws Exception {
+        fx(() -> {
+            open("我的笔记/学习计划.md");
+            button("file-mode-toggle").fire();
+            TextArea source = (TextArea) shell.lookup("#markdown-source-text");
+            source.setText("# 更新后的计划\n\n```java\nclass Example {}\n```\n");
+            button("markdown-save").fire();
+            assertEquals(FileMode.BROWSE, shell.filePane().mode());
+            assertTrue(text(shell).contains("更新后的计划"));
+            assertEquals("# 更新后的计划\n\n```java\nclass Example {}\n```\n",
+                    Files.readString(fixture.alphaRoot.resolve("我的笔记/学习计划.md")));
+        });
+    }
+
+    @Test void formalMarkdownEditRetainsAssetIdAndRefreshesContentId() throws Exception {
+        fx(() -> {
+            open("Java/Java集合.md");
+            String before = shell.filePane().currentFile().file().entry().contentId();
+            button("file-mode-toggle").fire();
+            TextArea source = (TextArea) shell.lookup("#markdown-source-text");
+            source.setText(source.getText().replace("支持按索引访问", "可以按索引读取"));
+            button("markdown-save").fire();
+            assertEquals("doc_java", shell.filePane().currentFile().file().entry().assetId());
+            assertNotEquals(before, shell.filePane().currentFile().file().entry().contentId());
+            assertEquals("doc_java", fixture.files.open(fixture.alpha.id(), "Java/Java集合.md")
+                    .entry().assetId());
         });
     }
 
@@ -369,15 +399,57 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void fileTreeKeepsCustomFilesEmptyFoldersAndHidesQuizforge() throws Exception {
+    @Test void fileTreeKeepsFoldersAndOnlyThreeSupportedExtensions() throws Exception {
         fx(() -> {
             var paths = paths(shell.sidebar().tree().getRoot());
             assertTrue(paths.contains("空目录"));
-            assertTrue(paths.contains("原始材料/Java 官方文档.pdf"));
+            assertTrue(paths.contains("原始材料"));
+            assertFalse(paths.contains("原始材料/Java 官方文档.pdf"));
             assertTrue(paths.contains("Java/Java集合.md"));
             assertTrue(paths.stream().noneMatch(path -> path.contains(".quizforge")));
             var entries = shell.sidebar().tree().getRoot().getChildren().stream().map(TreeItem::getValue).toList();
             assertTrue(entries.getFirst().kind() == WorkspaceFileKind.DIRECTORY);
+        });
+    }
+
+    @Test void folderFileAndWorkspaceMenusExposeOnlyRelevantActions() throws Exception {
+        fx(() -> {
+            open("Java/Java集合.md");
+            var folderItems = folderCell("Java").getContextMenu().getItems();
+            assertEquals(java.util.Arrays.asList("folder-new-folder", "folder-new-md", "folder-new-qbank",
+                            "folder-new-qdoc", null, "copy-file-path", null,
+                            "rename-file-entry", "delete-file-entry"),
+                    folderItems.stream().map(MenuItem::getId).toList());
+            var fileItems = folderCell("Java/Java集合.md").getContextMenu().getItems();
+            assertEquals("copy-file-path", fileItems.getFirst().getId());
+            assertTrue(fileItems.stream().noneMatch(item -> item.getId() != null
+                    && item.getId().startsWith("folder-new-")));
+            Menu copy = (Menu) fileItems.getFirst();
+            assertEquals(List.of("copy-relative-path", "copy-absolute-path"),
+                    copy.getItems().stream().map(MenuItem::getId).toList());
+            var switcher = shell.sidebar().switcher().getItems();
+            assertTrue(switcher.stream().anyMatch(item -> "workspace-new-folder".equals(item.getId())));
+            Menu newFile = (Menu) switcher.stream().filter(item -> "workspace-new-file".equals(item.getId()))
+                    .findFirst().orElseThrow();
+            assertEquals(List.of(".md", ".qbank", ".qdoc"),
+                    newFile.getItems().stream().map(MenuItem::getText).toList());
+            assertTrue(switcher.stream().anyMatch(item -> "refresh-workspace".equals(item.getId())));
+        });
+    }
+
+    @Test void rightClickDoesNotDiscardTheOpenFile() throws Exception {
+        fx(() -> {
+            open("Java/Java集合.md");
+            TreeCell<?> target = folderCell("我的笔记/学习计划.md");
+            for (var type : List.of(javafx.scene.input.MouseEvent.MOUSE_PRESSED,
+                    javafx.scene.input.MouseEvent.MOUSE_RELEASED,
+                    javafx.scene.input.MouseEvent.MOUSE_CLICKED)) {
+                target.fireEvent(new javafx.scene.input.MouseEvent(type, 8, 8, 8, 8,
+                        javafx.scene.input.MouseButton.SECONDARY, 1, false, false, false, false,
+                        type == javafx.scene.input.MouseEvent.MOUSE_PRESSED,
+                        false, false, false, false, true, null));
+            }
+            assertEquals("Java/Java集合.md", shell.filePane().currentFile().file().entry().relativePath());
         });
     }
 
@@ -527,6 +599,36 @@ class MainWorkspaceViewTest {
         });
     }
 
+    @Test void practiceCentersShortQuestionsAndScrollsLongOnesWithSymbolControls() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            pulse(200);
+            ScrollPane scroll = (ScrollPane) shell.filePane().getCenter();
+            Node practice = shell.lookup("#question-practice");
+            var bounds = practice.getBoundsInParent();
+            assertEquals(scroll.getViewportBounds().getHeight() / 2,
+                    bounds.getMinY() + bounds.getHeight() / 2, 2);
+            var navigation = (javafx.scene.layout.HBox) shell.lookup("#practice-navigation");
+            assertEquals(List.of("previous-question", "submit-answer", "next-question"),
+                    navigation.getChildren().stream().map(Node::getId).toList());
+            for (Node child : navigation.getChildren()) {
+                Button control = (Button) child;
+                assertEquals("", control.getText());
+                assertNotNull(control.getTooltip());
+                assertNotNull(control.getGraphic());
+            }
+            ((Label) shell.lookup(".question-stem")).setText("这是一道包含大量背景信息的长题目，请阅读场景并选择正确答案。".repeat(90));
+            shell.layout(); pulse(200);
+            assertTrue(scroll.getContent().getBoundsInLocal().getHeight() > scroll.getViewportBounds().getHeight());
+            scroll.setVvalue(1); pulse(200);
+            var viewport = scroll.lookup(".viewport");
+            var visible = viewport.localToScene(viewport.getBoundsInLocal());
+            var controls = navigation.localToScene(navigation.getBoundsInLocal());
+            assertTrue(controls.getMinY() >= visible.getMinY());
+            assertTrue(controls.getMaxY() <= visible.getMaxY() + 1);
+        });
+    }
+
     private TreeCell<?> folderCell(String path) {
         shell.applyCss(); shell.layout();
         return shell.sidebar().tree().lookupAll(".tree-cell").stream().filter(TreeCell.class::isInstance)
@@ -563,6 +665,7 @@ class MainWorkspaceViewTest {
 
     static String text(Node node) {
         if (node == null) return "";
+        if (node instanceof javafx.scene.text.Text span) return span.getText();
         if (node instanceof ScrollPane scroll) return text(scroll.getContent());
         StringBuilder out = new StringBuilder(node instanceof Labeled label ? label.getText() + "\n" : "");
         if (node instanceof Parent parent) parent.getChildrenUnmodifiable().forEach(child -> out.append(text(child)));
@@ -570,9 +673,13 @@ class MainWorkspaceViewTest {
     }
 
     private static void fx(CheckedRunnable action) throws Exception {
+        fx(action, 40);
+    }
+
+    private static void fx(CheckedRunnable action, int timeoutSeconds) throws Exception {
         FutureTask<Void> task = new FutureTask<>(() -> { action.run(); return null; });
         Platform.runLater(task);
-        task.get(40, TimeUnit.SECONDS);
+        task.get(timeoutSeconds, TimeUnit.SECONDS);
     }
 
     private interface CheckedRunnable { void run() throws Exception; }

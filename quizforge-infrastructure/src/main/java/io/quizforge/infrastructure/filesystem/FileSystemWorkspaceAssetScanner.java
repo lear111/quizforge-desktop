@@ -113,7 +113,7 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
             return Optional.of(new Asset(document.id(), AssetType.STANDARD_DOCUMENT,
                     relative(root, file), document.title(), qdocs.contentId(document), document.schemaVersion()));
         }
-        if (legacyMarkdown && (lower.endsWith(".md") || lower.endsWith(".markdown"))) {
+        if (legacyMarkdown && lower.endsWith(".md")) {
             // Legacy formal Markdown remains discoverable until its compatibility path is retired.
             return standardDocument(root, file);
         }

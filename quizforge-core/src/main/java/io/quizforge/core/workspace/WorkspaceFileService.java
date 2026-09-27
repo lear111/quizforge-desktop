@@ -3,6 +3,8 @@ package io.quizforge.core.workspace;
 import io.quizforge.core.port.QuestionBankFileCodec;
 import io.quizforge.core.port.WorkspaceAssetScanner;
 import io.quizforge.core.port.WorkspaceFileCatalog;
+import io.quizforge.core.port.WorkspaceFileOperations;
+import java.nio.file.Path;
 
 /** File-first use cases for the desktop shell; asset scanning only enriches the filesystem view. */
 public final class WorkspaceFileService {
@@ -10,13 +12,42 @@ public final class WorkspaceFileService {
     private final WorkspaceAssetScanner scanner;
     private final WorkspaceFileCatalog catalog;
     private final QuestionBankFileCodec banks;
+    private final WorkspaceFileOperations operations;
 
     public WorkspaceFileService(WorkspaceService workspaces, WorkspaceAssetScanner scanner,
-            WorkspaceFileCatalog catalog, QuestionBankFileCodec banks) {
+            WorkspaceFileCatalog catalog, QuestionBankFileCodec banks,
+            WorkspaceFileOperations operations) {
         this.workspaces = workspaces;
         this.scanner = scanner;
         this.catalog = catalog;
         this.banks = banks;
+        this.operations = operations;
+    }
+
+    public String createFolder(WorkspaceId workspaceId, String parentPath, String name) {
+        workspaces.getWorkspace(workspaceId);
+        return operations.createFolder(workspaceId, parentPath, name);
+    }
+
+    public String createFile(WorkspaceId workspaceId, String parentPath, String name,
+            WorkspaceFileType type) {
+        workspaces.getWorkspace(workspaceId);
+        return operations.createFile(workspaceId, parentPath, name, type);
+    }
+
+    public String rename(WorkspaceId workspaceId, String relativePath, String name) {
+        workspaces.getWorkspace(workspaceId);
+        return operations.rename(workspaceId, relativePath, name);
+    }
+
+    public void delete(WorkspaceId workspaceId, String relativePath) {
+        workspaces.getWorkspace(workspaceId);
+        operations.delete(workspaceId, relativePath);
+    }
+
+    public Path absolutePath(WorkspaceId workspaceId, String relativePath) {
+        workspaces.getWorkspace(workspaceId);
+        return operations.absolutePath(workspaceId, relativePath);
     }
 
     public WorkspaceFileTree refresh(WorkspaceId workspaceId) {
@@ -33,6 +64,9 @@ public final class WorkspaceFileService {
         return switch (entry.kind()) {
             case MARKDOWN, STANDARD_DOCUMENT -> new OpenedWorkspaceFile(entry,
                     catalog.readText(workspaceId, relativePath), null);
+            case INVALID_STANDARD_DOCUMENT -> new OpenedWorkspaceFile(entry,
+                    relativePath.toLowerCase(java.util.Locale.ROOT).endsWith(".md")
+                            ? catalog.readText(workspaceId, relativePath) : null, null);
             case QUESTION_BANK -> {
                 String source = catalog.readText(workspaceId, relativePath);
                 yield new OpenedWorkspaceFile(entry, source, banks.parse(source));

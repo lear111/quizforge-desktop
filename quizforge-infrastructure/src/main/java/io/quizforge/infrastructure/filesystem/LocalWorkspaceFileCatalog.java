@@ -59,16 +59,12 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
 
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
-                    if (!file.getFileName().toString().equals(".quizforge")) {
-                        entries.add(attributes.isRegularFile() ? describe(root, file)
-                                : other(root, file, "Linked or unsupported file"));
-                    }
+                    if (attributes.isRegularFile() && supported(file)) entries.add(describe(root, file));
                     return FileVisitResult.CONTINUE;
                 }
 
                 @Override
                 public FileVisitResult visitFileFailed(Path file, IOException error) {
-                    entries.add(other(root, file, "Could not inspect file: " + error.getMessage()));
                     return FileVisitResult.CONTINUE;
                 }
             });
@@ -122,7 +118,7 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
                         null, null, null, error.getMessage());
             }
         }
-        if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
+        if (lower.endsWith(".md")) {
             if (!legacyMarkdown) {
                 return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.MARKDOWN,
                         null, null, null, null);
@@ -174,6 +170,11 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
     private WorkspaceFileEntry other(Path root, Path file, String issue) {
         return new WorkspaceFileEntry(relative(root, file), file.getFileName().toString(),
                 WorkspaceFileKind.OTHER, null, null, null, issue);
+    }
+
+    private boolean supported(Path file) {
+        String lower = file.getFileName().toString().toLowerCase(Locale.ROOT);
+        return lower.endsWith(".md") || lower.endsWith(".qdoc") || lower.endsWith(".qbank");
     }
 
     private Path checked(Path root, String relativePath) {

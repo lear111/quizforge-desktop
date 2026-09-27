@@ -6,6 +6,7 @@ import io.quizforge.core.ai.AiConnectionService;
 import io.quizforge.core.ai.AiSettingsService;
 import io.quizforge.core.document.DocumentNormalizationService;
 import io.quizforge.core.document.qdoc.QDocFileEditService;
+import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.material.MaterialService;
 import io.quizforge.core.port.AiProviderConfigRepository;
 import io.quizforge.core.port.AiProviderResolver;
@@ -25,6 +26,7 @@ import io.quizforge.core.port.FormalDocumentReader;
 import io.quizforge.core.port.QuestionBankFileCodec;
 import io.quizforge.core.port.QuestionBankFileStorage;
 import io.quizforge.core.port.WorkspaceFileCatalog;
+import io.quizforge.core.port.WorkspaceFileOperations;
 import io.quizforge.core.question.FileQuestionBankGenerationService;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
@@ -55,6 +57,7 @@ import io.quizforge.infrastructure.filesystem.QDocFormalDocumentReader;
 import io.quizforge.infrastructure.filesystem.LocalQuestionBankFileStorage;
 import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
 import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileCatalog;
+import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileOperations;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteAiProviderConfigRepository;
 import io.quizforge.infrastructure.persistence.SqliteMaterialRepository;
@@ -188,6 +191,12 @@ public class DesktopConfiguration {
     }
 
     @Bean
+    public MarkdownFileEditService markdownFileEditService(WorkspaceService workspaces,
+            FileDocumentStorage files, WorkspaceAssetScanner scanner) {
+        return new MarkdownFileEditService(workspaces, files, scanner);
+    }
+
+    @Bean
     public KnowledgeDocumentAssembler knowledgeDocumentAssembler() {
         return new QDocKnowledgeDocumentAssembler();
     }
@@ -252,9 +261,15 @@ public class DesktopConfiguration {
     }
 
     @Bean
+    public WorkspaceFileOperations workspaceFileOperations(QuizForgeDataDirectory directory) {
+        return new LocalWorkspaceFileOperations(new WorkspacePathResolver(directory));
+    }
+
+    @Bean
     public WorkspaceFileService workspaceFileService(WorkspaceService workspaces,
-            WorkspaceAssetScanner scanner, WorkspaceFileCatalog catalog, QuestionBankFileCodec banks) {
-        return new WorkspaceFileService(workspaces, scanner, catalog, banks);
+            WorkspaceAssetScanner scanner, WorkspaceFileCatalog catalog, QuestionBankFileCodec banks,
+            WorkspaceFileOperations operations) {
+        return new WorkspaceFileService(workspaces, scanner, catalog, banks, operations);
     }
 
     @Bean
@@ -307,9 +322,10 @@ public class DesktopConfiguration {
             WorkspaceFileCatalog catalog, QuestionBankReferenceResolver references, MaterialService materials,
             io.quizforge.core.document.FileStandardDocumentGenerationService documents,
             AiSettingsService settings, AiConnectionService connections, QuizForgeDataDirectory directory,
-            QDocFileEditService qdocEdits, QuestionBankFileEditService bankEdits) {
+            QDocFileEditService qdocEdits, QuestionBankFileEditService bankEdits,
+            MarkdownFileEditService markdownEdits) {
         return new DesktopView(workspaces, files, catalog, references, materials, documents,
                 settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"),
-                qdocEdits, bankEdits);
+                qdocEdits, bankEdits, markdownEdits);
     }
 }

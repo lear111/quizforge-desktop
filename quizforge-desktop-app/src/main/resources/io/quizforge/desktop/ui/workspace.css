@@ -277,7 +277,93 @@
 .qdoc-block .qdoc-add-block { -fx-opacity: 0.55; }
 .qdoc-block:hover .qdoc-add-block { -fx-opacity: 1; }
 .qdoc-editor .text-area { -fx-pref-width: 650; }
+.markdown-source-editor { -fx-padding: 16 20; }
+.markdown-source-editor .text-area { -fx-font-family: "Consolas", "Microsoft YaHei UI", monospace; -fx-font-size: 14px; }
 .qbank-editor { -fx-padding: 32 40; }
 .qbank-editor .text-area { -fx-pref-width: 650; }
 .qbank-editor .choice-box { -fx-min-width: 165; }
 .practice-result-score { -fx-font-size: 32px; -fx-font-weight: bold; -fx-text-fill: #51475f; }
+
+/* Reading and writing share a calm, readable page width. */
+.markdown-preview { -fx-padding: 42 40 72 40; -fx-spacing: 18; }
+.preview-heading-1 { -fx-font-size: 30px; -fx-padding: 0 0 12 0; }
+.preview-heading-2 { -fx-font-size: 23px; -fx-padding: 18 0 3 0; }
+.preview-heading-3 { -fx-font-size: 18px; -fx-padding: 12 0 2 0; }
+.preview-heading-4, .preview-heading-5, .preview-heading-6 { -fx-font-size: 15px; -fx-font-weight: bold; }
+.preview-paragraph, .prose-text { -fx-font-size: 15px; -fx-fill: #403d38; -fx-line-spacing: 6; }
+.prose-strong { -fx-font-weight: bold; }
+.prose-emphasis { -fx-font-style: italic; }
+.prose-code { -fx-font-family: "Consolas"; -fx-fill: #79608e; }
+.prose-link { -fx-fill: #79608e; -fx-underline: true; }
+.preview-code { -fx-padding: 16 18; -fx-font-size: 13px; -fx-background-radius: 5; }
+.preview-quote { -fx-border-color: #c9bdd8; -fx-border-width: 0 0 0 3; -fx-padding: 6 0 6 18; }
+.preview-list-marker { -fx-min-width: 22; -fx-font-size: 15px; -fx-text-fill: #8c8377; }
+.editor-caption { -fx-font-size: 11px; -fx-text-fill: #999084; }
+.editor-toolbar { -fx-padding: 0 0 16 0; }
+.qdoc-editor, .qbank-editor { -fx-padding: 22 40 64 40; -fx-spacing: 12; }
+.markdown-source-editor { -fx-padding: 22 40 32 40; -fx-spacing: 0; }
+.markdown-source-editor .text-area {
+    -fx-font-family: "Microsoft YaHei UI";
+    -fx-font-size: 15px;
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+    -fx-background-insets: 0;
+}
+.markdown-source-editor .text-area .content {
+    -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0 0 24 0;
+}
+.markdown-source-editor .text-area .scroll-pane,
+.markdown-source-editor .text-area .viewport { -fx-background-color: transparent; -fx-padding: 0; }
+.editor-document-title, .qdoc-editor .editor-document-title, .qbank-editor .editor-document-title {
+    -fx-font-size: 28px; -fx-font-weight: bold; -fx-padding: 4 0 18 0;
+    -fx-background-color: transparent; -fx-border-width: 0; -fx-background-insets: 0;
+}
+.qdoc-node { -fx-spacing: 10; -fx-padding: 16 0 4 0; }
+.qdoc-node .qdoc-node { -fx-padding: 10 0 0 0; }
+.qdoc-heading-input { -fx-background-color: transparent; -fx-border-width: 0; -fx-background-insets: 0; -fx-padding: 4 0; -fx-font-size: 21px; -fx-font-weight: bold; }
+.qdoc-depth-2 .qdoc-heading-input { -fx-font-size: 17px; }
+.qdoc-depth-3 .qdoc-heading-input { -fx-font-size: 15px; }
+.qdoc-block, .qdoc-block .qdoc-block {
+    -fx-background-color: transparent; -fx-border-width: 0 0 0 1; -fx-border-color: #e8e3dc;
+    -fx-border-radius: 0; -fx-padding: 0 0 4 14; -fx-spacing: 0;
+}
+.qdoc-type { -fx-font-size: 10px; -fx-text-fill: #a2998b; }
+.qdoc-number { -fx-text-fill: #a69b8b; -fx-min-width: 24; }
+.qdoc-block .text-field, .qbank-editor .text-field {
+    -fx-background-color: transparent; -fx-border-color: #e9e4dc; -fx-border-width: 0 0 1 0;
+    -fx-border-radius: 0; -fx-padding: 8 0; -fx-font-size: 14px;
+}
+.qdoc-block .text-field:focused, .qbank-editor .text-field:focused { -fx-border-color: #b9a9cd; }
+.qdoc-editor .text-area, .qbank-editor .text-area {
+    -fx-pref-width: 0; -fx-font-size: 15px; -fx-background-color: transparent;
+    -fx-background-insets: 0; -fx-border-width: 0; -fx-padding: 0;
+}
+.qdoc-editor .text-area .content, .qbank-editor .text-area .content {
+    -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 8 2;
+}
+.qdoc-editor .text-area:focused .content, .qbank-editor .text-area:focused .content { -fx-background-color: #f6f3ed; }
+.qdoc-editor .text-area .scroll-pane, .qdoc-editor .text-area .viewport,
+.qbank-editor .text-area .scroll-pane, .qbank-editor .text-area .viewport { -fx-background-color: transparent; }
+.qdoc-editor .block-code-input { -fx-font-family: "Consolas"; -fx-font-size: 13px; }
+.qdoc-editor .block-code-input .content { -fx-background-color: #f0ede7; -fx-padding: 12; }
+.qdoc-code-language { -fx-max-width: 150; }
+.editor-menu { -fx-background-color: transparent; -fx-border-width: 0; -fx-padding: 4; -fx-cursor: hand; }
+.editor-menu:hover, .editor-menu:showing { -fx-background-color: #eeebe5; -fx-background-radius: 4; }
+.editor-menu > .label { -fx-padding: 0 3; -fx-font-size: 12px; -fx-text-fill: #8b8173; }
+.editor-menu > .arrow-button { -fx-padding: 0; }
+.editor-menu > .arrow-button > .arrow { -fx-padding: 0; -fx-shape: ""; }
+.qdoc-block .qdoc-add-block { -fx-opacity: 1; }
+.text-action, .button.qdoc-add-item { -fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 6 0; -fx-text-fill: #8b8173; -fx-font-size: 12px; }
+.text-action:hover, .button.qdoc-add-item:hover { -fx-text-fill: #6c5489; }
+.qbank-edit-navigation { -fx-padding: 0 0 10 0; -fx-border-color: #ebe5dc; -fx-border-width: 0 0 1 0; }
+.qbank-editor .choice-box { -fx-min-width: 84; -fx-background-color: transparent; -fx-border-color: transparent; }
+.practice-view { -fx-padding: 32 40; -fx-spacing: 18; }
+.practice-view .section-title { -fx-font-size: 12px; -fx-font-weight: normal; -fx-text-fill: #999084; }
+.practice-view .question-stem { -fx-font-size: 22px; -fx-padding: 10 0 4 0; }
+.practice-view .radio-button, .practice-view .check-box { -fx-padding: 10 12; -fx-font-size: 15px; }
+.practice-view .radio-button:hover, .practice-view .check-box:hover { -fx-background-color: #f1ede6; -fx-background-radius: 5; }
+.practice-navigation { -fx-padding: 12 0 0 0; }
+.practice-navigation .button.icon-button { -fx-min-width: 38; -fx-min-height: 38; -fx-max-width: 38; -fx-max-height: 38; }
+.practice-navigation .practice-submit .line-icon { -fx-stroke: #78628f; -fx-stroke-width: 1.8; }
+.qbank-editor .editor-document-title { -fx-font-size: 28px; -fx-font-weight: bold; -fx-border-width: 0; -fx-padding: 4 0 18 0; }

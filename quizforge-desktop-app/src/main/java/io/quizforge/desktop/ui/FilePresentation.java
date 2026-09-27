@@ -11,6 +11,9 @@ record FilePresentation(OpenedWorkspaceFile file, boolean empty, boolean draft, 
     }
     WorkspaceFileKind kind() { return file.entry().kind(); }
     boolean asset() { return kind() == WorkspaceFileKind.STANDARD_DOCUMENT || kind() == WorkspaceFileKind.QUESTION_BANK; }
-    boolean supportsMode() { return asset() || kind() == WorkspaceFileKind.MARKDOWN; }
+    boolean supportsMode() { return asset() || kind() == WorkspaceFileKind.MARKDOWN
+            || kind() == WorkspaceFileKind.INVALID_STANDARD_DOCUMENT
+                    && file.sourceText() != null
+                    && file.entry().relativePath().toLowerCase(java.util.Locale.ROOT).endsWith(".md"); }
     boolean offersAi() { return asset() && empty; }
 }

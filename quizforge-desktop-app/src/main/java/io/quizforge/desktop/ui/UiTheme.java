@@ -69,6 +69,11 @@ final class UiTheme {
             case "panel" -> "M2 3 L18 3 L18 17 L2 17 Z M7 3 L7 17";
             case "upload" -> "M10 13 L10 2 M6 6 L10 2 L14 6 M3 12 L3 18 L17 18 L17 12";
             case "arrow" -> "M3 10 L17 10 M12 5 L17 10 L12 15";
+            case "arrow-left" -> "M17 10 L3 10 M8 5 L3 10 L8 15";
+            case "save" -> "M3 2 L15 2 L18 5 L18 18 L2 18 L2 2 Z M6 2 L6 8 L14 8 L14 2 M6 18 L6 12 L14 12 L14 18";
+            case "more" -> "M4 10 L4.1 10 M10 10 L10.1 10 M16 10 L16.1 10";
+            case "close" -> "M5 5 L15 15 M15 5 L5 15";
+            case "finish" -> "M4 18 L4 2 L16 2 L16 11 L4 11 M8 2 L8 11 M12 2 L12 11 M4 6.5 L16 6.5";
             case "spark" -> "M10 2 L12 8 L18 10 L12 12 L10 18 L8 12 L2 10 L8 8 Z";
             default -> throw new IllegalArgumentException("Unknown icon: " + name);
         });

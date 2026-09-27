@@ -1,6 +1,7 @@
 package io.quizforge.desktop.ui;
 
 import io.quizforge.core.document.qdoc.QDocFileEditService;
+import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.WorkspaceId;
@@ -18,6 +19,8 @@ final class FilePane extends BorderPane {
     private final BiConsumer<WorkspaceId, FilePresentation> aiAction;
     private final QDocFileEditService qdocEdits;
     private final QuestionBankFileEditService bankEdits;
+    private final MarkdownFileEditService markdownEdits;
+    private final Runnable refreshTree;
     private final FileViewerRouter router = new FileViewerRouter();
     private final AssetDetailsPopover details = new AssetDetailsPopover();
     private WorkspaceId workspace;
@@ -27,15 +30,19 @@ final class FilePane extends BorderPane {
     private Node browseContent;
     private QDocEditorView qdocEditor;
     private QuestionBankEditorView bankEditor;
+    private MarkdownSourceEditorView markdownEditor;
 
     FilePane(FilePresentationLoader loader, QuestionBankReferenceResolver references,
             BiConsumer<WorkspaceId, FilePresentation> aiAction, QDocFileEditService qdocEdits,
-            QuestionBankFileEditService bankEdits) {
+            QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
+            Runnable refreshTree) {
         this.loader = loader;
         this.references = references;
         this.aiAction = aiAction;
         this.qdocEdits = qdocEdits;
         this.bankEdits = bankEdits;
+        this.markdownEdits = markdownEdits;
+        this.refreshTree = refreshTree;
         setId("file-pane");
         clear();
     }
@@ -66,7 +73,8 @@ final class FilePane extends BorderPane {
     private void toggleMode() {
         details.hide();
         if (mode == FileMode.EDIT && (qdocEditor != null && qdocEditor.dirty()
-                || bankEditor != null && bankEditor.dirty())) {
+                || bankEditor != null && bankEditor.dirty()
+                || markdownEditor != null && markdownEditor.dirty())) {
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
                     "Unsaved changes will be discarded.", ButtonType.CANCEL, ButtonType.OK);
             confirm.setHeaderText("Leave edit mode?");
@@ -77,7 +85,10 @@ final class FilePane extends BorderPane {
         }
         mode = mode == FileMode.BROWSE ? FileMode.EDIT : FileMode.BROWSE;
         header.updateMode(mode);
-        if (mode == FileMode.EDIT && current.document() != null) {
+        if (mode == FileMode.EDIT && markdownSource()) {
+            markdownEditor = new MarkdownSourceEditorView(current.file().sourceText(), this::saveMarkdown);
+            setCenter(new StackPane(markdownEditor));
+        } else if (mode == FileMode.EDIT && current.document() != null) {
             qdocEditor = new QDocEditorView(current.document(), this::saveQDoc, this::invokeAi);
             StackPane centered = new StackPane(qdocEditor);
             centered.setAlignment(Pos.TOP_CENTER);
@@ -90,6 +101,20 @@ final class FilePane extends BorderPane {
             centered.setAlignment(Pos.TOP_CENTER);
             setCenter(UiTheme.scroll(centered));
         } else setCenter(mode == FileMode.BROWSE ? browseContent : router.view(current, mode));
+    }
+
+    private boolean markdownSource() {
+        return current.file().sourceText() != null
+                && current.file().entry().relativePath().toLowerCase(java.util.Locale.ROOT).endsWith(".md");
+    }
+
+    private void saveMarkdown(String edited) {
+        String path = current.file().entry().relativePath();
+        String assetId = current.kind() == io.quizforge.core.workspace.WorkspaceFileKind.STANDARD_DOCUMENT
+                && !current.draft() ? current.file().entry().assetId() : null;
+        markdownEdits.save(workspace, path, current.file().sourceText(), edited, assetId);
+        refreshTree.run();
+        open(workspace, path);
     }
 
     private void saveQDoc(io.quizforge.core.document.qdoc.QDocDocument edited) {
@@ -128,12 +153,18 @@ final class FilePane extends BorderPane {
         browseContent = null;
         qdocEditor = null;
         bankEditor = null;
+        markdownEditor = null;
         mode = FileMode.BROWSE;
         setTop(null);
         setCenter(router.welcome());
     }
 
     FilePresentation currentFile() { return current; }
+    boolean hasUnsavedChanges() {
+        return qdocEditor != null && qdocEditor.dirty()
+                || bankEditor != null && bankEditor.dirty()
+                || markdownEditor != null && markdownEditor.dirty();
+    }
     FileMode mode() { return mode; }
     AssetDetailsPopover details() { return details; }
 }

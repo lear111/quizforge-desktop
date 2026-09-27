@@ -13,6 +13,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.geometry.Pos;
 
 /** One-question editor. Every control mutates the same portable bank model used by Practice. */
 final class QuestionBankEditorView extends VBox {
@@ -34,9 +35,9 @@ final class QuestionBankEditorView extends VBox {
         getStyleClass().add("qbank-editor");
         setMaxWidth(820);
         setSpacing(16);
-        Button saveButton = UiTheme.button("Save QuestionBank", "check", "primary-button", this::save);
-        saveButton.setId("qbank-save");
-        getChildren().addAll(saveButton, errors, body);
+        errors.managedProperty().bind(javafx.beans.binding.Bindings.isNotEmpty(errors.getChildren()));
+        getChildren().addAll(EditorUi.toolbar("题库编辑", "qbank-save", this::save), errors, body);
+        EditorUi.saveShortcut(this, this::save);
         render();
     }
 
@@ -57,39 +58,43 @@ final class QuestionBankEditorView extends VBox {
         body.getChildren().clear();
         TextField bankTitle = new TextField(model.bank().title());
         bankTitle.setId("qbank-title");
-        bankTitle.setPromptText("QuestionBank title");
+        bankTitle.setPromptText("题库标题");
+        bankTitle.getStyleClass().add("editor-document-title");
         bankTitle.textProperty().addListener((obs, old, text) -> model.setTitle(text));
         body.getChildren().add(bankTitle);
 
-        Button previous = new Button("←");
+        Button previous = UiTheme.iconButton("arrow-left", "上一题", () -> { });
         previous.setId("qbank-editor-previous");
         previous.setDisable(index == 0);
         previous.setOnAction(event -> { index--; render(); });
-        Button next = new Button("→");
+        Button next = UiTheme.iconButton("arrow", "下一题", () -> { });
         next.setId("qbank-editor-next");
         next.setDisable(index >= model.bank().questions().size() - 1);
         next.setOnAction(event -> { index++; render(); });
-        MenuButton add = new MenuButton("+");
+        MenuButton add = EditorUi.menu("plus", "添加题目");
         add.setId("qbank-add-question");
         for (String type : List.of("SINGLE_CHOICE", "MULTIPLE_CHOICE")) {
-            MenuItem item = new MenuItem(type.equals("SINGLE_CHOICE") ? "Single Choice" : "Multiple Choice");
+            MenuItem item = new MenuItem(type.equals("SINGLE_CHOICE") ? "单选题" : "多选题");
             item.setOnAction(event -> { index = model.addQuestion(type); render(); });
             add.getItems().add(item);
         }
         Label position = UiTheme.label(model.bank().questions().isEmpty() ? "0 / 0"
                 : (index + 1) + " / " + model.bank().questions().size(), "muted");
         position.setId("qbank-editor-position");
-        body.getChildren().add(new HBox(12, previous, position, next, add));
+        HBox navigation = new HBox(10, previous, position, next, add);
+        navigation.setAlignment(Pos.CENTER_LEFT);
+        navigation.getStyleClass().add("qbank-edit-navigation");
+        body.getChildren().add(navigation);
         if (model.bank().questions().isEmpty()) {
-            body.getChildren().add(UiTheme.quietState("No questions", "Add a question to begin."));
+            body.getChildren().add(UiTheme.quietState("还没有题目", "点击 +，选择单选题或多选题开始编辑。"));
             return;
         }
         QuestionBankFile.Entry question = model.bank().questions().get(index);
-        MenuButton actions = new MenuButton("⋯");
+        MenuButton actions = EditorUi.menu("more", "题目操作");
         actions.setId("qbank-question-actions");
-        MenuItem duplicate = new MenuItem("Duplicate Question");
+        MenuItem duplicate = new MenuItem("复制题目");
         duplicate.setOnAction(event -> { index = model.duplicateQuestion(index); render(); });
-        MenuItem delete = new MenuItem("Delete Question");
+        MenuItem delete = new MenuItem("删除题目");
         delete.setOnAction(event -> {
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
                     "This question and its options will be removed.", ButtonType.CANCEL, ButtonType.OK);
@@ -103,14 +108,21 @@ final class QuestionBankEditorView extends VBox {
         actions.getItems().addAll(duplicate, delete);
         ChoiceBox<String> type = new ChoiceBox<>(FXCollections.observableArrayList("SINGLE_CHOICE", "MULTIPLE_CHOICE"));
         type.setId("qbank-question-type");
+        type.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String value) { return "SINGLE_CHOICE".equals(value) ? "单选题" : "多选题"; }
+            @Override public String fromString(String value) { return "单选题".equals(value) ? "SINGLE_CHOICE" : "MULTIPLE_CHOICE"; }
+        });
         type.setValue(question.type());
         type.valueProperty().addListener((obs, old, value) -> { model.setType(index, value); render(); });
-        body.getChildren().add(new HBox(12, UiTheme.label("Type", "field-label"), type, actions));
+        javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        navigation.getChildren().addAll(spacer, type, actions);
 
         TextArea stem = area(question.stem(), "qbank-question-stem", 3);
         stem.textProperty().addListener((obs, old, value) -> model.setStem(index, value));
-        body.getChildren().addAll(UiTheme.label("Question", "field-label"), stem,
-                UiTheme.label("Options", "field-label"));
+        stem.setPromptText("输入题干…");
+        body.getChildren().addAll(UiTheme.label("题干", "editor-caption"), stem,
+                UiTheme.label("选项 · 勾选正确答案", "editor-caption"));
         ToggleGroup correctGroup = new ToggleGroup();
         VBox options = new VBox(8);
         for (int i = 0; i < question.data().options().size(); i++) {
@@ -134,13 +146,16 @@ final class QuestionBankEditorView extends VBox {
                 correct = check;
             }
             correct.setId("qbank-correct-" + i);
-            Button remove = new Button("×");
+            correct.setAccessibleText("将选项 " + (char) ('A' + i) + " 设为正确答案");
+            Button remove = UiTheme.iconButton("close", "删除选项", () -> { });
             remove.setId("qbank-remove-option-" + i);
             remove.setOnAction(event -> { model.deleteOption(index, optionIndex); render(); });
-            options.getChildren().add(new HBox(8, UiTheme.label(String.valueOf((char) ('A' + i)), "muted"),
-                    content, correct, remove));
+            HBox row = new HBox(10, correct, UiTheme.label(String.valueOf((char) ('A' + i)), "muted"), content, remove);
+            row.setAlignment(Pos.CENTER_LEFT);
+            content.setMinWidth(40);
+            options.getChildren().add(row);
         }
-        Button addOption = new Button("+ Option");
+        Button addOption = UiTheme.button("添加选项", "plus", "text-action", () -> { });
         addOption.setId("qbank-add-option");
         addOption.setOnAction(event -> { model.addOption(index); render(); });
         options.getChildren().add(addOption);
@@ -148,21 +163,24 @@ final class QuestionBankEditorView extends VBox {
 
         TextArea analysis = area(question.analysis(), "qbank-analysis", 4);
         analysis.textProperty().addListener((obs, old, value) -> model.setAnalysis(index, value));
-        body.getChildren().addAll(UiTheme.label("Analysis", "field-label"), analysis,
-                UiTheme.label("Source", "field-label"));
+        body.getChildren().addAll(UiTheme.label("解析", "editor-caption"), analysis,
+                UiTheme.label("引用来源", "editor-caption"));
         VBox refs = new VBox(6);
         for (int i = 0; i < question.sourceRefs().size(); i++) {
             final int refIndex = i;
             var ref = question.sourceRefs().get(i);
             Button change = new Button(ref.documentTitle() + " → " + ref.sectionTitle());
+            change.setMaxWidth(Double.MAX_VALUE);
+            HBox.setHgrow(change, Priority.ALWAYS);
+            change.getStyleClass().add("text-action");
             change.setId("qbank-source-" + i);
             change.setOnAction(event -> chooseSource(refIndex));
-            Button remove = new Button("×");
+            Button remove = UiTheme.iconButton("close", "移除引用", () -> { });
             remove.setId("qbank-remove-source-" + i);
             remove.setOnAction(event -> { model.deleteSourceRef(index, refIndex); render(); });
             refs.getChildren().add(new HBox(8, change, remove));
         }
-        Button addSource = new Button("+ Source");
+        Button addSource = UiTheme.button("添加来源", "plus", "text-action", () -> { });
         addSource.setId("qbank-add-source");
         addSource.setOnAction(event -> chooseSource(-1));
         refs.getChildren().add(addSource);
@@ -170,11 +188,7 @@ final class QuestionBankEditorView extends VBox {
     }
 
     private TextArea area(String value, String id, int rows) {
-        TextArea area = new TextArea(value);
-        area.setId(id);
-        area.setPrefRowCount(rows);
-        area.setWrapText(true);
-        return area;
+        return EditorUi.content(value, id, false);
     }
 
     private void chooseSource(int replaceIndex) {

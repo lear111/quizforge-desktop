@@ -7,10 +7,12 @@ import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceFileKind;
 import io.quizforge.core.workspace.WorkspaceFileService;
+import io.quizforge.core.workspace.WorkspaceFileType;
 import io.quizforge.core.workspace.WorkspaceFileTree;
 import io.quizforge.core.workspace.WorkspaceService;
 import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
 import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileCatalog;
+import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileOperations;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
@@ -43,17 +45,19 @@ class WorkspaceFileExplorerIntegrationTest {
         workspace = workspaces.createWorkspace("Explorer");
         root = paths.workspaceRoot(workspace.id());
         scanner = new FileSystemWorkspaceAssetScanner(paths, new SqliteAssetIndexRepository(paths), CLOCK);
-        service = new WorkspaceFileService(workspaces, scanner, new LocalWorkspaceFileCatalog(paths, banks), banks);
+        service = new WorkspaceFileService(workspaces, scanner, new LocalWorkspaceFileCatalog(paths, banks),
+                banks, new LocalWorkspaceFileOperations(paths));
     }
 
-    @Test void listsOrdinaryFilesRecursivelyAndHidesInternalFolder() throws Exception {
+    @Test void listsSupportedFilesRecursivelyAndHidesOtherFilesAndInternalFolder() throws Exception {
         write("原始资料/note.md", "# Note\nOrdinary Markdown");
         write("Custom/Nested/PDF.pdf", "sample");
         Files.createDirectories(root.resolve("EmptyFolder"));
         write(".quizforge/secret.md", "# hidden");
         WorkspaceFileTree tree = service.refresh(workspace.id());
         assertEquals(WorkspaceFileKind.MARKDOWN, entry(tree, "原始资料/note.md").kind());
-        assertEquals(WorkspaceFileKind.OTHER, entry(tree, "Custom/Nested/PDF.pdf").kind());
+        assertEquals(WorkspaceFileKind.DIRECTORY, entry(tree, "Custom/Nested").kind());
+        assertTrue(tree.entries().stream().noneMatch(file -> file.relativePath().endsWith(".pdf")));
         assertEquals(WorkspaceFileKind.DIRECTORY, entry(tree, "EmptyFolder").kind());
         assertTrue(tree.entries().stream().noneMatch(file -> file.relativePath().startsWith(".quizforge")));
         assertTrue(tree.hasFiles());
@@ -82,10 +86,10 @@ class WorkspaceFileExplorerIntegrationTest {
         assertEquals("doc_alpha", entry(tree, "Java/Knowledge.md").assetId());
         assertEquals(WorkspaceFileKind.INVALID_STANDARD_DOCUMENT, entry(tree, "Java/Invalid.md").kind());
         assertNotNull(entry(tree, "Java/Invalid.md").issue());
-        assertEquals(WorkspaceFileKind.MARKDOWN, entry(tree, "Java/Ordinary.markdown").kind());
+        assertTrue(tree.entries().stream().noneMatch(file -> file.relativePath().endsWith(".markdown")));
         assertEquals(WorkspaceFileKind.QUESTION_BANK, entry(tree, "面试/Bank.qbank").kind());
         assertEquals(WorkspaceFileKind.INVALID_QUESTION_BANK, entry(tree, "面试/Broken.qbank").kind());
-        assertEquals(WorkspaceFileKind.OTHER, entry(tree, "Java/image.png").kind());
+        assertTrue(tree.entries().stream().noneMatch(file -> file.relativePath().endsWith(".png")));
     }
 
     @Test void treeWorksWithoutDefaultFoldersAndFindsCustomDeepBank() throws Exception {
@@ -136,6 +140,48 @@ class WorkspaceFileExplorerIntegrationTest {
         WorkspaceFileTree tree = service.refresh(workspace.id());
         assertFalse(tree.hasFiles());
         assertEquals(4, tree.childrenOf("").size());
+    }
+
+    @Test void createsThreeUsableFileTypesInCustomFolderAndRefreshesRegistry() throws Exception {
+        String folder = service.createFolder(workspace.id(), "", "自定义");
+        String markdown = service.createFile(workspace.id(), folder, "笔记", WorkspaceFileType.MARKDOWN);
+        String qdoc = service.createFile(workspace.id(), folder, "知识", WorkspaceFileType.QDOC);
+        String qbank = service.createFile(workspace.id(), folder, "练习", WorkspaceFileType.QUESTION_BANK);
+        assertEquals("自定义/笔记.md", markdown);
+        assertEquals("", Files.readString(root.resolve(markdown)));
+        var document = new io.quizforge.infrastructure.filesystem.QDocV1Codec()
+                .parse(Files.readString(root.resolve(qdoc)));
+        assertEquals("知识", document.title());
+        var bank = banks.parseEmptyDraft(Files.readString(root.resolve(qbank)));
+        assertEquals("练习", bank.title());
+        assertEquals(3, service.refresh(workspace.id()).childrenOf(folder).size());
+        assertEquals(2, scanner.scan(workspace.id()).size());
+        assertThrows(RuntimeException.class, () -> service.createFile(workspace.id(), folder,
+                "笔记", WorkspaceFileType.MARKDOWN));
+        assertEquals("", Files.readString(root.resolve(markdown)));
+    }
+
+    @Test void renameMoveAndDeleteKeepRegistryInSyncAndProtectOtherFiles() throws Exception {
+        String folder = service.createFolder(workspace.id(), "", "My Folder");
+        String file = service.createFile(workspace.id(), folder, "Study", WorkspaceFileType.QDOC);
+        String id = scanner.scan(workspace.id()).getFirst().assetId();
+        assertEquals(root.resolve(file), service.absolutePath(workspace.id(), file));
+        String renamed = service.rename(workspace.id(), file, "Renamed.qdoc");
+        String movedFolder = service.rename(workspace.id(), folder, "New Folder");
+        assertEquals("New Folder/Renamed.qdoc", movedFolder + "/Renamed.qdoc");
+        assertEquals(id, scanner.scan(workspace.id()).getFirst().assetId());
+        assertEquals("New Folder/Renamed.qdoc", scanner.scan(workspace.id()).getFirst().currentPath());
+        write("New Folder/hidden.pdf", "hidden data");
+        assertThrows(IllegalArgumentException.class,
+                () -> service.rename(workspace.id(), "New Folder/Renamed.qdoc", "Renamed.md"));
+        service.delete(workspace.id(), movedFolder);
+        assertFalse(Files.exists(root.resolve(movedFolder)));
+        assertTrue(scanner.scan(workspace.id()).isEmpty());
+        assertTrue(Files.exists(root.resolve(".quizforge/workspace.json")));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.delete(workspace.id(), ".quizforge/workspace.json"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.createFolder(workspace.id(), "", "../outside"));
     }
 
     private io.quizforge.core.workspace.WorkspaceFileEntry entry(WorkspaceFileTree tree, String path) {
