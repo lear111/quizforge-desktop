@@ -46,6 +46,7 @@ final class FilePane extends BorderPane {
     private Node browseContent;
     private QuestionBankEditorView bankEditor;
     private MarkdownSourceEditorView markdownEditor;
+    private Runnable onEditStart = () -> { };
 
     FilePane(FilePresentationLoader loader, QuestionBankReferenceResolver references,
             BiConsumer<WorkspaceId, FilePresentation> aiAction,
@@ -103,6 +104,7 @@ final class FilePane extends BorderPane {
             return;
         }
         mode = mode == FileMode.BROWSE ? FileMode.EDIT : FileMode.BROWSE;
+        if (mode == FileMode.EDIT) onEditStart.run();
         header.updateMode(mode);
         if (mode == FileMode.EDIT && markdownSource()) {
             markdownEditor = new MarkdownSourceEditorView(current.file().sourceText(), this::saveMarkdown);
@@ -324,6 +326,20 @@ final class FilePane extends BorderPane {
     }
 
     FilePresentation currentFile() { return current; }
+    void onEditStart(Runnable action) { onEditStart = action; }
+    boolean jumpTo(MarkdownOutline.Kind kind, String label, int occurrence) {
+        if (mode != FileMode.BROWSE || !(browseContent instanceof javafx.scene.layout.HBox layout)) return false;
+        Object entriesValue = layout.getProperties().get("quizforge.outlineEntries");
+        Object navigatorValue = layout.getProperties().get("quizforge.navigator");
+        if (!(entriesValue instanceof List<?> entries)
+                || !(navigatorValue instanceof MarkdownDocumentNavigator navigator)) return false;
+        for (Object value : entries) {
+            if (value instanceof MarkdownOutline.Entry entry && entry.kind() == kind
+                    && entry.label().equals(label) && entry.occurrence() == occurrence)
+                return navigator.jumpWhenReady(entry);
+        }
+        return false;
+    }
     boolean hasUnsavedChanges() {
         return bankEditor != null && bankEditor.dirty()
                 || markdownEditor != null && markdownEditor.dirty();

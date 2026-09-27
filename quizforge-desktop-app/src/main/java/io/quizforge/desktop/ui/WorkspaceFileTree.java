@@ -2,7 +2,7 @@ package io.quizforge.desktop.ui;
 
 import io.quizforge.core.workspace.WorkspaceFileEntry;
 import io.quizforge.core.workspace.WorkspaceFileKind;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 import java.util.HashMap;
 import java.util.Map;
 import javafx.scene.Node;
@@ -40,6 +40,8 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
     }
 
     private final FileActions actions;
+    private final BiConsumer<WorkspaceFileEntry, Boolean> open;
+    private boolean suppressOpen;
 
     private static boolean isReferenceEnabledMarkdown(WorkspaceFileEntry entry) {
         return entry.kind() == WorkspaceFileKind.STANDARD_DOCUMENT
@@ -53,15 +55,22 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
                 && entry.relativePath().toLowerCase(java.util.Locale.ROOT).endsWith(".md");
     }
 
-    WorkspaceFileTree(Consumer<WorkspaceFileEntry> open, FileActions actions) {
+    WorkspaceFileTree(BiConsumer<WorkspaceFileEntry, Boolean> open, FileActions actions) {
         this.actions = actions;
+        this.open = open;
         setId("workspace-file-tree");
         setShowRoot(false);
         setCellFactory(ignored -> new FileCell());
         getSelectionModel().selectedItemProperty().addListener((obs, before, selected) -> {
-            if (selected != null && selected.getValue() != null
-                    && selected.getValue().kind() != WorkspaceFileKind.DIRECTORY) open.accept(selected.getValue());
+            if (!suppressOpen && selected != null && selected.getValue() != null
+                    && selected.getValue().kind() != WorkspaceFileKind.DIRECTORY) open.accept(selected.getValue(), false);
         });
+    }
+
+    void selectWithoutOpening(TreeItem<WorkspaceFileEntry> item) {
+        suppressOpen = true;
+        try { getSelectionModel().select(item); }
+        finally { suppressOpen = false; }
     }
 
     private final class FileCell extends TreeCell<WorkspaceFileEntry> {
@@ -114,6 +123,11 @@ final class WorkspaceFileTree extends TreeView<WorkspaceFileEntry> {
                 if (!folderClick(event)) return;
                 if (event.isStillSincePress()) getTreeItem().setExpanded(!getTreeItem().isExpanded());
                 event.consume();
+            });
+            addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
+                if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2
+                        && !isEmpty() && getItem().kind() != WorkspaceFileKind.DIRECTORY)
+                    open.accept(getItem(), true);
             });
             addEventFilter(ContextMenuEvent.CONTEXT_MENU_REQUESTED, event -> {
                 if (!isEmpty() && getContextMenu() != null) {

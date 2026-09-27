@@ -7,6 +7,7 @@ import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.material.MaterialService;
 import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
+import io.quizforge.core.port.AssetIndexRepository;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.WorkspaceFileService;
@@ -29,13 +30,14 @@ public final class DesktopView {
     private final QuestionBankFileEditService bankEdits;
     private final MarkdownFileEditService markdownEdits;
     private final MarkdownDocumentRegistration registration;
+    private final AssetIndexRepository assetIndex;
 
     public DesktopView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceFileCatalog catalog,
             QuestionBankReferenceResolver references, MaterialService materials,
             FileStandardDocumentGenerationService documents, AiSettingsService settings,
             AiConnectionService connections, Path historyPath,
             QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
-            MarkdownDocumentRegistration registration) {
+            MarkdownDocumentRegistration registration, AssetIndexRepository assetIndex) {
         this.workspaces = workspaces;
         this.files = files;
         this.catalog = catalog;
@@ -48,6 +50,7 @@ public final class DesktopView {
         this.bankEdits = bankEdits;
         this.markdownEdits = markdownEdits;
         this.registration = registration;
+        this.assetIndex = assetIndex;
     }
 
     public Scene createScene(Stage stage) {
@@ -56,14 +59,14 @@ public final class DesktopView {
         MainWorkspaceView shell = new MainWorkspaceView(workspaces, files, new WorkspaceHistory(historyPath),
                 new FilePresentationLoader(files, catalog), references, stage, settingsDialog::show,
                 (workspace, file) -> ai[0].run(workspace, file), bankEdits,
-                markdownEdits, registration, TextClipboard.system());
+                markdownEdits, registration, TextClipboard.system(), assetIndex);
         ai[0] = new EmptyAssetAiAction(materials, documents, settings, stage,
                 settingsDialog::show, shell::refreshAndOpen);
         Scene scene = new Scene(shell, 1180, 780);
         UiTheme.apply(scene);
         stage.setMinWidth(800);
         stage.setMinHeight(540);
-        stage.setOnHidden(event -> shell.filePane().clear());
+        stage.setOnHidden(event -> shell.tabs().closeAll());
         return scene;
     }
 }

@@ -309,6 +309,22 @@
 .qbank-edit-navigation { -fx-padding: 0 0 10 0; -fx-border-color: #ebe5dc; -fx-border-width: 0 0 1 0; }
 .qbank-editor .choice-box { -fx-min-width: 84; -fx-background-color: transparent; -fx-border-color: transparent; }
 .markdown-browse-layout { -fx-background-color: #faf9f6; }
+.workspace-tab-bar, .workspace-tab-bar > .viewport, .workspace-tab-row {
+    -fx-background-color: #f5f3ef; -fx-background-insets: 0;
+}
+.workspace-tab-bar { -fx-pref-height: 38; -fx-min-height: 38; -fx-max-height: 38; }
+.workspace-tab-row { -fx-spacing: 2; -fx-padding: 3 6 0 6; }
+.workspace-tab { -fx-alignment: center-left; -fx-background-radius: 5 5 0 0; }
+.workspace-tab-select, .workspace-tab-close {
+    -fx-background-color: transparent; -fx-border-color: transparent;
+    -fx-text-fill: #625d55; -fx-cursor: hand;
+}
+.workspace-tab-select { -fx-padding: 6 7 6 11; -fx-max-width: 180; }
+.workspace-tab-close { -fx-padding: 4 9 4 4; -fx-text-fill: #9a9389; }
+.workspace-tab:hover { -fx-background-color: #ece9e3; }
+.workspace-tab-active { -fx-background-color: #faf9f6; }
+.workspace-tab-preview .text { -fx-font-style: italic; }
+.workspace-navigation-status { -fx-padding: 7 12; -fx-background-color: #f5f3ef; -fx-text-fill: #786c61; }
 .markdown-outline {
     -fx-pref-width: 260; -fx-min-width: 220; -fx-max-width: 280;
     -fx-padding: 22 12 16 12;

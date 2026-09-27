@@ -329,9 +329,10 @@ public class DesktopConfiguration {
             io.quizforge.core.document.FileStandardDocumentGenerationService documents,
             AiSettingsService settings, AiConnectionService connections, QuizForgeDataDirectory directory,
             QuestionBankFileEditService bankEdits,
-            MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration) {
+              MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration,
+              AssetIndexRepository assetIndex) {
         return new DesktopView(workspaces, files, catalog, references, materials, documents,
                 settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"),
-                bankEdits, markdownEdits, registration);
+                  bankEdits, markdownEdits, registration, assetIndex);
     }
 }

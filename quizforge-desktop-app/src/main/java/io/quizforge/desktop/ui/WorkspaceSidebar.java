@@ -2,6 +2,7 @@ package io.quizforge.desktop.ui;
 
 import io.quizforge.core.workspace.WorkspaceFileEntry;
 import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 import javafx.scene.control.Button;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -11,7 +12,7 @@ final class WorkspaceSidebar extends VBox {
     private final WorkspaceSwitcher switcher = new WorkspaceSwitcher();
     private final WorkspaceFileTree tree;
 
-    WorkspaceSidebar(Consumer<WorkspaceFileEntry> open, WorkspaceFileTree.FileActions actions,
+    WorkspaceSidebar(BiConsumer<WorkspaceFileEntry, Boolean> open, WorkspaceFileTree.FileActions actions,
             Runnable settings) {
         setId("workspace-sidebar");
         getStyleClass().add("workspace-sidebar");

@@ -2,6 +2,8 @@ package io.quizforge.desktop.ui;
 
 import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
+import io.quizforge.core.port.AssetIndexRepository;
+import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.workspace.Workspace;
@@ -16,7 +18,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 
-/** The entire desktop shell: one current workspace tree and one current file. */
+/** The desktop shell: one current workspace tree and a file tab strip. */
 final class MainWorkspaceView extends BorderPane {
     private final WorkspaceService workspaces;
     private final WorkspaceFileService files;
@@ -25,6 +27,8 @@ final class MainWorkspaceView extends BorderPane {
     private final TextClipboard clipboard;
     private final WorkspaceSidebar sidebar;
     private final FilePane filePane;
+    private final WorkspaceTabManager tabs;
+    private final WorkspaceNavigationService navigation;
     private Workspace current;
 
     MainWorkspaceView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceHistory history,
@@ -32,7 +36,7 @@ final class MainWorkspaceView extends BorderPane {
             Runnable settings, BiConsumer<WorkspaceId, FilePresentation> ai,
             QuestionBankFileEditService bankEdits,
             MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration,
-            TextClipboard clipboard) {
+            TextClipboard clipboard, AssetIndexRepository index) {
         this.workspaces = workspaces;
         this.files = files;
         this.history = history;
@@ -42,8 +46,15 @@ final class MainWorkspaceView extends BorderPane {
         getStyleClass().add("workspace-shell");
         filePane = new FilePane(loader, references, ai, bankEdits,
                 markdownEdits, registration, this::refreshTree, clipboard);
-        sidebar = new WorkspaceSidebar(entry -> {
-            if (current != null) filePane.open(current.id(), entry.relativePath());
+        tabs = new WorkspaceTabManager(() -> new FilePane(loader, references, ai, bankEdits,
+                markdownEdits, registration, this::refreshTree, clipboard), filePane, this::confirmDiscard);
+        navigation = new WorkspaceNavigationService(index, () -> current == null ? null : current.id(), tabs);
+        sidebar = new WorkspaceSidebar((entry, pinned) -> {
+            if (current != null) {
+                tabs.setBottom(null);
+                if (pinned) tabs.openPinned(current.id(), entry.relativePath());
+                else tabs.openPreview(current.id(), entry.relativePath());
+            }
         }, new WorkspaceFileTree.FileActions() {
             @Override public void createFolder(String parent) { MainWorkspaceView.this.createFolder(parent); }
             @Override public void createFile(String parent, WorkspaceFileType type) {
@@ -55,11 +66,15 @@ final class MainWorkspaceView extends BorderPane {
             @Override public void rename(WorkspaceFileEntry entry) { MainWorkspaceView.this.rename(entry); }
             @Override public void delete(WorkspaceFileEntry entry) { MainWorkspaceView.this.delete(entry); }
             @Override public void copyLink(WorkspaceFileEntry entry) {
-                filePane.copyAssetLink(current.id(), entry);
+                tabs.activePane().copyAssetLink(current.id(), entry);
             }
         }, settings);
-        filePane.setMinWidth(320);
-        SplitPane split = new SplitPane(sidebar, filePane);
+        tabs.onActivate(path -> {
+            var item = find(sidebar.tree().getRoot(), path);
+            if (item != null) sidebar.tree().selectWithoutOpening(item);
+        });
+        tabs.setMinWidth(320);
+        SplitPane split = new SplitPane(sidebar, tabs);
         split.setId("workspace-split");
         split.getStyleClass().add("workspace-split");
         SplitPane.setResizableWithParent(sidebar, false);
@@ -78,7 +93,8 @@ final class MainWorkspaceView extends BorderPane {
     }
 
     void switchWorkspace(Workspace workspace) {
-        filePane.clear();
+        if (tabs.hasUnsavedChanges() && !confirmDiscard()) return;
+        tabs.closeAll();
         sidebar.tree().setRoot(null);
         current = workspace;
         history.visit(workspace);
@@ -127,10 +143,10 @@ final class MainWorkspaceView extends BorderPane {
         askName("重命名", "新名称", entry.name()).ifPresent(name -> {
             String active = activePath();
             boolean affectsActive = contains(entry.relativePath(), active);
-            if (affectsActive && filePane.hasUnsavedChanges() && !confirmDiscard()) return;
+            if (tabs.hasUnsavedChangesUnder(entry.relativePath()) && !confirmDiscard()) return;
             try {
                 String renamed = files.rename(current.id(), entry.relativePath(), name);
-                if (affectsActive) filePane.clear();
+                tabs.renameUnder(current.id(), entry.relativePath(), renamed);
                 refreshTree();
                 if (affectsActive) selectPath(renamed + active.substring(entry.relativePath().length()));
                 else selectPath(renamed);
@@ -149,10 +165,10 @@ final class MainWorkspaceView extends BorderPane {
         UiTheme.apply(confirm);
         if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
         boolean affectsActive = contains(entry.relativePath(), activePath());
-        if (affectsActive && filePane.hasUnsavedChanges() && !confirmDiscard()) return;
+        if (tabs.hasUnsavedChangesUnder(entry.relativePath()) && !confirmDiscard()) return;
         try {
             files.delete(current.id(), entry.relativePath());
-            if (affectsActive) filePane.clear();
+            tabs.closeUnder(entry.relativePath());
             refreshTree();
         } catch (RuntimeException error) { showFileError("无法删除", error); }
     }
@@ -167,7 +183,7 @@ final class MainWorkspaceView extends BorderPane {
     }
 
     private String activePath() {
-        return filePane.currentFile() == null ? null : filePane.currentFile().file().entry().relativePath();
+        return tabs.active() == null ? null : tabs.active().path();
     }
 
     private boolean contains(String path, String active) {
@@ -200,22 +216,24 @@ final class MainWorkspaceView extends BorderPane {
             sidebar.switcher().setTooltip(snapshot.registryWarning() == null ? null
                     : new Tooltip("文件树已更新；资产索引需要刷新。"));
         } catch (RuntimeException error) {
-            filePane.setCenter(UiTheme.quietState("无法读取工作区", "请检查文件夹是否可访问，然后使用工作区菜单刷新。"));
+            tabs.activePane().setCenter(UiTheme.quietState("无法读取工作区", "请检查文件夹是否可访问，然后使用工作区菜单刷新。"));
         }
     }
 
     void refresh() {
-        if (filePane.hasUnsavedChanges() && !confirmDiscard()) return;
-        String path = filePane.currentFile() == null ? null : filePane.currentFile().file().entry().relativePath();
-        filePane.clear();
+        if (tabs.hasUnsavedChanges() && !confirmDiscard()) return;
+        String path = activePath();
         refreshTree();
+        tabs.reloadAll(current.id());
         if (path != null) selectPath(path);
     }
 
     void refreshAndOpen(WorkspaceId workspace, String path) {
         if (current == null || !current.id().equals(workspace)) return;
-        filePane.clear();
+        if (tabs.hasUnsavedChangesUnder(path) && !confirmDiscard()) return;
+        tabs.closeUnder(path);
         refreshTree();
+        tabs.openPinned(workspace, path);
         selectPath(path);
     }
 
@@ -281,5 +299,22 @@ final class MainWorkspaceView extends BorderPane {
 
     Workspace currentWorkspace() { return current; }
     WorkspaceSidebar sidebar() { return sidebar; }
-    FilePane filePane() { return filePane; }
+    FilePane filePane() { return tabs.activePane(); }
+    WorkspaceTabManager tabs() { return tabs; }
+    WorkspaceNavigationService.Result navigate(QuizForgeNavigationLink link) {
+        WorkspaceNavigationService.Result result = navigation.navigate(link);
+        if (result != WorkspaceNavigationService.Result.OPENED) {
+            String message = switch (result) {
+                case MISSING_ASSET -> "当前工作区找不到这个文档资产。";
+                case MISSING_TARGET -> "文档中找不到指定位置。";
+                case EDIT_MODE -> "目标文件正在编辑，请先切换到浏览模式。";
+                case UNAVAILABLE_FILE -> "目标文件无法打开。";
+                default -> "";
+            };
+            Label status = new Label(message);
+            status.getStyleClass().add("workspace-navigation-status");
+            tabs.setBottom(status);
+        } else tabs.setBottom(null);
+        return result;
+    }
 }

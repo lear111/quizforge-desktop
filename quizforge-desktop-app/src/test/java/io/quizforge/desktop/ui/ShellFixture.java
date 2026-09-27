@@ -2,6 +2,7 @@ package io.quizforge.desktop.ui;
 
 import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
+import io.quizforge.core.port.AssetIndexRepository;
 import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.document.MarkdownFileEditService;
@@ -83,7 +84,8 @@ final class ShellFixture implements AutoCloseable {
                 context.getBean(QuestionBankReferenceResolver.class), stage, settingsOpened::incrementAndGet,
                 (workspace, file) -> aiOpened.incrementAndGet(), context.getBean(QuestionBankFileEditService.class),
                 context.getBean(MarkdownFileEditService.class),
-                context.getBean(MarkdownDocumentRegistration.class), copiedText::set);
+                context.getBean(MarkdownDocumentRegistration.class), copiedText::set,
+                context.getBean(AssetIndexRepository.class));
     }
 
     static String document(String body) {

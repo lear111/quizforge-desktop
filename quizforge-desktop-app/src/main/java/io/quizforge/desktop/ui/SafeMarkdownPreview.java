@@ -83,14 +83,16 @@ final class SafeMarkdownPreview {
         scroll.setId("markdown-preview-scroll");
         MarkdownDocumentNavigator navigator = new MarkdownDocumentNavigator(scroll);
         render(parsed, preview, anchors, actions, navigator);
-        MarkdownOutlineView outline = new MarkdownOutlineView(
-                MarkdownOutline.extract(parsed, available), navigator, copyLink);
+        List<MarkdownOutline.Entry> entries = MarkdownOutline.extract(parsed, available);
+        MarkdownOutlineView outline = new MarkdownOutlineView(entries, navigator, copyLink);
         HBox layout = new HBox(scroll, outline);
         layout.setId("markdown-browse-layout");
         layout.getStyleClass().add("markdown-browse-layout");
         layout.setMinWidth(0);
         scroll.setMinWidth(0);
         HBox.setHgrow(scroll, Priority.ALWAYS);
+        layout.getProperties().put("quizforge.outlineEntries", entries);
+        layout.getProperties().put("quizforge.navigator", navigator);
         return layout;
     }
 

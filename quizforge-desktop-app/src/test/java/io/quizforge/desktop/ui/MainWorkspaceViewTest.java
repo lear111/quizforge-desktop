@@ -910,6 +910,201 @@ class MainWorkspaceViewTest {
         });
     }
 
+    @Test void fileTreePreviewReplacesOnlyPreviewAndDoubleClickPins() throws Exception {
+        fx(() -> {
+            open("我的笔记/学习计划.md");
+            assertEquals(1, shell.tabs().tabs().size());
+            assertFalse(shell.tabs().active().pinned());
+            open("Java/Java集合.md");
+            assertEquals(1, shell.tabs().tabs().size());
+            assertEquals("Java/Java集合.md", shell.tabs().active().path());
+            shell.applyCss(); shell.layout();
+            click(fileCell("Java/Java集合.md"), 2);
+            assertTrue(shell.tabs().active().pinned());
+            open("我的笔记/学习计划.md");
+            assertEquals(2, shell.tabs().tabs().size());
+            assertEquals("我的笔记/学习计划.md", shell.tabs().active().path());
+            open("Java/Java集合.md");
+            assertEquals(2, shell.tabs().tabs().size());
+            assertTrue(shell.tabs().active().pinned());
+            assertNotNull(shell.lookup("#workspace-tab-bar"));
+            assertEquals(1, shell.lookupAll(".workspace-tab-selected").size());
+        });
+    }
+
+    @Test void editPinsItsOwnTabAndPreservesDirtyEditorAcrossSwitches() throws Exception {
+        fx(() -> {
+            open("我的笔记/学习计划.md");
+            button("file-mode-toggle").fire();
+            assertTrue(shell.tabs().active().pinned());
+            TextArea editor = (TextArea) shell.lookup("#markdown-source-text");
+            editor.appendText("\nUncommitted tab content");
+            open("Java/Java集合.md");
+            assertEquals(2, shell.tabs().tabs().size());
+            open("我的笔记/学习计划.md");
+            assertSame(editor, shell.lookup("#markdown-source-text"));
+            assertTrue(shell.filePane().hasUnsavedChanges());
+            assertEquals(FileMode.EDIT, shell.filePane().mode());
+            assertEquals(2, shell.tabs().tabs().size());
+        });
+    }
+
+    @Test void closingActiveTabSelectsNeighborAndRestoresItsOutline() throws Exception {
+        fx(() -> {
+            open("我的笔记/学习计划.md");
+            shell.tabs().openPinned(fixture.alpha.id(), "Java/Java集合.md");
+            assertNotNull(shell.lookup("#markdown-outline"));
+            assertTrue(shell.tabs().close(shell.tabs().active()));
+            assertEquals("我的笔记/学习计划.md", shell.tabs().active().path());
+            assertNotNull(shell.lookup("#markdown-outline"));
+            assertTrue(shell.tabs().close(shell.tabs().active()));
+            assertNull(shell.tabs().active());
+            assertNull(shell.lookup("#markdown-outline"));
+        });
+    }
+
+    @Test void navigationResolvesRegistryPathAndPreservesSourceTab() throws Exception {
+        fx(() -> {
+            shell.tabs().openPinned(fixture.alpha.id(), "我的笔记/学习计划.md");
+            assertEquals(WorkspaceNavigationService.Result.OPENED,
+                    shell.navigate(QuizForgeNavigationLink.asset("doc_java")));
+            assertEquals("Java/Java集合.md", shell.tabs().active().path());
+            assertTrue(shell.tabs().active().pinned());
+            assertEquals(2, shell.tabs().tabs().size());
+            assertEquals(WorkspaceNavigationService.Result.OPENED,
+                    shell.navigate(QuizForgeNavigationLink.heading("doc_java", "ArrayList", 1)));
+            assertEquals(2, shell.tabs().tabs().size());
+            assertEquals(WorkspaceNavigationService.Result.MISSING_ASSET,
+                    shell.navigate(QuizForgeNavigationLink.asset("doc_missing")));
+            assertEquals(2, shell.tabs().tabs().size());
+            assertEquals(WorkspaceNavigationService.Result.MISSING_TARGET,
+                    shell.navigate(QuizForgeNavigationLink.heading("doc_java", "Missing", 1)));
+            assertEquals(WorkspaceNavigationService.Result.MISSING_TARGET,
+                    shell.navigate(QuizForgeNavigationLink.heading("doc_java", "ArrayList", 2)));
+            assertEquals(WorkspaceNavigationService.Result.MISSING_TARGET,
+                    shell.navigate(QuizForgeNavigationLink.anchor("doc_java", "Missing", 1)));
+            fixture.write("Java/Java集合.md", ShellFixture.document("A changed revision remains navigable."));
+            shell.refresh();
+            assertEquals(WorkspaceNavigationService.Result.OPENED,
+                    shell.navigate(QuizForgeNavigationLink.heading("doc_java", "ArrayList", 1)));
+        });
+    }
+
+    @Test void duplicateHeadingAndAnchorNavigationUsesExactOccurrenceAndBoundBlock() throws Exception {
+        String source = "# A\n## Same\nFirst.\n## Same\nSecond.\n"
+                + "<!-- qf:anchor=定义 -->\nFirst definition.\n"
+                + "<!-- qf:anchor=定义 -->\nSecond definition.\n"
+                + "<!-- qf:anchor=孤立 -->\n";
+        var prepared = new RegisteredMarkdownCodec().prepareRegistration(source, "Java/Navigation.md");
+        fixture.write("Java/Navigation.md", prepared.source());
+        fx(() -> {
+            shell.refresh();
+            String assetId = prepared.document().documentAssetId();
+            assertEquals(WorkspaceNavigationService.Result.OPENED,
+                    shell.navigate(QuizForgeNavigationLink.heading(assetId, "Same", 2)));
+            assertEquals(WorkspaceNavigationService.Result.OPENED,
+                    shell.navigate(QuizForgeNavigationLink.anchor(assetId, "定义", 2)));
+            var layout = (javafx.scene.layout.HBox) shell.filePane().getCenter();
+            @SuppressWarnings("unchecked")
+            List<MarkdownOutline.Entry> entries = (List<MarkdownOutline.Entry>)
+                    layout.getProperties().get("quizforge.outlineEntries");
+            var second = entries.stream().filter(entry -> entry.kind() == MarkdownOutline.Kind.ANCHOR
+                    && entry.label().equals("定义") && entry.occurrence() == 2).findFirst().orElseThrow();
+            assertEquals(9, second.target().startLine());
+            assertEquals(WorkspaceNavigationService.Result.MISSING_TARGET,
+                    shell.navigate(QuizForgeNavigationLink.anchor(assetId, "定义", 3)));
+            assertEquals(WorkspaceNavigationService.Result.MISSING_TARGET,
+                    shell.navigate(QuizForgeNavigationLink.anchor(assetId, "孤立", 1)));
+            assertEquals(1, shell.tabs().tabs().size());
+        });
+    }
+
+    @Test void crossFileNavigationWaitsForRenderedPreviewAndScrollsToAnchorBody() throws Exception {
+        StringBuilder source = new StringBuilder("# Long note\n\n");
+        for (int i = 0; i < 90; i++) source.append("Paragraph ").append(i).append(".\n\n");
+        source.append("<!-- qf:anchor=末尾 -->\nTarget paragraph.\n");
+        var prepared = new RegisteredMarkdownCodec().prepareRegistration(source.toString(),
+                "Java/LongNavigation.md");
+        fixture.write("Java/LongNavigation.md", prepared.source());
+        fx(() -> {
+            shell.refresh();
+            shell.tabs().openPinned(fixture.alpha.id(), "我的笔记/学习计划.md");
+            assertEquals(WorkspaceNavigationService.Result.OPENED,
+                    shell.navigate(QuizForgeNavigationLink.anchor(
+                            prepared.document().documentAssetId(), "末尾", 1)));
+            shell.applyCss(); shell.layout(); pulse(120);
+            ScrollPane reader = (ScrollPane) shell.lookup("#markdown-preview-scroll");
+            assertNotNull(reader);
+            assertTrue(reader.getVvalue() > 0.5, "Anchor target must scroll after the preview is laid out: v="
+                    + reader.getVvalue() + " content=" + reader.getContent().getLayoutBounds().getHeight()
+                    + " viewport=" + reader.getViewportBounds().getHeight());
+            assertEquals(2, shell.tabs().tabs().size());
+        });
+    }
+
+    @Test void qbankTabHasNoMarkdownOutlineAndNavigationNeverDiscardsEdit() throws Exception {
+        fx(() -> {
+            open("Java/Java集合.md");
+            button("file-mode-toggle").fire();
+            TextArea editor = (TextArea) shell.lookup("#markdown-source-text");
+            editor.appendText("\nNot saved");
+            assertEquals(WorkspaceNavigationService.Result.EDIT_MODE,
+                    shell.navigate(QuizForgeNavigationLink.heading("doc_java", "ArrayList", 1)));
+            assertTrue(editor.getText().contains("Not saved"));
+            shell.tabs().openPinned(fixture.alpha.id(), "题库/Java集合.qbank");
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#question-practice"));
+            assertNull(shell.lookup("#markdown-outline"));
+            shell.tabs().activate(shell.tabs().findOpenTab("Java/Java集合.md"));
+            assertSame(editor, shell.lookup("#markdown-source-text"));
+        });
+    }
+
+    @Test void outlineBelongsToActiveMarkdownTabAndRefreshKeepsPinnedTabs() throws Exception {
+        fx(() -> {
+            shell.tabs().openPinned(fixture.alpha.id(), "我的笔记/学习计划.md");
+            shell.applyCss(); shell.layout();
+            FilePane first = shell.filePane();
+            assertTrue(text(shell.lookup("#markdown-outline")).contains("今天"));
+            shell.tabs().openPinned(fixture.alpha.id(), "Java/Java集合.md");
+            shell.applyCss(); shell.layout();
+            assertTrue(text(shell.lookup("#markdown-outline")).contains("ArrayList"));
+            assertFalse(text(shell.lookup("#markdown-outline")).contains("今天"));
+            shell.tabs().activate(shell.tabs().findOpenTab("我的笔记/学习计划.md"));
+            shell.applyCss(); shell.layout();
+            assertSame(first, shell.filePane());
+            assertEquals("我的笔记/学习计划.md", shell.sidebar().tree().getSelectionModel()
+                    .getSelectedItem().getValue().relativePath());
+            assertTrue(text(shell.lookup("#markdown-outline")).contains("今天"));
+            shell.refresh();
+            assertEquals(2, shell.tabs().tabs().size());
+            assertTrue(shell.tabs().tabs().stream().allMatch(WorkspaceTab::pinned));
+        });
+    }
+
+    @Test void questionBankEditPinsPreviewAndKeepsItsPracticeStateSeparate() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            assertFalse(shell.tabs().active().pinned());
+            button("file-mode-toggle").fire();
+            assertTrue(shell.tabs().active().pinned());
+            assertEquals(FileMode.EDIT, shell.filePane().mode());
+            open("Java/Java集合.md");
+            assertEquals(2, shell.tabs().tabs().size());
+            open("题库/Java集合.qbank");
+            assertEquals(FileMode.EDIT, shell.filePane().mode());
+            assertNull(shell.lookup("#markdown-outline"));
+            assertEquals(2, shell.tabs().tabs().size());
+        });
+    }
+
+    private TreeCell<?> fileCell(String path) {
+        shell.applyCss(); shell.layout();
+        return shell.sidebar().tree().lookupAll(".tree-cell").stream().filter(TreeCell.class::isInstance)
+                .map(TreeCell.class::cast).filter(row -> row.getItem() instanceof WorkspaceFileEntry entry
+                        && entry.relativePath().equals(path)).findFirst().orElseThrow();
+    }
+
     private TreeCell<?> folderCell(String path) {
         shell.applyCss(); shell.layout();
         return shell.sidebar().tree().lookupAll(".tree-cell").stream().filter(TreeCell.class::isInstance)
