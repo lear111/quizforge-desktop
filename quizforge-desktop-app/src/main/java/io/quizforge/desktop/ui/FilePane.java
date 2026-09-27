@@ -16,6 +16,7 @@ import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.core.workspace.WorkspaceFileEntry;
 import io.quizforge.core.workspace.WorkspaceFileKind;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.List;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
@@ -56,7 +57,7 @@ final class FilePane extends BorderPane {
             BiConsumer<WorkspaceId, FilePresentation> aiAction,
             QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
             MarkdownDocumentRegistration registration, Runnable refreshTree, TextClipboard clipboard,
-            QuestionSourceLinkService sourceLinks) {
+            QuestionSourceLinkService sourceLinks, Consumer<String> openLink) {
         this.loader = loader;
         this.references = references;
         this.aiAction = aiAction;
@@ -69,7 +70,7 @@ final class FilePane extends BorderPane {
         this.router = new FileViewerRouter(new SafeMarkdownPreview.SourceActions() {
             @Override public void create(MarkdownSourceRange block) { createSourceReference(block); }
             @Override public void copy(List<NamedMarkdownAnchor> anchors) { copySourceReference(anchors); }
-        }, this::copyNavigationLink);
+        }, this::copyNavigationLink, openLink);
         setId("file-pane");
         clear();
     }

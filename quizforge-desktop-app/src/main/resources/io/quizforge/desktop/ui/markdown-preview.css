@@ -25,6 +25,7 @@
 .markdown-preview .prose-strong { -fx-font-weight: bold; -fx-fill: #36332e; }
 .markdown-preview .prose-emphasis { -fx-font-style: italic; }
 .markdown-preview .prose-link { -fx-fill: #705d89; -fx-underline: true; }
+.markdown-preview .prose-internal-link { -fx-cursor: hand; }
 .markdown-preview .prose-code {
     -fx-font-family: "Consolas";
     -fx-font-size: 14px;

@@ -23,6 +23,7 @@ import org.commonmark.node.HtmlBlock;
 import org.commonmark.node.HtmlInline;
 import org.commonmark.node.IndentedCodeBlock;
 import org.commonmark.node.ListItem;
+import org.commonmark.node.Link;
 import org.commonmark.node.Node;
 import org.commonmark.node.Paragraph;
 import org.commonmark.node.SoftLineBreak;
@@ -62,6 +63,12 @@ final class SafeMarkdownPreview {
 
     javafx.scene.Node view(String markdown, RegisteredMarkdownDocument registered,
             SourceActions actions, Consumer<MarkdownOutline.Entry> copyLink) {
+        return view(markdown, registered, actions, copyLink, null);
+    }
+
+    javafx.scene.Node view(String markdown, RegisteredMarkdownDocument registered,
+            SourceActions actions, Consumer<MarkdownOutline.Entry> copyLink,
+            Consumer<String> openLink) {
         VBox preview = new VBox();
         preview.getStyleClass().add("markdown-preview");
         // 940px including page padding leaves an 860px reading column.
@@ -82,7 +89,7 @@ final class SafeMarkdownPreview {
         ScrollPane scroll = UiTheme.scroll(centered);
         scroll.setId("markdown-preview-scroll");
         MarkdownDocumentNavigator navigator = new MarkdownDocumentNavigator(scroll);
-        render(parsed, preview, anchors, actions, navigator);
+        render(parsed, preview, anchors, actions, navigator, openLink);
         List<MarkdownOutline.Entry> entries = MarkdownOutline.extract(parsed, available);
         MarkdownOutlineView outline = new MarkdownOutlineView(entries, navigator, copyLink);
         HBox layout = new HBox(scroll, outline);
@@ -106,7 +113,7 @@ final class SafeMarkdownPreview {
     }
 
     private void render(Node parent, VBox page, Map<SourceLocation, List<NamedMarkdownAnchor>> anchors,
-            SourceActions actions, MarkdownDocumentNavigator navigator) {
+            SourceActions actions, MarkdownDocumentNavigator navigator, Consumer<String> openLink) {
         for (Node node = parent.getFirstChild(); node != null; node = node.getNext()) {
             if (node instanceof HtmlBlock || node instanceof HtmlInline) continue;
             if (node instanceof Heading heading) {
@@ -128,7 +135,7 @@ final class SafeMarkdownPreview {
             } else if (node instanceof org.commonmark.node.BlockQuote) {
                 VBox quote = new VBox();
                 quote.getStyleClass().add("preview-quote");
-                render(node, quote, anchors, null, navigator);
+                render(node, quote, anchors, null, navigator, openLink);
                 add(page, quote, node, anchors, actions, navigator);
             } else if (node instanceof org.commonmark.node.BulletList || node instanceof org.commonmark.node.OrderedList) {
                 int number = node instanceof org.commonmark.node.OrderedList ordered ? ordered.getStartNumber() : 0;
@@ -137,7 +144,7 @@ final class SafeMarkdownPreview {
                 for (Node item = node.getFirstChild(); item != null; item = item.getNext()) {
                     VBox content = new VBox();
                     content.getStyleClass().add("preview-list-content");
-                    render(item, content, anchors, null, navigator);
+                    render(item, content, anchors, null, navigator, openLink);
                     javafx.scene.layout.HBox.setHgrow(content, javafx.scene.layout.Priority.ALWAYS);
                     content.setMinWidth(0);
                     Label marker = UiTheme.label(node instanceof org.commonmark.node.OrderedList ? number++ + "." : "•", "preview-list-marker");
@@ -155,9 +162,9 @@ final class SafeMarkdownPreview {
                 javafx.scene.text.TextFlow flow = new javafx.scene.text.TextFlow();
                 flow.getStyleClass().add("preview-prose");
                 flow.setMinWidth(0);
-                inline(node, flow, false, false, false);
+                inline(node, flow, false, false, null, openLink);
                 add(page, flow, node, anchors, actions, navigator);
-            } else render(node, page, anchors, actions, navigator);
+            } else render(node, page, anchors, actions, navigator, openLink);
         }
     }
 
@@ -193,28 +200,46 @@ final class SafeMarkdownPreview {
         });
     }
 
-    private void inline(Node node, javafx.scene.text.TextFlow flow, boolean bold, boolean italic, boolean link) {
+    private void inline(Node node, javafx.scene.text.TextFlow flow, boolean bold, boolean italic,
+            String destination, Consumer<String> openLink) {
         if (node instanceof HtmlBlock || node instanceof HtmlInline) return;
+        if (node instanceof Link link) destination = link.getDestination();
         String literal = node instanceof Text text ? text.getLiteral() : node instanceof Code code ? code.getLiteral()
                 : node instanceof SoftLineBreak ? " " : node instanceof HardLineBreak ? "\n" : null;
         if (literal != null) {
             if (node instanceof Code) {
                 Label code = UiTheme.label(literal, "prose-code");
                 code.setWrapText(false);
+                if (destination != null) code.getStyleClass().add("prose-link");
+                bindNavigationLink(code, destination, openLink);
                 flow.getChildren().add(code);
             } else {
                 javafx.scene.text.Text span = new javafx.scene.text.Text(literal);
                 span.getStyleClass().add("prose-text");
                 if (bold) span.getStyleClass().add("prose-strong");
                 if (italic) span.getStyleClass().add("prose-emphasis");
-                if (link) span.getStyleClass().add("prose-link");
+                if (destination != null) span.getStyleClass().add("prose-link");
+                bindNavigationLink(span, destination, openLink);
                 flow.getChildren().add(span);
             }
         }
         for (Node child = node.getFirstChild(); child != null; child = child.getNext()) {
             inline(child, flow, bold || node instanceof org.commonmark.node.StrongEmphasis,
-                    italic || node instanceof org.commonmark.node.Emphasis, link || node instanceof org.commonmark.node.Link);
+                    italic || node instanceof org.commonmark.node.Emphasis, destination, openLink);
         }
+    }
+
+    private void bindNavigationLink(javafx.scene.Node rendered, String destination, Consumer<String> openLink) {
+        // There is no WebView: only an explicit click on a QuizForge span can request navigation.
+        if (openLink == null || destination == null || !destination.startsWith("quizforge://")) return;
+        rendered.getStyleClass().add("prose-internal-link");
+        rendered.getProperties().put("quizforge.linkHref", destination);
+        rendered.setOnMouseClicked(event -> {
+            if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
+                openLink.accept(destination);
+                event.consume();
+            }
+        });
     }
 
     private void collect(Node node, List<Block> blocks, String prefix) {

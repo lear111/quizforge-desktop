@@ -11,19 +11,21 @@ final class FileViewerRouter {
     private final SafeMarkdownPreview markdown = new SafeMarkdownPreview();
     private final SafeMarkdownPreview.SourceActions sourceActions;
     private final Consumer<MarkdownOutline.Entry> copyLink;
+    private final Consumer<String> openLink;
 
     FileViewerRouter(SafeMarkdownPreview.SourceActions sourceActions,
-            Consumer<MarkdownOutline.Entry> copyLink) {
+            Consumer<MarkdownOutline.Entry> copyLink, Consumer<String> openLink) {
         this.sourceActions = sourceActions;
         this.copyLink = copyLink;
+        this.openLink = openLink;
     }
 
     Node view(FilePresentation file, FileMode mode) {
         return switch (file.kind()) {
-            case MARKDOWN -> markdown.view(file.file().sourceText(), null, sourceActions, copyLink);
+            case MARKDOWN -> markdown.view(file.file().sourceText(), null, sourceActions, copyLink, openLink);
             case STANDARD_DOCUMENT -> file.empty()
                     ? UiTheme.quietState("此文档暂无内容", "开始编辑，或使用 AI 生成")
-                    : markdown.view(file.file().sourceText(), file.registeredMarkdown(), sourceActions, copyLink);
+                    : markdown.view(file.file().sourceText(), file.registeredMarkdown(), sourceActions, copyLink, openLink);
             case QUESTION_BANK -> file.empty()
                     ? UiTheme.quietState("该题库暂无题目", "开始编辑，或使用 AI 生成") : practice(file);
             case DIRECTORY -> welcome();

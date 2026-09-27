@@ -4,6 +4,7 @@ import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
 import io.quizforge.core.port.AssetIndexRepository;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
+import io.quizforge.core.document.navigation.QuizForgeNavigationLinkCodec;
 import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.question.QuestionSourceLinkService;
@@ -30,6 +31,7 @@ final class MainWorkspaceView extends BorderPane {
     private final FilePane filePane;
     private final WorkspaceTabManager tabs;
     private final WorkspaceNavigationService navigation;
+    private final QuizForgeNavigationLinkCodec navigationCodec = new QuizForgeNavigationLinkCodec();
     private Workspace current;
 
     MainWorkspaceView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceHistory history,
@@ -46,9 +48,10 @@ final class MainWorkspaceView extends BorderPane {
         setId("main-workspace");
         getStyleClass().add("workspace-shell");
         filePane = new FilePane(loader, references, ai, bankEdits,
-                markdownEdits, registration, this::refreshTree, clipboard, sourceLinks);
+                markdownEdits, registration, this::refreshTree, clipboard, sourceLinks, this::openNavigationUri);
         tabs = new WorkspaceTabManager(() -> new FilePane(loader, references, ai, bankEdits,
-                markdownEdits, registration, this::refreshTree, clipboard, sourceLinks), filePane, this::confirmDiscard);
+                markdownEdits, registration, this::refreshTree, clipboard, sourceLinks, this::openNavigationUri),
+                filePane, this::confirmDiscard);
         navigation = new WorkspaceNavigationService(index, () -> current == null ? null : current.id(), tabs);
         sidebar = new WorkspaceSidebar((entry, pinned) -> {
             if (current != null) {
@@ -317,5 +320,15 @@ final class MainWorkspaceView extends BorderPane {
             tabs.setBottom(status);
         } else tabs.setBottom(null);
         return result;
+    }
+
+    private void openNavigationUri(String uri) {
+        try {
+            navigate(navigationCodec.decode(uri));
+        } catch (IllegalArgumentException error) {
+            Label status = new Label("链接格式无效。");
+            status.getStyleClass().add("workspace-navigation-status");
+            tabs.setBottom(status);
+        }
     }
 }

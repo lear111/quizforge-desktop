@@ -1075,6 +1075,128 @@ class MainWorkspaceViewTest {
         });
     }
 
+    @Test void previewLinksNavigateCurrentFileByUriIncludingDuplicateTargets() throws Exception {
+        String path = "Java/CurrentLinks.md";
+        String assetId = "doc_current_links";
+        var uri = new QuizForgeNavigationLinkCodec();
+        String heading = uri.encode(QuizForgeNavigationLink.heading(assetId, "Same", 2));
+        String anchor = uri.encode(QuizForgeNavigationLink.anchor(assetId, "定义", 2));
+        String markdown = "# Current\n\n[随便写的别名](" + heading + ")\n\n"
+                + "[第二个定义](" + anchor + ")\n\n## Same\nFirst.\n\n## Same\nSecond.\n\n"
+                + "<!-- qf:anchor=定义 -->\nFirst definition.\n\n"
+                + "<!-- qf:anchor=定义 -->\nSecond definition.\n";
+        var prepared = new RegisteredMarkdownCodec().prepareRegistration(markdown, path);
+        fixture.write(path, prepared.source().replace(prepared.document().documentAssetId(), assetId));
+        fx(() -> {
+            shell.refresh();
+            shell.tabs().openPinned(fixture.alpha.id(), path);
+            shell.applyCss(); shell.layout();
+            Node headingText = previewLink(heading);
+            assertEquals("随便写的别名", text(headingText));
+            assertEquals(heading, headingText.getProperties().get("quizforge.linkHref"));
+            click(headingText, 1);
+            assertEquals(path, shell.tabs().active().path());
+            assertEquals(1, shell.tabs().tabs().size());
+            click(previewLink(anchor), 1);
+            assertEquals(path, shell.tabs().active().path());
+            assertEquals(1, shell.tabs().tabs().size());
+            assertNull(shell.tabs().getBottom());
+        });
+    }
+
+    @Test void previewLinksOpenOrFocusCrossFileTargetsAndKeepSourceTab() throws Exception {
+        String sourcePath = "Java/LinkSource.md";
+        String targetPath = "Java/LinkTarget.md";
+        var codec = new QuizForgeNavigationLinkCodec();
+        var target = new RegisteredMarkdownCodec().prepareRegistration("# Target\n\n"
+                + "## Same\nFirst.\n\n## Same\nSecond.\n\n"
+                + "<!-- qf:anchor=定义 -->\nFirst definition.\n\n"
+                + "<!-- qf:anchor=定义 -->\nSecond definition.\n", targetPath);
+        String id = target.document().documentAssetId();
+        String asset = codec.encode(QuizForgeNavigationLink.asset(id));
+        String heading = codec.encode(QuizForgeNavigationLink.heading(id, "Same", 2));
+        String anchor = codec.encode(QuizForgeNavigationLink.anchor(id, "定义", 2));
+        fixture.write(targetPath, target.source());
+        fixture.write(sourcePath, "# Source\n\n[打开 B](" + asset + ")\n\n"
+                + "[跳到 Heading](" + heading + ")\n\n[跳到 Anchor](" + anchor + ")\n");
+        fx(() -> {
+            shell.refresh();
+            shell.tabs().openPinned(fixture.alpha.id(), sourcePath);
+            shell.applyCss(); shell.layout();
+            click(previewLink(heading), 1);
+            assertEquals(targetPath, shell.tabs().active().path());
+            assertEquals(2, shell.tabs().tabs().size());
+            assertEquals(sourcePath, shell.tabs().tabs().getFirst().path());
+            @SuppressWarnings("unchecked")
+            List<MarkdownOutline.Entry> targetEntries = (List<MarkdownOutline.Entry>)
+                    ((javafx.scene.layout.HBox) shell.filePane().getCenter())
+                            .getProperties().get("quizforge.outlineEntries");
+            assertTrue(targetEntries.stream().anyMatch(entry -> "Same".equals(entry.label())
+                    && entry.occurrence() == 2));
+            assertEquals(targetPath, shell.sidebar().tree().getSelectionModel()
+                    .getSelectedItem().getValue().relativePath());
+            shell.tabs().activate(shell.tabs().findOpenTab(sourcePath));
+            click(previewLink(anchor), 1);
+            assertEquals(targetPath, shell.tabs().active().path());
+            assertEquals(2, shell.tabs().tabs().size());
+            shell.tabs().activate(shell.tabs().findOpenTab(sourcePath));
+            click(previewLink(asset), 1);
+            assertEquals(targetPath, shell.tabs().active().path());
+            assertEquals(2, shell.tabs().tabs().size());
+        });
+    }
+
+    @Test void previewLinksFailClosedAndLeaveExternalLinksUntouched() throws Exception {
+        String path = "Java/FailureLinks.md";
+        String targetPath = "Java/EditTarget.md";
+        var codec = new QuizForgeNavigationLinkCodec();
+        var target = new RegisteredMarkdownCodec().prepareRegistration("# Target\n\n## Present\nBody.\n",
+                targetPath);
+        String id = target.document().documentAssetId();
+        String missingHeading = codec.encode(QuizForgeNavigationLink.heading(id, "Missing", 1));
+        String missingAnchor = codec.encode(QuizForgeNavigationLink.anchor(id, "Missing", 1));
+        String existing = codec.encode(QuizForgeNavigationLink.heading(id, "Present", 1));
+        fixture.write(targetPath, target.source());
+        fixture.write(path, "# Source\n\n[外部](https://example.com)\n\n"
+                + "[损坏](quizforge://invalid)\n\n"
+                + "[资产缺失](quizforge://asset/doc_missing)\n\n"
+                + "[标题缺失](" + missingHeading + ")\n\n"
+                + "[锚点缺失](" + missingAnchor + ")\n\n"
+                + "[编辑中](" + existing + ")\n");
+        fx(() -> {
+            shell.refresh();
+            shell.tabs().openPinned(fixture.alpha.id(), path);
+            shell.applyCss(); shell.layout();
+            Node external = shell.lookupAll(".prose-link").stream()
+                    .filter(node -> "外部".equals(text(node))).findFirst().orElseThrow();
+            assertNull(external.getOnMouseClicked());
+            click(external, 1);
+            assertEquals(path, shell.tabs().active().path());
+            assertNull(shell.tabs().getBottom());
+            click(previewLink("quizforge://invalid"), 1);
+            assertEquals(path, shell.tabs().active().path());
+            assertTrue(text(shell.tabs().getBottom()).contains("链接格式无效"));
+            click(previewLink("quizforge://asset/doc_missing"), 1);
+            assertEquals(path, shell.tabs().active().path());
+            assertTrue(text(shell.tabs().getBottom()).contains("找不到这个文档资产"));
+            click(previewLink(missingHeading), 1);
+            assertTrue(text(shell.tabs().getBottom()).contains("找不到指定位置"));
+            shell.tabs().activate(shell.tabs().findOpenTab(path));
+            click(previewLink(missingAnchor), 1);
+            assertTrue(text(shell.tabs().getBottom()).contains("找不到指定位置"));
+            shell.tabs().openPinned(fixture.alpha.id(), targetPath);
+            button("file-mode-toggle").fire();
+            TextArea editor = (TextArea) shell.lookup("#markdown-source-text");
+            editor.appendText("\nUnsaved content");
+            shell.tabs().activate(shell.tabs().findOpenTab(path));
+            click(previewLink(existing), 1);
+            assertEquals(targetPath, shell.tabs().active().path());
+            assertTrue(text(shell.tabs().getBottom()).contains("正在编辑"));
+            assertSame(editor, shell.lookup("#markdown-source-text"));
+            assertTrue(editor.getText().contains("Unsaved content"));
+        });
+    }
+
     @Test void duplicateHeadingAndAnchorNavigationUsesExactOccurrenceAndBoundBlock() throws Exception {
         String source = "# A\n## Same\nFirst.\n## Same\nSecond.\n"
                 + "<!-- qf:anchor=定义 -->\nFirst definition.\n"
@@ -1204,6 +1326,12 @@ class MainWorkspaceViewTest {
                     javafx.scene.input.MouseButton.PRIMARY, count, false, false, false, false,
                     type == javafx.scene.input.MouseEvent.MOUSE_PRESSED, false, false, false, false, true, null));
         }
+    }
+
+    private Node previewLink(String href) {
+        return shell.lookupAll(".prose-internal-link").stream()
+                .filter(node -> href.equals(node.getProperties().get("quizforge.linkHref")))
+                .findFirst().orElseThrow();
     }
 
     private static void pulse(int millis) {
