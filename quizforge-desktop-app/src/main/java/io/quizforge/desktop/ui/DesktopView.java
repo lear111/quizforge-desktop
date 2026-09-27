@@ -56,7 +56,7 @@ public final class DesktopView {
         MainWorkspaceView shell = new MainWorkspaceView(workspaces, files, new WorkspaceHistory(historyPath),
                 new FilePresentationLoader(files, catalog), references, stage, settingsDialog::show,
                 (workspace, file) -> ai[0].run(workspace, file), bankEdits,
-                markdownEdits, registration);
+                markdownEdits, registration, TextClipboard.system());
         ai[0] = new EmptyAssetAiAction(materials, documents, settings, stage,
                 settingsDialog::show, shell::refreshAndOpen);
         Scene scene = new Scene(shell, 1180, 780);

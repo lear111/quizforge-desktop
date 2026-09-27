@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import javafx.stage.Stage;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
@@ -29,6 +30,7 @@ final class ShellFixture implements AutoCloseable {
     final Path history;
     final AtomicInteger settingsOpened = new AtomicInteger();
     final AtomicInteger aiOpened = new AtomicInteger();
+    final AtomicReference<String> copiedText = new AtomicReference<>();
 
     ShellFixture(Path temp) throws Exception {
         String previous = System.getProperty("quizforge.dataDir");
@@ -81,7 +83,7 @@ final class ShellFixture implements AutoCloseable {
                 context.getBean(QuestionBankReferenceResolver.class), stage, settingsOpened::incrementAndGet,
                 (workspace, file) -> aiOpened.incrementAndGet(), context.getBean(QuestionBankFileEditService.class),
                 context.getBean(MarkdownFileEditService.class),
-                context.getBean(MarkdownDocumentRegistration.class));
+                context.getBean(MarkdownDocumentRegistration.class), copiedText::set);
     }
 
     static String document(String body) {

@@ -312,7 +312,7 @@ public final class RegisteredMarkdownCodec {
                     || ANCHOR.matcher(lines.get(next).text().trim()).matches())) next++;
             MarkdownSourceRange block = byLine.get(next + 1);
             if (block == null) errors.add("ORPHAN_ANCHOR " + name + " #" + occurrence);
-            found.add(new NamedMarkdownAnchor(name, occurrence, block));
+            found.add(new NamedMarkdownAnchor(name, occurrence, block, sourceLine));
         }
         return new AnchorAnalysis(found, errors);
     }

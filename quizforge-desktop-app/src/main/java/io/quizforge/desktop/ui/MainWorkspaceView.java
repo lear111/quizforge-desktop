@@ -15,8 +15,6 @@ import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.core.workspace.WorkspaceService;
 import java.util.function.BiConsumer;
 import javafx.scene.control.*;
-import javafx.scene.input.Clipboard;
-import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 
@@ -27,6 +25,7 @@ final class MainWorkspaceView extends BorderPane {
     private final WorkspaceHistory history;
     private final QuizForgeReferenceCodec referenceCodec = new QuizForgeReferenceCodec();
     private final Stage stage;
+    private final TextClipboard clipboard;
     private final WorkspaceSidebar sidebar;
     private final FilePane filePane;
     private Workspace current;
@@ -35,15 +34,17 @@ final class MainWorkspaceView extends BorderPane {
             FilePresentationLoader loader, QuestionBankReferenceResolver references, Stage stage,
             Runnable settings, BiConsumer<WorkspaceId, FilePresentation> ai,
             QuestionBankFileEditService bankEdits,
-            MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration) {
+            MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration,
+            TextClipboard clipboard) {
         this.workspaces = workspaces;
         this.files = files;
         this.history = history;
         this.stage = stage;
+        this.clipboard = clipboard;
         setId("main-workspace");
         getStyleClass().add("workspace-shell");
         filePane = new FilePane(loader, references, ai, bankEdits,
-                markdownEdits, registration, this::refreshTree);
+                markdownEdits, registration, this::refreshTree, clipboard);
         sidebar = new WorkspaceSidebar(entry -> {
             if (current != null) filePane.open(current.id(), entry.relativePath());
         }, new WorkspaceFileTree.FileActions() {
@@ -128,9 +129,7 @@ final class MainWorkspaceView extends BorderPane {
     }
 
     private void copyText(String value) {
-        ClipboardContent content = new ClipboardContent();
-        content.putString(value);
-        Clipboard.getSystemClipboard().setContent(content);
+        clipboard.write(value);
     }
 
     private void rename(WorkspaceFileEntry entry) {

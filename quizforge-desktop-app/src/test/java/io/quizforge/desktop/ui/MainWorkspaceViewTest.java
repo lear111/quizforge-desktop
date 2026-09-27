@@ -21,7 +21,6 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.input.Clipboard;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
@@ -127,6 +126,46 @@ class MainWorkspaceViewTest {
             assertTrue(source.getText().contains("# 本周学习计划"));
             toggle.fire();
             assertEquals(FileMode.BROWSE, shell.filePane().mode());
+        });
+    }
+
+    @Test void outlineJumpsToTheCorrectRepeatedAnchorAndResetsOnFileChange() throws Exception {
+        StringBuilder markdown = new StringBuilder("# Java\n### Collection\n");
+        markdown.append("<!-- qf:anchor=定义 -->\nFirst definition.\n");
+        for (int index = 0; index < 65; index++)
+            markdown.append("Paragraph ").append(index).append(" with enough content to scroll.\n\n");
+        markdown.append("<!-- qf:anchor=定义 -->\nSecond definition.\n");
+        markdown.append("<!-- qf:anchor=孤立锚点 -->\n");
+        fixture.write("Java/Outline.md", markdown.toString());
+        fx(() -> {
+            shell.refresh();
+            open("Java/Outline.md");
+            pulse(100);
+            assertNotNull(shell.lookup("#markdown-outline"));
+            var first = button("qf-nav-2");
+            var second = button("qf-nav-3");
+            assertEquals("定义", first.getAccessibleText());
+            assertEquals("定义", second.getAccessibleText());
+            assertNotEquals(first.getId(), second.getId());
+            second.fire();
+            var scroll = (ScrollPane) shell.lookup("#markdown-preview-scroll");
+            assertTrue(scroll.getVvalue() > 0.5, "Second anchor should scroll to its own paragraph");
+            assertTrue(second.getStyleClass().contains("markdown-outline-selected"));
+            button("qf-nav-1").fire();
+            assertTrue(scroll.getVvalue() < 0.1, "Heading should navigate in the same preview");
+            assertTrue(button("qf-nav-4").isDisabled());
+            assertFalse(text(shell.lookup(".markdown-preview")).contains("qf:anchor"));
+            open("我的笔记/学习计划.md");
+            assertNull(shell.lookup("#qf-nav-3"));
+            assertTrue(shell.lookupAll(".markdown-outline-selected").isEmpty());
+            button("file-mode-toggle").fire();
+            assertNull(shell.lookup("#markdown-outline"));
+            ((TextArea) shell.lookup("#markdown-source-text")).setText("# Updated\n## New section\nText.\n");
+            button("markdown-save").fire();
+            assertNotNull(shell.lookup("#markdown-outline"));
+            assertEquals("New section", button("qf-nav-1").getAccessibleText());
+            open("题库/Java集合.qbank");
+            assertNull(shell.lookup("#markdown-outline"));
         });
     }
 
@@ -342,6 +381,18 @@ class MainWorkspaceViewTest {
         });
     }
 
+    @Test void copyDocumentReferenceWritesTheExactDocumentUri() throws Exception {
+        fx(() -> {
+            open("Java/Java集合.md");
+            var entry = shell.filePane().currentFile().file().entry();
+            assertEquals("copy-document-reference",
+                    folderCell("Java/Java集合.md").getContextMenu().getItems().getFirst().getId());
+            folderCell("Java/Java集合.md").getContextMenu().getItems().getFirst().fire();
+            assertEquals(new QuizForgeReferenceCodec().encode(
+                    QuizForgeReference.document(entry.assetId())), fixture.copiedText.get());
+        });
+    }
+
     @Test void rightClickDoesNotDiscardTheOpenFile() throws Exception {
         fx(() -> {
             open("Java/Java集合.md");
@@ -381,8 +432,11 @@ class MainWorkspaceViewTest {
             });
             menu.getItems().getFirst().fire();
             assertEquals(path, shell.filePane().currentFile().file().entry().relativePath());
-            assertNotNull(Clipboard.getSystemClipboard().getString(),
-                    "Create and Copy must put the current anchor URI on the clipboard");
+            var copiedDocument = shell.filePane().currentFile().registeredMarkdown();
+            assertNotNull(copiedDocument);
+            assertEquals(new QuizForgeReferenceCodec().encode(QuizForgeReference.anchor(
+                    copiedDocument.documentAssetId(), copiedDocument.contentId(), "学习计划来源", 1)),
+                    fixture.copiedText.get());
             assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, shell.filePane().currentFile().kind());
             assertNotNull(shell.filePane().currentFile().registeredMarkdown());
             assertNotNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
@@ -427,7 +481,7 @@ class MainWorkspaceViewTest {
             assertEquals(new QuizForgeReferenceCodec().encode(QuizForgeReference.anchor(
                             "doc_two_anchors", shell.filePane().currentFile().registeredMarkdown()
                                     .contentId(), "second", 1)),
-                    Clipboard.getSystemClipboard().getString());
+                    fixture.copiedText.get());
         });
     }
 
@@ -448,7 +502,10 @@ class MainWorkspaceViewTest {
             String saved = Files.readString(fixture.alphaRoot.resolve(path));
             assertEquals(1, saved.split("qf:anchor=手写来源", -1).length - 1);
             assertTrue(saved.contains("quizforge:"));
-            assertTrue(Clipboard.getSystemClipboard().getString().contains("/anchor/"));
+            var document = shell.filePane().currentFile().registeredMarkdown();
+            assertEquals(new QuizForgeReferenceCodec().encode(QuizForgeReference.anchor(
+                    document.documentAssetId(), document.contentId(), "手写来源", 1)),
+                    fixture.copiedText.get());
         });
     }
 
@@ -539,7 +596,7 @@ class MainWorkspaceViewTest {
             stage.setWidth(650);
             shell.applyCss(); shell.layout(); pulse(150);
             var page = (javafx.scene.layout.VBox) shell.lookup(".markdown-preview");
-            var reader = (ScrollPane) shell.filePane().getCenter();
+            var reader = (ScrollPane) shell.lookup("#markdown-preview-scroll");
             assertTrue(page.getWidth() <= reader.getViewportBounds().getWidth() + 1,
                     "Reading column must shrink with a compact window");
             button("file-mode-toggle").fire();
@@ -579,7 +636,7 @@ class MainWorkspaceViewTest {
             menu.getItems().get(1).fire();
             assertEquals(new QuizForgeReferenceCodec().encode(QuizForgeReference.anchor(
                     registered.documentAssetId(), registered.contentId(), "Repeated source", 1)),
-                    Clipboard.getSystemClipboard().getString());
+                    fixture.copiedText.get());
             open("我的笔记/学习计划.md");
             assertTrue(shell.lookupAll(".preview-prose").stream().anyMatch(node ->
                     node.getProperties().containsKey("quizforge.sourceContextMenu")));

@@ -19,8 +19,6 @@ import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
-import javafx.scene.input.Clipboard;
-import javafx.scene.input.ClipboardContent;
 import javafx.geometry.Pos;
 
 final class FilePane extends BorderPane {
@@ -31,6 +29,7 @@ final class FilePane extends BorderPane {
     private final MarkdownFileEditService markdownEdits;
     private final MarkdownDocumentRegistration registration;
     private final Runnable refreshTree;
+    private final TextClipboard clipboard;
     private final FileViewerRouter router;
     private final QuizForgeReferenceCodec referencesCodec = new QuizForgeReferenceCodec();
     private final AssetDetailsPopover details = new AssetDetailsPopover();
@@ -45,7 +44,7 @@ final class FilePane extends BorderPane {
     FilePane(FilePresentationLoader loader, QuestionBankReferenceResolver references,
             BiConsumer<WorkspaceId, FilePresentation> aiAction,
             QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
-            MarkdownDocumentRegistration registration, Runnable refreshTree) {
+            MarkdownDocumentRegistration registration, Runnable refreshTree, TextClipboard clipboard) {
         this.loader = loader;
         this.references = references;
         this.aiAction = aiAction;
@@ -53,6 +52,7 @@ final class FilePane extends BorderPane {
         this.markdownEdits = markdownEdits;
         this.registration = registration;
         this.refreshTree = refreshTree;
+        this.clipboard = clipboard;
         this.router = new FileViewerRouter(new SafeMarkdownPreview.SourceActions() {
             @Override public void create(MarkdownSourceRange block) { createSourceReference(block); }
             @Override public void copy(List<NamedMarkdownAnchor> anchors) { copySourceReference(anchors); }
@@ -184,9 +184,7 @@ final class FilePane extends BorderPane {
         if (anchor.orphan()) throw new IllegalArgumentException("ORPHAN_ANCHOR");
         String uri = referencesCodec.encode(QuizForgeReference.anchor(document.documentAssetId(),
                 document.contentId(), anchor.name(), anchor.occurrence()));
-        ClipboardContent content = new ClipboardContent();
-        content.putString(uri);
-        Clipboard.getSystemClipboard().setContent(content);
+        clipboard.write(uri);
     }
 
     private void showReferenceError(RuntimeException error) {

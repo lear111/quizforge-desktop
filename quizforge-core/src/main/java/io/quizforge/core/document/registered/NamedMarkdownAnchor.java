@@ -1,10 +1,12 @@
 package io.quizforge.core.document.registered;
 
 /** A name bound to an addressable block; occurrence is derived from source order. */
-public record NamedMarkdownAnchor(String name, int occurrence, MarkdownSourceRange blockRange) {
+public record NamedMarkdownAnchor(String name, int occurrence, MarkdownSourceRange blockRange,
+        int sourceLine) {
     public NamedMarkdownAnchor {
         name = validateName(name);
         if (occurrence < 1) throw new IllegalArgumentException("INVALID_ANCHOR_OCCURRENCE");
+        if (sourceLine < 1) throw new IllegalArgumentException("INVALID_ANCHOR_SOURCE_LINE");
     }
 
     public boolean orphan() { return blockRange == null; }

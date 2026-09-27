@@ -308,6 +308,27 @@
 .text-action:hover { -fx-text-fill: #6c5489; }
 .qbank-edit-navigation { -fx-padding: 0 0 10 0; -fx-border-color: #ebe5dc; -fx-border-width: 0 0 1 0; }
 .qbank-editor .choice-box { -fx-min-width: 84; -fx-background-color: transparent; -fx-border-color: transparent; }
+.markdown-browse-layout { -fx-background-color: #faf9f6; }
+.markdown-outline {
+    -fx-pref-width: 260; -fx-min-width: 220; -fx-max-width: 280;
+    -fx-padding: 22 12 16 12;
+    -fx-border-color: #ebe8e1; -fx-border-width: 0 0 0 1;
+}
+.markdown-outline-title { -fx-padding: 0 8 12 8; -fx-font-size: 11px; -fx-text-fill: #908a80; }
+.markdown-outline-scroll, .markdown-outline-scroll > .viewport,
+.markdown-outline-rows { -fx-background-color: transparent; -fx-background-insets: 0; }
+.markdown-outline-rows { -fx-spacing: 2; }
+.markdown-outline-entry {
+    -fx-background-color: transparent; -fx-background-radius: 4;
+    -fx-border-color: transparent; -fx-padding: 5 8; -fx-alignment: center-left;
+    -fx-min-height: 30; -fx-pref-height: 30; -fx-max-height: 30; -fx-cursor: hand;
+}
+.markdown-outline-entry:hover { -fx-background-color: #efede7; }
+.markdown-outline-entry.markdown-outline-selected { -fx-background-color: #e8e3ed; }
+.markdown-outline-label { -fx-font-size: 12px; -fx-text-fill: #5d574e; }
+.markdown-outline-anchor .markdown-outline-label { -fx-text-fill: #756688; }
+.markdown-outline-anchor-icon { -fx-font-size: 12px; -fx-text-fill: #857694; -fx-padding: 0 5 0 0; }
+.markdown-outline-orphan { -fx-opacity: 0.48; }
 .practice-view { -fx-padding: 32 40; -fx-spacing: 18; }
 .practice-view .section-title { -fx-font-size: 12px; -fx-font-weight: normal; -fx-text-fill: #999084; }
 .practice-view .question-stem { -fx-font-size: 22px; -fx-padding: 10 0 4 0; }
