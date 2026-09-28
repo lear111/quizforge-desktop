@@ -27,4 +27,11 @@ public final class SqliteDatabase {
         config.enforceForeignKeys(true);
         return DriverManager.getConnection(jdbcUrl, config.toProperties());
     }
+
+    Connection openPracticeTransactionConnection() throws SQLException {
+        SQLiteConfig config = new SQLiteConfig();
+        config.enforceForeignKeys(true);
+        config.setTransactionMode(SQLiteConfig.TransactionMode.IMMEDIATE);
+        return DriverManager.getConnection(jdbcUrl, config.toProperties());
+    }
 }

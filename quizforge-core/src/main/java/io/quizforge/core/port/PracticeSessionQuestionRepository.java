@@ -19,6 +19,8 @@ public interface PracticeSessionQuestionRepository {
             PracticeSessionQuestion.State state, Instant updatedAt);
     void updateSnapshot(String sessionId, String questionId, int questionOrder,
             PracticeSessionQuestion.Snapshot snapshot, Instant updatedAt);
+    /** Reordering must not rewrite the snapshot, draft or attempts. */
+    void updateOrder(String sessionId, String questionId, int questionOrder, Instant updatedAt);
     /** Only deletes from an ACTIVE session; attempts are removed by database cascade. */
     void deleteBySessionIdAndQuestionId(String sessionId, String questionId);
 }

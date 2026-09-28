@@ -16,13 +16,22 @@ import java.util.Optional;
 
 public final class SqliteQuestionAttemptRepository implements QuestionAttemptRepository {
     private final SqliteDatabase database;
+    private final Connection transactionConnection;
     private final PracticePayloadJsonCodec json = new PracticePayloadJsonCodec();
 
-    public SqliteQuestionAttemptRepository(SqliteDatabase database) { this.database = database; }
+    public SqliteQuestionAttemptRepository(SqliteDatabase database) {
+        this.database = database;
+        this.transactionConnection = null;
+    }
+
+    SqliteQuestionAttemptRepository(Connection transactionConnection) {
+        this.database = null;
+        this.transactionConnection = transactionConnection;
+    }
 
     @Override public void append(QuestionAttempt attempt) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement insert = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement insert = scope.connection().prepareStatement("""
                         INSERT INTO question_attempt(id, session_question_id, attempt_no, attempt_mode,
                             answer_json, result, score, max_score, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """)) {
@@ -42,8 +51,8 @@ public final class SqliteQuestionAttemptRepository implements QuestionAttemptRep
     }
 
     @Override public List<QuestionAttempt> listBySessionQuestion(String sessionQuestionId) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement select = connection.prepareStatement(
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement select = scope.connection().prepareStatement(
                         "SELECT * FROM question_attempt WHERE session_question_id = ? ORDER BY attempt_no ASC")) {
             select.setString(1, sessionQuestionId);
             try (ResultSet rows = select.executeQuery()) {
@@ -55,8 +64,8 @@ public final class SqliteQuestionAttemptRepository implements QuestionAttemptRep
     }
 
     @Override public Optional<QuestionAttempt> findLatest(String sessionQuestionId) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement select = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement select = scope.connection().prepareStatement("""
                         SELECT * FROM question_attempt WHERE session_question_id = ? ORDER BY attempt_no DESC LIMIT 1
                         """)) {
             select.setString(1, sessionQuestionId);
@@ -76,8 +85,8 @@ public final class SqliteQuestionAttemptRepository implements QuestionAttemptRep
     }
 
     private long aggregate(String sql, String sessionQuestionId) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement select = connection.prepareStatement(sql)) {
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement select = scope.connection().prepareStatement(sql)) {
             select.setString(1, sessionQuestionId);
             try (ResultSet row = select.executeQuery()) {
                 row.next();

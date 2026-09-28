@@ -16,14 +16,24 @@ import java.util.Optional;
 
 public final class SqlitePracticeSessionQuestionRepository implements PracticeSessionQuestionRepository {
     private final SqliteDatabase database;
+    private final Connection transactionConnection;
     private final PracticePayloadJsonCodec json = new PracticePayloadJsonCodec();
 
-    public SqlitePracticeSessionQuestionRepository(SqliteDatabase database) { this.database = database; }
+    public SqlitePracticeSessionQuestionRepository(SqliteDatabase database) {
+        this.database = database;
+        this.transactionConnection = null;
+    }
+
+    SqlitePracticeSessionQuestionRepository(Connection transactionConnection) {
+        this.database = null;
+        this.transactionConnection = transactionConnection;
+    }
 
     @Override public void createAll(List<PracticeSessionQuestion> questions) {
-        try (Connection connection = database.openConnection()) {
-            connection.setAutoCommit(false);
-            try (PreparedStatement insert = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection)) {
+            Connection connection = scope.connection();
+            if (scope.owned()) connection.setAutoCommit(false);
+            try (PreparedStatement insert = scope.connection().prepareStatement("""
                     INSERT INTO practice_session_question(id, session_id, question_id, question_order,
                         question_type, stem_snapshot, options_snapshot_json, correct_answer_snapshot_json,
                         analysis_snapshot, source_refs_snapshot_json, practice_state, draft_answer_json,
@@ -41,17 +51,19 @@ public final class SqlitePracticeSessionQuestionRepository implements PracticeSe
                     insert.setString(14, question.updatedAt().toString());
                     insert.executeUpdate();
                 }
-                connection.commit();
+                if (scope.owned()) connection.commit();
             } catch (SQLException | RuntimeException error) {
-                try { connection.rollback(); } catch (SQLException rollback) { error.addSuppressed(rollback); }
+                if (scope.owned()) {
+                    try { connection.rollback(); } catch (SQLException rollback) { error.addSuppressed(rollback); }
+                }
                 throw error;
             }
         } catch (SQLException error) { throw failure("create practice questions", error); }
     }
 
     @Override public List<PracticeSessionQuestion> findBySessionId(String sessionId) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement select = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement select = scope.connection().prepareStatement("""
                         SELECT * FROM practice_session_question WHERE session_id = ? ORDER BY question_order, id
                         """)) {
             select.setString(1, sessionId);
@@ -64,8 +76,8 @@ public final class SqlitePracticeSessionQuestionRepository implements PracticeSe
     }
 
     @Override public Optional<PracticeSessionQuestion> findBySessionIdAndQuestionId(String sessionId, String questionId) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement select = connection.prepareStatement(
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement select = scope.connection().prepareStatement(
                         "SELECT * FROM practice_session_question WHERE session_id = ? AND question_id = ?")) {
             select.setString(1, sessionId);
             select.setString(2, questionId);
@@ -77,8 +89,8 @@ public final class SqlitePracticeSessionQuestionRepository implements PracticeSe
 
     @Override public void updateState(String sessionId, String questionId,
             PracticeSessionQuestion.State state, Instant updatedAt) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement update = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement update = scope.connection().prepareStatement("""
                         UPDATE practice_session_question SET practice_state = ?, updated_at = ?
                         WHERE session_id = ? AND question_id = ?
                         """)) {
@@ -92,8 +104,8 @@ public final class SqlitePracticeSessionQuestionRepository implements PracticeSe
 
     @Override public void updateDraft(String sessionId, String questionId, PracticePayload draft,
             PracticeSessionQuestion.State state, Instant updatedAt) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement update = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement update = scope.connection().prepareStatement("""
                         UPDATE practice_session_question SET draft_answer_json = ?, practice_state = ?, updated_at = ?
                         WHERE session_id = ? AND question_id = ?
                         """)) {
@@ -108,8 +120,8 @@ public final class SqlitePracticeSessionQuestionRepository implements PracticeSe
 
     @Override public void updateSnapshot(String sessionId, String questionId, int questionOrder,
             PracticeSessionQuestion.Snapshot snapshot, Instant updatedAt) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement update = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement update = scope.connection().prepareStatement("""
                         UPDATE practice_session_question SET question_order = ?, question_type = ?,
                             stem_snapshot = ?, options_snapshot_json = ?, correct_answer_snapshot_json = ?,
                             analysis_snapshot = ?, source_refs_snapshot_json = ?, updated_at = ?
@@ -124,9 +136,23 @@ public final class SqlitePracticeSessionQuestionRepository implements PracticeSe
         } catch (SQLException error) { throw failure("update practice snapshot", error); }
     }
 
+    @Override public void updateOrder(String sessionId, String questionId, int questionOrder, Instant updatedAt) {
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement update = scope.connection().prepareStatement("""
+                        UPDATE practice_session_question SET question_order = ?, updated_at = ?
+                        WHERE session_id = ? AND question_id = ?
+                        """)) {
+            update.setInt(1, questionOrder);
+            update.setString(2, updatedAt.toString());
+            update.setString(3, sessionId);
+            update.setString(4, questionId);
+            update.executeUpdate();
+        } catch (SQLException error) { throw failure("reorder practice question", error); }
+    }
+
     @Override public void deleteBySessionIdAndQuestionId(String sessionId, String questionId) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement delete = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement delete = scope.connection().prepareStatement("""
                         DELETE FROM practice_session_question WHERE session_id = ? AND question_id = ?
                         AND EXISTS (SELECT 1 FROM practice_session WHERE id = session_id AND status = 'ACTIVE')
                         """)) {

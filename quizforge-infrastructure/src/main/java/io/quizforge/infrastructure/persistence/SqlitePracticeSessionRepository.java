@@ -19,12 +19,21 @@ public final class SqlitePracticeSessionRepository implements PracticeSessionRep
     // Fixed fractional width preserves true chronological order in SQLite TEXT, including nanoseconds.
     private static final DateTimeFormatter UTC = new DateTimeFormatterBuilder().appendInstant(9).toFormatter();
     private final SqliteDatabase database;
+    private final Connection transactionConnection;
 
-    public SqlitePracticeSessionRepository(SqliteDatabase database) { this.database = database; }
+    public SqlitePracticeSessionRepository(SqliteDatabase database) {
+        this.database = database;
+        this.transactionConnection = null;
+    }
+
+    SqlitePracticeSessionRepository(Connection transactionConnection) {
+        this.database = null;
+        this.transactionConnection = transactionConnection;
+    }
 
     @Override public void create(PracticeSession session) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement insert = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement insert = scope.connection().prepareStatement("""
                         INSERT INTO practice_session(id, question_bank_asset_id, question_bank_content_id,
                             bank_title_snapshot, status, current_view, current_question_id,
                             started_at, last_activity_at, archived_at)
@@ -53,8 +62,8 @@ public final class SqlitePracticeSessionRepository implements PracticeSessionRep
     }
 
     private Optional<PracticeSession> findOne(String sql, String id) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement select = connection.prepareStatement(sql)) {
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement select = scope.connection().prepareStatement(sql)) {
             select.setString(1, id);
             try (ResultSet row = select.executeQuery()) {
                 return row.next() ? Optional.of(map(row)) : Optional.empty();
@@ -63,8 +72,8 @@ public final class SqlitePracticeSessionRepository implements PracticeSessionRep
     }
 
     @Override public List<PracticeSession> listArchivedByQuestionBankAssetId(String assetId) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement select = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement select = scope.connection().prepareStatement("""
                         SELECT * FROM practice_session WHERE question_bank_asset_id = ? AND status = 'ARCHIVED'
                         ORDER BY archived_at DESC, id
                         """)) {
@@ -78,8 +87,8 @@ public final class SqlitePracticeSessionRepository implements PracticeSessionRep
     }
 
     @Override public void updateCurrentPosition(String sessionId, PracticeSession.View view, String questionId) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement update = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement update = scope.connection().prepareStatement("""
                         UPDATE practice_session SET current_view = ?, current_question_id = ?
                         WHERE id = ? AND status = 'ACTIVE'
                         """)) {
@@ -91,8 +100,8 @@ public final class SqlitePracticeSessionRepository implements PracticeSessionRep
     }
 
     @Override public void touch(String sessionId, Instant lastActivityAt) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement update = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement update = scope.connection().prepareStatement("""
                         UPDATE practice_session SET last_activity_at = ? WHERE id = ? AND status = 'ACTIVE'
                         """)) {
             update.setString(1, UTC.format(lastActivityAt));
@@ -101,9 +110,23 @@ public final class SqlitePracticeSessionRepository implements PracticeSessionRep
         } catch (SQLException error) { throw failure("touch practice session", error); }
     }
 
+    @Override public void updateBankSnapshot(String sessionId, String contentId, String title, Instant lastActivityAt) {
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement update = scope.connection().prepareStatement("""
+                        UPDATE practice_session SET question_bank_content_id = ?, bank_title_snapshot = ?, last_activity_at = ?
+                        WHERE id = ? AND status = 'ACTIVE'
+                        """)) {
+            update.setString(1, contentId);
+            update.setString(2, title);
+            update.setString(3, UTC.format(lastActivityAt));
+            update.setString(4, sessionId);
+            update.executeUpdate();
+        } catch (SQLException error) { throw failure("update active bank snapshot", error); }
+    }
+
     @Override public void archive(String sessionId, Instant archivedAt) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement update = connection.prepareStatement("""
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement update = scope.connection().prepareStatement("""
                         UPDATE practice_session SET status = 'ARCHIVED', archived_at = ?, last_activity_at = ?
                         WHERE id = ? AND status = 'ACTIVE'
                         """)) {
@@ -115,8 +138,8 @@ public final class SqlitePracticeSessionRepository implements PracticeSessionRep
     }
 
     @Override public void deleteArchived(String sessionId) {
-        try (Connection connection = database.openConnection();
-                PreparedStatement delete = connection.prepareStatement(
+        try (var scope = PracticeConnectionScope.open(database, transactionConnection);
+                PreparedStatement delete = scope.connection().prepareStatement(
                         "DELETE FROM practice_session WHERE id = ? AND status = 'ARCHIVED'")) {
             delete.setString(1, sessionId);
             delete.executeUpdate();

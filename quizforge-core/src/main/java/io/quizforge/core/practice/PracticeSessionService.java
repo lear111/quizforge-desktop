@@ -1,0 +1,146 @@
+package io.quizforge.core.practice;
+
+import io.quizforge.core.port.PracticeTransaction;
+import io.quizforge.core.question.QuestionBankFile;
+import io.quizforge.core.question.QuestionBankValidator;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+/** Opens/restores an active round and synchronizes it to a validated current QBank revision. */
+public final class PracticeSessionService {
+    private final PracticeTransaction transactions;
+    private final Clock clock;
+    private final PracticeQuestionSnapshotMapper mapper = new PracticeQuestionSnapshotMapper();
+    private final QuestionBankValidator validator = new QuestionBankValidator();
+
+    public PracticeSessionService(PracticeTransaction transactions, Clock clock) {
+        this.transactions = transactions;
+        this.clock = clock;
+    }
+
+    /** The caller supplies the contentId of this exact current file model; no path is accepted. */
+    public ActivePracticeSnapshot openOrCreateActiveSession(QuestionBankFile bank, String contentId) {
+        validator.validate(bank); // Includes the existing rule that empty banks cannot be practiced.
+        if (contentId == null || !contentId.matches("qfb:v1:[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("A current QBank contentId is required.");
+        }
+        return transactions.execute(repositories -> {
+            Instant now = clock.instant();
+            PracticeSession session = repositories.sessions().findActiveByQuestionBankAssetId(bank.id())
+                    .orElseGet(() -> create(repositories, bank, contentId, now));
+            if (!session.questionBankContentId().equals(contentId)) {
+                synchronize(repositories, session, bank, contentId, now);
+            } else {
+                repositories.sessions().touch(session.id(), now);
+            }
+            return restore(repositories, session.id());
+        });
+    }
+
+    private PracticeSession create(PracticeTransaction.Repositories repositories, QuestionBankFile bank,
+            String contentId, Instant now) {
+        var session = new PracticeSession(id("ps_"), bank.id(), contentId, bank.title(),
+                PracticeSession.Status.ACTIVE, PracticeSession.View.QUESTION, bank.questions().getFirst().id(),
+                now, now, null);
+        repositories.sessions().create(session);
+        List<PracticeSessionQuestion> questions = new ArrayList<>();
+        for (int index = 0; index < bank.questions().size(); index++) {
+            var question = bank.questions().get(index);
+            questions.add(newQuestion(id("psq_"), session.id(), question.id(), index,
+                    mapper.map(question), now, now));
+        }
+        repositories.questions().createAll(questions);
+        return session;
+    }
+
+    private void synchronize(PracticeTransaction.Repositories repositories, PracticeSession session,
+            QuestionBankFile bank, String contentId, Instant now) {
+        List<PracticeSessionQuestion> previous = repositories.questions().findBySessionId(session.id());
+        Map<String, PracticeSessionQuestion> byId = new HashMap<>();
+        for (var question : previous) byId.put(question.questionId(), question);
+        Set<String> currentIds = bank.questions().stream().map(QuestionBankFile.Entry::id).collect(Collectors.toSet());
+        boolean needsQuestionView = false;
+        for (var question : previous) {
+            if (!currentIds.contains(question.questionId())) {
+                repositories.questions().deleteBySessionIdAndQuestionId(session.id(), question.questionId());
+                needsQuestionView = true;
+            }
+        }
+        for (int order = 0; order < bank.questions().size(); order++) {
+            var current = bank.questions().get(order);
+            var snapshot = mapper.map(current);
+            var old = byId.get(current.id());
+            if (old == null) {
+                repositories.questions().create(newQuestion(id("psq_"), session.id(), current.id(), order,
+                        snapshot, now, now));
+                needsQuestionView = true;
+            } else if (semanticChange(old.snapshot(), snapshot)) {
+                // Reset the whole active question so existing FK cascade removes its attempts.
+                // Keep its persistence identity and original creation time; all operations are atomic.
+                repositories.questions().deleteBySessionIdAndQuestionId(session.id(), current.id());
+                repositories.questions().create(newQuestion(old.id(), session.id(), current.id(), order,
+                        snapshot, old.createdAt(), now));
+                needsQuestionView = true;
+            } else if (!old.snapshot().equals(snapshot)) {
+                repositories.questions().updateSnapshot(session.id(), current.id(), order, snapshot, now);
+            } else if (old.questionOrder() != order) {
+                repositories.questions().updateOrder(session.id(), current.id(), order, now);
+            }
+        }
+        PracticeSession.View view = session.currentView();
+        String currentId = session.currentQuestionId();
+        if (view == PracticeSession.View.SUMMARY && needsQuestionView) view = PracticeSession.View.QUESTION;
+        if (view == PracticeSession.View.QUESTION && !currentIds.contains(currentId)) {
+            currentId = replacementCurrent(previous, session.currentQuestionId(), currentIds, bank.questions().getFirst().id());
+        }
+        if (view != session.currentView() || !java.util.Objects.equals(currentId, session.currentQuestionId())) {
+            repositories.sessions().updateCurrentPosition(session.id(), view, currentId);
+        }
+        // Never advance the revision before the entire question synchronization succeeds.
+        repositories.sessions().updateBankSnapshot(session.id(), contentId, bank.title(), now);
+    }
+
+    private boolean semanticChange(PracticeSessionQuestion.Snapshot before, PracticeSessionQuestion.Snapshot after) {
+        return !before.questionType().equals(after.questionType()) || !before.stem().equals(after.stem())
+                || !before.options().equals(after.options()) || !before.correctAnswer().equals(after.correctAnswer());
+    }
+
+    private String replacementCurrent(List<PracticeSessionQuestion> previous, String removedId,
+            Set<String> currentIds, String firstId) {
+        for (int index = 0; index < previous.size(); index++) {
+            if (!previous.get(index).questionId().equals(removedId)) continue;
+            // Prefer the nearest surviving successor in the previous order, then the predecessor.
+            for (int next = index + 1; next < previous.size(); next++) {
+                if (currentIds.contains(previous.get(next).questionId())) return previous.get(next).questionId();
+            }
+            for (int prior = index - 1; prior >= 0; prior--) {
+                if (currentIds.contains(previous.get(prior).questionId())) return previous.get(prior).questionId();
+            }
+            break;
+        }
+        return firstId;
+    }
+
+    private ActivePracticeSnapshot restore(PracticeTransaction.Repositories repositories, String sessionId) {
+        var session = repositories.sessions().findById(sessionId).orElseThrow();
+        var questions = repositories.questions().findBySessionId(sessionId).stream()
+                .map(question -> new ActivePracticeSnapshot.Question(question,
+                        repositories.attempts().listBySessionQuestion(question.id()))).toList();
+        return new ActivePracticeSnapshot(session, questions);
+    }
+
+    private PracticeSessionQuestion newQuestion(String id, String sessionId, String questionId, int order,
+            PracticeSessionQuestion.Snapshot snapshot, Instant createdAt, Instant updatedAt) {
+        return new PracticeSessionQuestion(id, sessionId, questionId, order, snapshot,
+                PracticeSessionQuestion.State.UNANSWERED, null, createdAt, updatedAt);
+    }
+
+    private String id(String prefix) { return prefix + UUID.randomUUID(); }
+}

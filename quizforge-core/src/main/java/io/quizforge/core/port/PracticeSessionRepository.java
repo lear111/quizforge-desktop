@@ -12,6 +12,8 @@ public interface PracticeSessionRepository {
     List<PracticeSession> listArchivedByQuestionBankAssetId(String questionBankAssetId);
     void updateCurrentPosition(String sessionId, PracticeSession.View view, String questionId);
     void touch(String sessionId, Instant lastActivityAt);
+    /** Advance active revision/title only inside the same transaction as question synchronization. */
+    void updateBankSnapshot(String sessionId, String contentId, String title, Instant lastActivityAt);
     void archive(String sessionId, Instant archivedAt);
     void deleteArchived(String sessionId);
 }
