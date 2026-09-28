@@ -10,7 +10,7 @@ import java.util.List;
 /** Runtime resolution never mutates the portable QuestionBank's recorded source IDs. */
 public final class QuestionBankReferenceResolver {
     public enum Status { EXACT_MATCH, DIFFERENT_REVISION, EXACT_CONTENT_MATCH,
-        MISSING_DOCUMENT, MISSING_NODE, MISSING_ANCHOR, ORPHAN_ANCHOR, MISSING }
+        MISSING_DOCUMENT, MISSING_NODE, MISSING_ANCHOR, ORPHAN_ANCHOR, UNAVAILABLE_DOCUMENT, MISSING }
     public record Resolution(QuestionBankFile.SourceDocument source, Status status,
             List<Asset> candidates) {
         public Resolution { candidates = List.copyOf(candidates); }
@@ -40,26 +40,48 @@ public final class QuestionBankReferenceResolver {
                 .map(ref -> resolveRef(workspaceId, documents, ref)).toList();
     }
 
+    /** Current-view resolution uses the recorded identity only; it never rebinds by content. */
+    public List<NodeResolution> resolveCurrentRefs(WorkspaceId workspaceId,
+            List<QuestionBankFile.SourceRef> refs) {
+        if (nodes == null) throw new IllegalStateException("Document node lookup is not configured");
+        List<Asset> documents = scanner.scan(workspaceId).stream()
+                .filter(asset -> asset.assetType() == AssetType.STANDARD_DOCUMENT).toList();
+        return refs.stream().map(ref -> {
+            List<Asset> byId = documents.stream()
+                    .filter(asset -> asset.assetId().equals(ref.documentAssetId())).toList();
+            if (byId.isEmpty()) return new NodeResolution(ref, Status.MISSING_DOCUMENT, List.of());
+            try {
+                return new NodeResolution(ref, resolveDocumentRef(workspaceId, byId.getFirst(), ref, true), byId);
+            } catch (RuntimeException error) {
+                return new NodeResolution(ref, Status.UNAVAILABLE_DOCUMENT, byId);
+            }
+        }).toList();
+    }
+
+    private Status resolveDocumentRef(WorkspaceId workspaceId, Asset document,
+            QuestionBankFile.SourceRef ref, boolean namedOnly) {
+        if (ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR) {
+            DocumentNodeLookup.AnchorResult found = namedOnly
+                    ? nodes.lookupNamedAnchor(workspaceId, document, ref.anchorName(), ref.occurrence())
+                    : nodes.lookupAnchor(workspaceId, document, ref.anchorName(), ref.occurrence());
+            if (!found.containsAnchor()) return Status.MISSING_ANCHOR;
+            if (found.orphan()) return Status.ORPHAN_ANCHOR;
+            return ref.documentContentId().equals(found.contentId())
+                    ? Status.EXACT_MATCH : Status.DIFFERENT_REVISION;
+        }
+        // Preserve the existing revision-first behavior of legacy node references.
+        if (!ref.documentContentId().equals(document.contentId())) return Status.DIFFERENT_REVISION;
+        DocumentNodeLookup.Result found = nodes.lookup(workspaceId, document, ref.nodeId());
+        if (!ref.documentContentId().equals(found.contentId())) return Status.DIFFERENT_REVISION;
+        return found.containsNode() ? Status.EXACT_MATCH : Status.MISSING_NODE;
+    }
+
     private NodeResolution resolveRef(WorkspaceId workspaceId, List<Asset> documents,
             QuestionBankFile.SourceRef ref) {
         List<Asset> byId = documents.stream()
                 .filter(asset -> asset.assetId().equals(ref.documentAssetId())).toList();
         if (!byId.isEmpty()) {
-            Asset document = byId.getFirst();
-            if (!ref.documentContentId().equals(document.contentId()))
-                return new NodeResolution(ref, Status.DIFFERENT_REVISION, byId);
-            if (ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR) {
-                DocumentNodeLookup.AnchorResult found = nodes.lookupAnchor(workspaceId, document,
-                        ref.anchorName(), ref.occurrence());
-                if (!ref.documentContentId().equals(found.contentId()))
-                    return new NodeResolution(ref, Status.DIFFERENT_REVISION, byId);
-                return new NodeResolution(ref, !found.containsAnchor() ? Status.MISSING_ANCHOR
-                        : found.orphan() ? Status.ORPHAN_ANCHOR : Status.EXACT_MATCH, byId);
-            }
-            DocumentNodeLookup.Result found = nodes.lookup(workspaceId, document, ref.nodeId());
-            if (!ref.documentContentId().equals(found.contentId()))
-                return new NodeResolution(ref, Status.DIFFERENT_REVISION, byId);
-            return new NodeResolution(ref, found.containsNode() ? Status.EXACT_MATCH : Status.MISSING_NODE, byId);
+            return new NodeResolution(ref, resolveDocumentRef(workspaceId, byId.getFirst(), ref, false), byId);
         }
         List<Asset> byContent = documents.stream()
                 .filter(asset -> ref.documentContentId().equals(asset.contentId())).toList();

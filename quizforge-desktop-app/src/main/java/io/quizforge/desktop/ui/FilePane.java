@@ -39,6 +39,7 @@ final class FilePane extends BorderPane {
     private final Runnable refreshTree;
     private final TextClipboard clipboard;
     private final QuestionSourceLinkService sourceLinks;
+    private final QuestionSourceNavigationAdapter sourceNavigation;
     private final FileViewerRouter router;
     private final QuizForgeReferenceCodec referencesCodec = new QuizForgeReferenceCodec();
     private final QuizForgeNavigationLinkCodec navigationCodec = new QuizForgeNavigationLinkCodec();
@@ -57,7 +58,8 @@ final class FilePane extends BorderPane {
             BiConsumer<WorkspaceId, FilePresentation> aiAction,
             QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
             MarkdownDocumentRegistration registration, Runnable refreshTree, TextClipboard clipboard,
-            QuestionSourceLinkService sourceLinks, Consumer<String> openLink) {
+            QuestionSourceLinkService sourceLinks, Consumer<String> openLink,
+            QuestionSourceNavigationAdapter sourceNavigation) {
         this.loader = loader;
         this.references = references;
         this.aiAction = aiAction;
@@ -67,10 +69,12 @@ final class FilePane extends BorderPane {
         this.refreshTree = refreshTree;
         this.clipboard = clipboard;
         this.sourceLinks = sourceLinks;
+        this.sourceNavigation = sourceNavigation;
         this.router = new FileViewerRouter(new SafeMarkdownPreview.SourceActions() {
             @Override public void create(MarkdownSourceRange block) { createSourceReference(block); }
             @Override public void copy(List<NamedMarkdownAnchor> anchors) { copySourceReference(anchors); }
-        }, this::copyNavigationLink, openLink);
+        }, this::copyNavigationLink, openLink,
+                refs -> new QuestionSourceListView(refs, workspace, sourceNavigation, null));
         setId("file-pane");
         clear();
     }
@@ -119,11 +123,14 @@ final class FilePane extends BorderPane {
         } else if (mode == FileMode.EDIT && current.kind() == io.quizforge.core.workspace.WorkspaceFileKind.QUESTION_BANK
                 && current.file().questionBank() != null) {
             bankEditor = new QuestionBankEditorView(current.file().questionBank(), workspace,
-                    bankEdits, sourceLinks, this::saveBank);
+                    bankEdits, sourceLinks, sourceNavigation, this::saveBank);
             StackPane centered = new StackPane(bankEditor);
             centered.setAlignment(Pos.TOP_CENTER);
             setCenter(UiTheme.scroll(centered));
-        } else setCenter(mode == FileMode.BROWSE ? browseContent : router.view(current, mode));
+        } else {
+            setCenter(mode == FileMode.BROWSE ? browseContent : router.view(current, mode));
+            if (mode == FileMode.BROWSE) refreshSourceStatus();
+        }
     }
 
     private boolean markdownSource() {
@@ -333,6 +340,21 @@ final class FilePane extends BorderPane {
     }
 
     FilePresentation currentFile() { return current; }
+    void refreshBrowseFromDisk() {
+        if (mode != FileMode.BROWSE || current == null || !markdownSource()) return;
+        String path = current.file().entry().relativePath();
+        try {
+            var fresh = loader.load(workspace, path);
+            if (!java.util.Objects.equals(fresh.file().sourceText(), current.file().sourceText()))
+                open(workspace, path);
+        } catch (RuntimeException error) { open(workspace, path); }
+    }
+    void refreshSourceStatus() {
+        if (mode == FileMode.EDIT && bankEditor != null) bankEditor.refreshSources();
+        else if (browseContent != null
+                && browseContent.lookup("#question-practice") instanceof QuestionBankPracticeView practice)
+            practice.refreshSources();
+    }
     void onEditStart(Runnable action) { onEditStart = action; }
     boolean jumpTo(MarkdownOutline.Kind kind, String label, int occurrence) {
         if (mode != FileMode.BROWSE || !(browseContent instanceof javafx.scene.layout.HBox layout)) return false;

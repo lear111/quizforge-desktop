@@ -47,10 +47,14 @@ final class MainWorkspaceView extends BorderPane {
         this.clipboard = clipboard;
         setId("main-workspace");
         getStyleClass().add("workspace-shell");
+        var sourceNavigation = new QuestionSourceNavigationAdapter(references, sourceLinks,
+                this::navigate, this::showNavigationStatus);
         filePane = new FilePane(loader, references, ai, bankEdits,
-                markdownEdits, registration, this::refreshTree, clipboard, sourceLinks, this::openNavigationUri);
+                markdownEdits, registration, this::refreshTree, clipboard, sourceLinks, this::openNavigationUri,
+                sourceNavigation);
         tabs = new WorkspaceTabManager(() -> new FilePane(loader, references, ai, bankEdits,
-                markdownEdits, registration, this::refreshTree, clipboard, sourceLinks, this::openNavigationUri),
+                markdownEdits, registration, this::refreshTree, clipboard, sourceLinks, this::openNavigationUri,
+                sourceNavigation),
                 filePane, this::confirmDiscard);
         navigation = new WorkspaceNavigationService(index, () -> current == null ? null : current.id(), tabs);
         sidebar = new WorkspaceSidebar((entry, pinned) -> {
@@ -315,9 +319,7 @@ final class MainWorkspaceView extends BorderPane {
                 case UNAVAILABLE_FILE -> "目标文件无法打开。";
                 default -> "";
             };
-            Label status = new Label(message);
-            status.getStyleClass().add("workspace-navigation-status");
-            tabs.setBottom(status);
+            showNavigationStatus(message);
         } else tabs.setBottom(null);
         return result;
     }
@@ -326,9 +328,13 @@ final class MainWorkspaceView extends BorderPane {
         try {
             navigate(navigationCodec.decode(uri));
         } catch (IllegalArgumentException error) {
-            Label status = new Label("链接格式无效。");
-            status.getStyleClass().add("workspace-navigation-status");
-            tabs.setBottom(status);
+            showNavigationStatus("链接格式无效。");
         }
+    }
+
+    private void showNavigationStatus(String message) {
+        Label status = new Label(message);
+        status.getStyleClass().add("workspace-navigation-status");
+        tabs.setBottom(status);
     }
 }

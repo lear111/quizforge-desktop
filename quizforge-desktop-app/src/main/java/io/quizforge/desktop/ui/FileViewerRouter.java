@@ -5,6 +5,8 @@ import javafx.scene.Node;
 import javafx.scene.layout.StackPane;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import io.quizforge.core.question.QuestionBankFile;
 
 /** File kind and mode route independently; no business navigation or metadata panels. */
 final class FileViewerRouter {
@@ -12,12 +14,15 @@ final class FileViewerRouter {
     private final SafeMarkdownPreview.SourceActions sourceActions;
     private final Consumer<MarkdownOutline.Entry> copyLink;
     private final Consumer<String> openLink;
+    private final Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources;
 
     FileViewerRouter(SafeMarkdownPreview.SourceActions sourceActions,
-            Consumer<MarkdownOutline.Entry> copyLink, Consumer<String> openLink) {
+            Consumer<MarkdownOutline.Entry> copyLink, Consumer<String> openLink,
+            Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources) {
         this.sourceActions = sourceActions;
         this.copyLink = copyLink;
         this.openLink = openLink;
+        this.sources = sources;
     }
 
     Node view(FilePresentation file, FileMode mode) {
@@ -42,7 +47,7 @@ final class FileViewerRouter {
     Node welcome() { return UiTheme.quietState("打开一个文件", "从左侧文件树中选择，开始阅读或练习。"); }
 
     private Node practice(FilePresentation file) {
-        var practice = new QuestionBankPracticeView(file.file().questionBank());
+        var practice = new QuestionBankPracticeView(file.file().questionBank(), sources);
         practice.setMaxHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
         StackPane aligned = new StackPane(practice);
         aligned.setId("practice-stage");

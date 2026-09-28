@@ -26,8 +26,11 @@ final class WorkspaceNavigationService {
         if (current == null) return Result.MISSING_ASSET;
         Asset asset = index.findById(current, link.assetId()).orElse(null);
         if (asset == null) return Result.MISSING_ASSET;
+        boolean alreadyOpen = tabs.findOpenTab(asset.currentPath()) != null;
         WorkspaceTab tab = tabs.openPinned(current, asset.currentPath());
         if (tab == null) return Result.UNAVAILABLE_FILE;
+        if (alreadyOpen) tab.pane().refreshBrowseFromDisk();
+        if (tab.pane().currentFile() == null) return Result.UNAVAILABLE_FILE;
         if (link.target() instanceof QuizForgeNavigationLink.AssetTarget) return Result.OPENED;
         if (tab.pane().mode() == FileMode.EDIT) return Result.EDIT_MODE;
         if (link.target() instanceof QuizForgeNavigationLink.HeadingTarget heading)

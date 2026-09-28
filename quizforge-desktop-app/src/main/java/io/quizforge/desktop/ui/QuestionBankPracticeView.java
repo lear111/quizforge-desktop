@@ -2,6 +2,8 @@ package io.quizforge.desktop.ui;
 
 import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.question.QuestionBankPracticeSession;
+import java.util.List;
+import java.util.function.Function;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
@@ -14,9 +16,13 @@ import javafx.scene.layout.VBox;
 /** One question at a time; answer state never alters the .qbank file. */
 final class QuestionBankPracticeView extends VBox {
     private final QuestionBankPracticeSession session;
+    private final Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources;
+    private QuestionSourceListView sourceRows;
 
-    QuestionBankPracticeView(QuestionBankFile bank) {
+    QuestionBankPracticeView(QuestionBankFile bank,
+            Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources) {
         session = new QuestionBankPracticeSession(bank);
+        this.sources = sources;
         setId("question-practice");
         getStyleClass().add("practice-view");
         setSpacing(20);
@@ -25,6 +31,7 @@ final class QuestionBankPracticeView extends VBox {
     }
 
     private void render() {
+        sourceRows = null;
         getChildren().clear();
         getChildren().add(UiTheme.label(session.bank().title(), "section-title"));
         if (session.finished()) { result(); return; }
@@ -79,8 +86,10 @@ final class QuestionBankPracticeView extends VBox {
                     UiTheme.label(question.analysis(), "preview-paragraph"));
             feedback.setId("answer-feedback");
             feedback.getStyleClass().add("practice-feedback");
-            for (var ref : question.sourceRefs()) feedback.getChildren().add(UiTheme.label(
-                    "来源：" + ref.documentTitle() + " / " + ref.sectionTitle(), "muted"));
+            if (!question.sourceRefs().isEmpty()) {
+                sourceRows = sources.apply(question.sourceRefs());
+                feedback.getChildren().addAll(UiTheme.label("来源", "editor-caption"), sourceRows);
+            }
             getChildren().add(feedback);
         }
         Button previous = UiTheme.iconButton("arrow-left", "上一题", () -> { });
@@ -99,6 +108,8 @@ final class QuestionBankPracticeView extends VBox {
         navigation.setAlignment(Pos.CENTER);
         getChildren().add(navigation);
     }
+
+    void refreshSources() { if (sourceRows != null) sourceRows.refresh(); }
 
     private void result() {
         var result = session.result();

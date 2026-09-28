@@ -52,6 +52,7 @@ final class AssetDetailsPopover {
                         case MISSING_NODE -> "Missing node";
                         case MISSING_ANCHOR -> "Missing anchor";
                         case ORPHAN_ANCHOR -> "Orphan anchor";
+                        case UNAVAILABLE_DOCUMENT -> "Unavailable";
                     };
                     row("Reference Status · " + resolution.source().title(), status + (resolution.ambiguous() ? " · ambiguous" : ""));
                 }

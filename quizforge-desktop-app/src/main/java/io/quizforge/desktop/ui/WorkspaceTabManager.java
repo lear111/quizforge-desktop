@@ -140,6 +140,7 @@ final class WorkspaceTabManager extends BorderPane {
         FilePane shown = activePane();
         // A node may only have one parent. Keep the active pane attached to this manager.
         setCenter(shown);
+        shown.refreshSourceStatus();
         row.getChildren().clear();
         for (WorkspaceTab tab : tabs) {
             Button select = new Button(tab.displayName());

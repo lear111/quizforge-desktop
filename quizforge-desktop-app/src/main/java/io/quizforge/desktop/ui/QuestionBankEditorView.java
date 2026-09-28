@@ -22,6 +22,8 @@ final class QuestionBankEditorView extends VBox {
     private final WorkspaceId workspace;
     private final QuestionBankFileEditService edits;
     private final QuestionSourceLinkService sourceLinks;
+    private final QuestionSourceNavigationAdapter sourceNavigation;
+    private QuestionSourceListView sourceRows;
     private final Consumer<QuestionBankFile> save;
     private final VBox body = new VBox(14);
     private final VBox errors = new VBox(3);
@@ -29,11 +31,12 @@ final class QuestionBankEditorView extends VBox {
 
     QuestionBankEditorView(QuestionBankFile bank, WorkspaceId workspace,
             QuestionBankFileEditService edits, QuestionSourceLinkService sourceLinks,
-            Consumer<QuestionBankFile> save) {
+            QuestionSourceNavigationAdapter sourceNavigation, Consumer<QuestionBankFile> save) {
         model = new QuestionBankEditorModel(bank);
         this.workspace = workspace;
         this.edits = edits;
         this.sourceLinks = sourceLinks;
+        this.sourceNavigation = sourceNavigation;
         this.save = save;
         setId("question-bank-editor");
         getStyleClass().add("qbank-editor");
@@ -46,6 +49,7 @@ final class QuestionBankEditorView extends VBox {
     }
 
     boolean dirty() { return model.dirty(); }
+    void refreshSources() { if (sourceRows != null) sourceRows.refresh(); }
 
     private void save() {
         errors.getChildren().clear();
@@ -59,6 +63,7 @@ final class QuestionBankEditorView extends VBox {
     }
 
     private void render() {
+        sourceRows = null;
         body.getChildren().clear();
         TextField bankTitle = new TextField(model.bank().title());
         bankTitle.setId("qbank-title");
@@ -170,20 +175,16 @@ final class QuestionBankEditorView extends VBox {
         body.getChildren().addAll(UiTheme.label("解析", "editor-caption"), analysis,
                 UiTheme.label("引用来源", "editor-caption"));
         VBox refs = new VBox(6);
-        for (int i = 0; i < question.sourceRefs().size(); i++) {
-            final int refIndex = i;
-            var ref = question.sourceRefs().get(i);
-            Button change = new Button(sourceLinks.displayName(workspace, ref));
-            change.setMaxWidth(Double.MAX_VALUE);
-            HBox.setHgrow(change, Priority.ALWAYS);
-            change.getStyleClass().add("text-action");
-            change.setId("qbank-source-" + i);
+        sourceRows = new QuestionSourceListView(question.sourceRefs(), workspace, sourceNavigation, (refIndex, row) -> {
+            Button change = UiTheme.button("更换", "refresh", "text-action", () -> { });
+            change.setId("qbank-change-source-" + refIndex);
             change.setOnAction(event -> chooseSource(refIndex));
             Button remove = UiTheme.iconButton("close", "移除引用", () -> { });
-            remove.setId("qbank-remove-source-" + i);
+            remove.setId("qbank-remove-source-" + refIndex);
             remove.setOnAction(event -> { model.deleteSourceRef(index, refIndex); render(); });
-            refs.getChildren().add(new HBox(8, change, remove));
-        }
+            row.getChildren().addAll(change, remove);
+        });
+        refs.getChildren().add(sourceRows);
         Button addSource = UiTheme.button("添加来源", "plus", "text-action", () -> { });
         addSource.setId("qbank-add-source");
         addSource.setOnAction(event -> chooseSource(-1));

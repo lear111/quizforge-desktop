@@ -11,6 +11,10 @@ import io.quizforge.core.document.registered.QuizForgeReference;
 import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLinkCodec;
+import io.quizforge.core.question.QuestionBankFile;
+import io.quizforge.core.question.QuestionBankReferenceResolver;
+import io.quizforge.core.question.QuestionSourceLinkService;
+import io.quizforge.core.port.WorkspaceAssetScanner;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -268,13 +272,13 @@ class MainWorkspaceViewTest {
             open("题库/Java集合.qbank");
             assertNull(shell.lookup("#answer-feedback"));
             assertFalse(text(shell.filePane()).contains("时间复杂度"));
-            assertFalse(text(shell.filePane()).contains("来源："));
+            assertNull(shell.lookup("#qbank-source-0"));
             assertFalse(text(shell.filePane()).contains("以下哪些描述"));
             assertTrue(button("submit-answer").isDisabled());
             ((RadioButton) shell.lookup("#option-0")).fire();
             button("submit-answer").fire();
             assertTrue(text(shell.lookup("#answer-feedback")).contains("回答正确"));
-            assertTrue(text(shell.lookup("#answer-feedback")).contains("来源：Java 集合"));
+            assertEquals("Java集合 · ArrayList", button("qbank-source-0").getText());
             button("next-question").fire();
             assertNull(shell.lookup("#answer-feedback"));
             ((CheckBox) shell.lookup("#option-0")).fire();
@@ -1073,6 +1077,179 @@ class MainWorkspaceViewTest {
             assertEquals(WorkspaceNavigationService.Result.OPENED,
                     shell.navigate(QuizForgeNavigationLink.heading("doc_java", "ArrayList", 1)));
         });
+    }
+
+    @Test void practiceSourceClickNavigatesSecondAnchorReusesTabAndNeverWritesBank() throws Exception {
+        var sample = navigationBank(false);
+        fx(() -> {
+            shell.refresh();
+            open(sample.bankPath());
+            assertNull(shell.lookup("#qbank-source-0"));
+            ((RadioButton) shell.lookup("#option-0")).fire();
+            button("submit-answer").fire();
+            Button source = button("qbank-source-0");
+            assertEquals("SourceNav · 定义", source.getText());
+            assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
+                    source.getProperties().get("quizforge.sourceStatus"));
+            assertFalse(source.isDisabled());
+            var bankTab = shell.tabs().active();
+            source.fire();
+            shell.applyCss(); shell.layout();
+            assertEquals(sample.documentPath(), shell.tabs().active().path());
+            assertTrue(shell.tabs().active().pinned());
+            assertEquals(2, shell.tabs().tabs().size());
+            var documentTab = shell.tabs().active();
+            shell.tabs().activate(bankTab);
+            assertNotNull(shell.lookup("#answer-feedback"));
+            button("qbank-source-0").fire();
+            assertSame(documentTab, shell.tabs().active());
+            assertEquals(2, shell.tabs().tabs().size());
+            shell.applyCss(); shell.layout();
+            var reader = (ScrollPane) shell.lookup("#markdown-preview-scroll");
+            assertTrue(reader.getVvalue() > 0.5, "Second occurrence must scroll to its own body: " + reader.getVvalue());
+            assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
+        });
+    }
+
+    @Test void changedRevisionAfterRenameShowsWarningAndNavigatesWithoutUpdatingRecordedRevision() throws Exception {
+        var sample = navigationBank(false);
+        String moved = "Renamed/Collections.md";
+        Files.createDirectories(fixture.alphaRoot.resolve("Renamed"));
+        Files.move(fixture.alphaRoot.resolve(sample.documentPath()), fixture.alphaRoot.resolve(moved));
+        fixture.write(moved, sample.markdown().replace("Second definition.", "Changed current definition."));
+        fx(() -> {
+            shell.refresh();
+            open(sample.bankPath());
+            button("file-mode-toggle").fire();
+            assertEquals("Collections · 定义", button("qbank-source-0").getText());
+            assertTrue(text(shell.lookup("#question-bank-editor")).contains("来源已修改"));
+            assertFalse(button("qbank-source-0").isDisabled());
+            button("qbank-source-0").fire();
+            assertEquals(moved, shell.tabs().active().path());
+            assertTrue(text(shell.filePane().getCenter()).contains("Changed current definition."));
+            assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
+            var reread = new QuestionBankV1Codec().parse(sample.json());
+            assertEquals(sample.bank().questions().getFirst().sourceRefs().getFirst().documentContentId(),
+                    reread.questions().getFirst().sourceRefs().getFirst().documentContentId());
+            assertEquals("1.2", reread.schemaVersion());
+            assertFalse(sample.json().contains("displayName"));
+        });
+    }
+
+    @Test void sourceRefreshPreservesDirtyEditorAndIndependentlyDisablesBrokenReferences() throws Exception {
+        var sample = navigationBank(true);
+        fx(() -> {
+            shell.refresh(); open(sample.bankPath());
+            button("file-mode-toggle").fire();
+            assertFalse(button("qbank-source-0").isDisabled());
+            assertFalse(button("qbank-source-1").isDisabled());
+            assertTrue(button("qbank-source-2").isDisabled());
+            assertTrue(button("qbank-source-3").isDisabled());
+            assertTrue(text(shell.lookup("#question-bank-editor")).contains("来源位置缺失"));
+            assertTrue(text(shell.lookup("#question-bank-editor")).contains("来源锚点无有效内容"));
+            assertEquals(button("qbank-source-0").getText(), button("qbank-source-1").getText());
+            TextField title = (TextField) shell.lookup("#qbank-title");
+            TextArea stem = (TextArea) shell.lookup("#qbank-question-stem");
+            title.setText("Unsaved bank title"); stem.appendText(" Unsaved stem");
+            var bankTab = shell.tabs().active();
+            button("qbank-source-1").fire();
+            assertTrue(bankTab.pinned()); assertTrue(bankTab.pane().hasUnsavedChanges());
+            String changed = sample.markdown().replace("First definition.", "Fresh current content.")
+                    .replace("<!-- qf:anchor=定义 -->\nSecond definition.",
+                            "<!-- qf:anchor=新名字 -->\nSecond definition.");
+            fixture.write(sample.documentPath(), changed);
+            shell.tabs().activate(bankTab);
+            assertSame(title, shell.lookup("#qbank-title"));
+            assertSame(stem, shell.lookup("#qbank-question-stem"));
+            assertEquals("Unsaved bank title", title.getText());
+            assertTrue(stem.getText().endsWith("Unsaved stem"));
+            assertEquals(QuestionBankReferenceResolver.Status.DIFFERENT_REVISION,
+                    button("qbank-source-0").getProperties().get("quizforge.sourceStatus"));
+            assertFalse(button("qbank-source-0").isDisabled());
+            assertEquals(QuestionBankReferenceResolver.Status.MISSING_ANCHOR,
+                    button("qbank-source-1").getProperties().get("quizforge.sourceStatus"));
+            assertTrue(button("qbank-source-1").isDisabled());
+            button("qbank-source-0").fire();
+            assertEquals(2, shell.tabs().tabs().size());
+            assertTrue(text(shell.filePane().getCenter()).contains("Fresh current content."));
+            assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
+        });
+    }
+
+    @Test void sourceClickRechecksMissingDocumentWithoutLosingTheBankEditor() throws Exception {
+        var sample = navigationBank(false);
+        fx(() -> {
+            shell.refresh(); open(sample.bankPath()); button("file-mode-toggle").fire();
+            Button stale = button("qbank-source-0");
+            assertFalse(stale.isDisabled());
+            Files.delete(fixture.alphaRoot.resolve(sample.documentPath()));
+            stale.fire();
+            assertEquals(sample.bankPath(), shell.tabs().active().path());
+            assertTrue(text(shell.tabs().getBottom()).contains("来源文档缺失"));
+            assertEquals(1, shell.tabs().tabs().size());
+            assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
+        });
+    }
+
+    @Test void sourceNavigationLastMomentRaceUsesExistingNavigationFeedback() throws Exception {
+        var sample = navigationBank(false);
+        fx(() -> {
+            shell.refresh(); open(sample.bankPath());
+            var adapter = new QuestionSourceNavigationAdapter(
+                    fixture.context.getBean(QuestionBankReferenceResolver.class),
+                    fixture.context.getBean(QuestionSourceLinkService.class), link -> {
+                        try { Files.delete(fixture.alphaRoot.resolve(sample.documentPath())); }
+                        catch (Exception error) { throw new RuntimeException(error); }
+                        fixture.context.getBean(WorkspaceAssetScanner.class).scan(fixture.alpha.id());
+                        assertEquals(WorkspaceNavigationService.Result.MISSING_ASSET, shell.navigate(link));
+                    }, message -> fail("Source should be valid immediately before navigation"));
+            adapter.open(fixture.alpha.id(), sample.bank().questions().getFirst().sourceRefs().getFirst());
+            assertTrue(text(shell.tabs().getBottom()).contains("找不到这个文档资产"));
+            assertEquals(sample.bankPath(), shell.tabs().active().path());
+            assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
+        });
+    }
+
+    @Test void legacySourceUiRetainsReadOnlyResolutionAndExplicitReplacement() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank"); button("file-mode-toggle").fire();
+            assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
+                    button("qbank-source-0").getProperties().get("quizforge.sourceStatus"));
+            assertTrue(button("qbank-source-0").isDisabled());
+            assertTrue(text(shell.lookup("#question-bank-editor")).contains("旧版节点引用"));
+            assertFalse(button("qbank-change-source-0").isDisabled());
+            assertFalse(shell.filePane().hasUnsavedChanges());
+        });
+    }
+
+    private record NavigationBank(String documentPath, String bankPath, String markdown,
+            QuestionBankFile bank, String json) { }
+
+    private NavigationBank navigationBank(boolean multiple) throws Exception {
+        String documentPath = "Java/SourceNav.md", bankPath = "题库/SourceNav.qbank";
+        StringBuilder text = new StringBuilder("# Source navigation\n\n<!-- qf:anchor=定义 -->\nFirst definition.\n\n");
+        for (int i = 0; i < 65; i++) text.append("Paragraph ").append(i).append(" for scrolling.\n\n");
+        text.append("<!-- qf:anchor=定义 -->\nSecond definition.\n\n<!-- qf:anchor=孤立 -->\n");
+        var prepared = new RegisteredMarkdownCodec().prepareRegistration(text.toString(), documentPath);
+        var document = prepared.document();
+        var first = QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+                "定义", 1, "Historical document title", "Historical section title");
+        var second = QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+                "定义", 2, "Historical document title", "Historical section title");
+        var missing = QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+                "不存在", 1, "Historical document title", "Historical section title");
+        var orphan = QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+                "孤立", 1, "Historical document title", "Historical section title");
+        var question = new QuestionBankFile.Entry("q_navigation", "SINGLE_CHOICE", "Test question", "Analysis",
+                multiple ? List.of(first, second, missing, orphan) : List.of(second),
+                new QuestionBankFile.Data(List.of(new QuestionBankFile.Option("opt_nav_a", "Correct"),
+                        new QuestionBankFile.Option("opt_nav_b", "Incorrect")), List.of("opt_nav_a")));
+        var bank = new QuestionBankFile("quizforge-question-bank", "1.2", "qb_navigation", "Navigation bank",
+                List.of(new QuestionBankFile.SourceDocument(document.documentAssetId(), document.contentId(),
+                        "Historical document title")), List.of(question));
+        String json = new QuestionBankV1Codec().write(bank);
+        fixture.write(documentPath, prepared.source()); fixture.write(bankPath, json);
+        return new NavigationBank(documentPath, bankPath, prepared.source(), bank, json);
     }
 
     @Test void previewLinksNavigateCurrentFileByUriIncludingDuplicateTargets() throws Exception {
