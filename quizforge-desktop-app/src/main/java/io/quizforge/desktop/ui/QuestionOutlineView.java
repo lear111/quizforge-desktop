@@ -56,12 +56,12 @@ final class QuestionOutlineView extends VBox {
     }
 
     void refresh() {
-        setVisible(!session.finished());
-        setManaged(!session.finished());
+        setVisible(true);
+        setManaged(true);
         cells.forEach((index, cell) -> {
             String state = session.state(index) == QuestionBankPracticeSession.State.SUBMITTED
                     ? session.correct(index) ? "correct" : "incorrect" : "unsubmitted";
-            boolean current = index == session.index();
+            boolean current = !session.finished() && index == session.index();
             cell.getStyleClass().removeAll("unsubmitted", "correct", "incorrect", "current");
             cell.getStyleClass().add(state);
             if (current) cell.getStyleClass().add("current");

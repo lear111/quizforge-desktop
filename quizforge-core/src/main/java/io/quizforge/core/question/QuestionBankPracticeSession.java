@@ -24,7 +24,6 @@ public final class QuestionBankPracticeSession {
     public QuestionBankFile bank() { return bank; }
     public int index() { return index; }
     public boolean finished() { return finished; }
-    public boolean canFinish() { return submitted.size() == bank.questions().size(); }
     public QuestionBankFile.Entry current() { return bank.questions().get(index); }
     public Set<String> selected() { return Set.copyOf(selections.getOrDefault(index, Set.of())); }
     public State state() {
@@ -79,8 +78,6 @@ public final class QuestionBankPracticeSession {
             if (correct == null || validated.getOrDefault(questionIndex, Set.of()).isEmpty())
                 throw new IllegalStateException("Submitted answer is missing");
         });
-        if (summary && restoredSubmitted.size() != bank.questions().size())
-            throw new IllegalStateException("Incomplete practice cannot restore Summary");
         selections.clear(); selections.putAll(validated);
         submitted.clear(); submitted.putAll(restoredSubmitted);
         index = currentIndex;
@@ -98,8 +95,6 @@ public final class QuestionBankPracticeSession {
 
     public void next() {
         if (index < bank.questions().size() - 1) { index++; return; }
-        if (!canFinish())
-            throw new IllegalStateException("Submit every question before finishing");
         finished = true;
     }
 
@@ -107,13 +102,9 @@ public final class QuestionBankPracticeSession {
         if (!finished) throw new IllegalStateException("Practice is not finished");
         int total = bank.questions().size();
         int correct = (int) submitted.values().stream().filter(Boolean::booleanValue).count();
-        return new Result(total, correct, total - correct, (int) Math.round(100.0 * correct / total));
+        int answered = submitted.size();
+        return new Result(total, correct, answered - correct,
+                answered == 0 ? 0 : (int) Math.round(100.0 * correct / answered));
     }
 
-    public void restart() {
-        selections.clear();
-        submitted.clear();
-        index = 0;
-        finished = false;
-    }
 }

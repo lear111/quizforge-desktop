@@ -303,7 +303,7 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void practiceResultPersistsAndRestartIsTemporarilyDisabled() throws Exception {
+    @Test void practiceSummaryPersistsAndOutlineRemainsAvailable() throws Exception {
         fx(() -> {
             String before = Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
             open("题库/Java集合.qbank");
@@ -314,21 +314,130 @@ class MainWorkspaceViewTest {
             ((CheckBox) shell.lookup("#option-1")).fire();
             button("submit-answer").fire();
             button("next-question").fire();
-            assertTrue(text(shell.lookup("#practice-result")).contains("1 / 2"));
-            assertTrue(text(shell.lookup("#practice-result")).contains("50%"));
-            assertFalse(shell.lookup("#question-outline").isVisible());
-            assertFalse(shell.lookup("#question-outline").isManaged());
-            assertTrue(button("practice-restart").isDisabled());
-            button("practice-restart").fire();
+            assertTrue(text(shell.lookup("#practice-summary")).contains("已提交：2 / 2"));
+            assertTrue(text(shell.lookup("#practice-summary")).contains("50%"));
+            assertTrue(shell.lookup("#question-outline").isVisible());
+            assertFalse(button("practice-restart").isDisabled());
             shell.tabs().closeAll();
             shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
             shell.applyCss(); shell.layout();
-            assertNotNull(shell.lookup("#practice-result"));
-            assertTrue(text(shell.lookup("#practice-result")).contains("1 / 2"));
-            assertFalse(shell.lookup("#question-outline").isVisible());
+            assertNotNull(shell.lookup("#practice-summary"));
+            assertTrue(text(shell.lookup("#practice-summary")).contains("已提交：2 / 2"));
+            assertTrue(shell.lookup("#question-outline").isVisible());
             assertEquals(before, Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
         });
     }
+
+    @Test void retryQuestionHidesFeedbackKeepsAttemptsAndUpdatesOutlineAfterRetrySubmit() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            assertTrue(button("question-number-1").getStyleClass().contains("incorrect"));
+            assertNotNull(shell.lookup("#answer-feedback"));
+            assertNotNull(shell.lookup("#practice-retry"));
+            button("practice-retry").fire();
+            assertNull(shell.lookup("#answer-feedback"));
+            assertNull(shell.lookup("#qbank-source-0"));
+            assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
+            assertFalse(((RadioButton) shell.lookup("#option-0")).isSelected());
+            assertFalse(((RadioButton) shell.lookup("#option-1")).isSelected());
+            var row = new io.quizforge.infrastructure.persistence.SqlitePracticeSessionQuestionRepository(practiceDb())
+                    .findBySessionIdAndQuestionId(practiceDbSession().id(), "q_one").orElseThrow();
+            var attempts = new io.quizforge.infrastructure.persistence.SqliteQuestionAttemptRepository(practiceDb());
+            assertEquals(1, attempts.listBySessionQuestion(row.id()).size());
+            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            shell.applyCss(); shell.layout();
+            assertNull(shell.lookup("#answer-feedback"));
+            assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
+            ((RadioButton) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
+            assertTrue(button("question-number-1").getStyleClass().contains("correct"));
+            assertEquals(2, attempts.listBySessionQuestion(row.id()).size());
+            assertEquals(io.quizforge.core.practice.QuestionAttempt.Mode.RETRY,
+                    attempts.listBySessionQuestion(row.id()).getLast().attemptMode());
+        });
+    }
+
+    @Test void incompletePracticeSummaryKeepsOutlineAndNavigatesBackToQuestions() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            button("next-question").fire(); button("next-question").fire();
+            assertTrue(text(shell.lookup("#practice-summary")).contains("已提交：0 / 2"));
+            assertTrue(text(shell.lookup("#practice-summary")).contains("正确率：—"));
+            assertTrue(text(shell.lookup("#practice-summary")).contains("未完成：2"));
+            assertTrue(shell.lookup("#question-outline").isVisible());
+            assertFalse(button("question-number-1").getStyleClass().contains("current"));
+            assertFalse(button("question-number-2").getStyleClass().contains("current"));
+            button("summary-previous").fire();
+            assertEquals("Question 2 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertTrue(button("question-number-2").getStyleClass().contains("current"));
+            button("next-question").fire(); button("question-number-1").fire();
+            assertEquals("Question 1 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertEquals(io.quizforge.core.practice.PracticeSession.View.QUESTION, practiceDbSession().currentView());
+        });
+    }
+
+    @Test void summaryRestoresAfterTabCloseAndLastSubmitDoesNotAutoOpenIt() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            button("next-question").fire();
+            ((CheckBox) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
+            assertNull(shell.lookup("#practice-summary"));
+            button("next-question").fire();
+            assertTrue(text(shell.lookup("#practice-summary")).contains("已提交：1 / 2"));
+            assertTrue(text(shell.lookup("#practice-summary")).contains("正确率：0%"));
+            String id = practiceDbSession().id();
+            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            shell.applyCss(); shell.layout();
+            assertEquals(id, practiceDbSession().id());
+            assertNotNull(shell.lookup("#practice-summary"));
+            assertTrue(shell.lookup("#question-outline").isVisible());
+        });
+    }
+
+    @Test void restartConfirmationArchivesOldRoundAndKeepsCurrentTab() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            var tab = shell.tabs().active();
+            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            button("next-question").fire(); button("next-question").fire();
+            String oldId = practiceDbSession().id();
+            ((QuestionBankPracticeView) shell.lookup("#question-practice")).setRestartConfirmation(() -> false);
+            button("practice-restart").fire();
+            assertEquals(oldId, practiceDbSession().id());
+            assertNotNull(shell.lookup("#practice-summary"));
+            ((QuestionBankPracticeView) shell.lookup("#question-practice")).setRestartConfirmation(() -> true);
+            button("practice-restart").fire();
+            assertSame(tab, shell.tabs().active());
+            assertNotEquals(oldId, practiceDbSession().id());
+            assertEquals("Question 1 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
+            assertTrue(button("question-number-2").getStyleClass().contains("unsubmitted"));
+            assertEquals(io.quizforge.core.practice.PracticeSession.Status.ARCHIVED,
+                    new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                            .findById(oldId).orElseThrow().status());
+        });
+    }
+
+    @Test void failedRestartKeepsOldActiveSummaryAndShowsError() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            button("next-question").fire(); button("next-question").fire();
+            String oldId = practiceDbSession().id();
+            try (var connection = practiceDb().openConnection(); var statement = connection.createStatement()) {
+                statement.execute("CREATE TRIGGER fail_restart BEFORE INSERT ON practice_session WHEN NEW.status = 'ACTIVE' BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
+            }
+            ((QuestionBankPracticeView) shell.lookup("#question-practice")).setRestartConfirmation(() -> true);
+            button("practice-restart").fire();
+            assertEquals(oldId, practiceDbSession().id());
+            assertEquals(io.quizforge.core.practice.PracticeSession.Status.ACTIVE, practiceDbSession().status());
+            assertNotNull(shell.lookup("#practice-summary"));
+            assertNotNull(shell.lookup("#practice-error"));
+            try (var connection = practiceDb().openConnection(); var statement = connection.createStatement()) {
+                statement.execute("DROP TRIGGER fail_restart");
+            }
+        });
+    }
+
 
     @Test void questionBankEditorSavesToRealFileAndReturnsToPractice() throws Exception {
         fx(() -> {

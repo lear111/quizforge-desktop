@@ -27,6 +27,10 @@ public final class PracticeRuntimeMapper {
             switch (question.practiceState()) {
                 case UNANSWERED -> { }
                 case DRAFT -> selections.put(index, optionIds(question.draftAnswer()));
+                case RETRYING -> {
+                    if (row.attempts().isEmpty()) throw new IllegalStateException("Retry attempt history is missing");
+                    if (question.draftAnswer() != null) selections.put(index, optionIds(question.draftAnswer()));
+                }
                 case SUBMITTED -> {
                     if (row.attempts().isEmpty()) throw new IllegalStateException("Submitted attempt is missing");
                     var latest = row.attempts().getLast();
@@ -38,6 +42,8 @@ public final class PracticeRuntimeMapper {
                 default -> throw new IllegalStateException("Unsupported practice state: " + question.practiceState());
             }
         }
+        if (current < 0 && snapshot.session().currentView() == PracticeSession.View.SUMMARY)
+            current = runtime.bank().questions().size() - 1;
         if (current < 0) throw new IllegalStateException("Current question is missing");
         runtime.restoreState(current, selections, submitted, snapshot.session().currentView() == PracticeSession.View.SUMMARY);
     }

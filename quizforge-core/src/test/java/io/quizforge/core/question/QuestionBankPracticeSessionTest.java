@@ -40,7 +40,7 @@ class QuestionBankPracticeSessionTest {
         assertThrows(IllegalStateException.class, session::result);
     }
 
-    @Test void multipleChoiceRequiresExactSetAndResultCanRestart() {
+    @Test void multipleChoiceRequiresExactSetAndReportsSummary() {
         var session = new QuestionBankPracticeSession(bank());
         session.select("opt_two");
         assertFalse(session.submit());
@@ -51,25 +51,23 @@ class QuestionBankPracticeSessionTest {
         assertEquals(QuestionBankPracticeSession.State.SELECTED, session.state());
         session.select("opt_four");
         assertTrue(session.submit());
-        assertTrue(session.canFinish());
         session.next();
         assertEquals(new QuestionBankPracticeSession.Result(2, 1, 1, 50), session.result());
-        session.restart();
-        assertEquals(0, session.index());
-        assertEquals(QuestionBankPracticeSession.State.UNANSWERED, session.state());
-        assertFalse(session.finished());
     }
 
-    @Test void finishRequiresEveryQuestionSubmitted() {
+    @Test void summaryAllowsUnsubmittedQuestions() {
         var session = new QuestionBankPracticeSession(bank());
         session.next();
-        assertThrows(IllegalStateException.class, session::next);
-        session.previous();
+        session.next();
+        assertTrue(session.finished());
+        assertEquals(new QuestionBankPracticeSession.Result(2, 0, 0, 0), session.result());
+        session = new QuestionBankPracticeSession(bank());
         session.select("opt_one");
         session.submit();
         session.next();
-        assertFalse(session.canFinish());
-        assertThrows(IllegalStateException.class, session::next);
+        session.next();
+        assertTrue(session.finished());
+        assertEquals(new QuestionBankPracticeSession.Result(2, 1, 0, 100), session.result());
     }
 
     @Test void inspectingOtherQuestionsDoesNotNavigateOrChangeSelectionsAndResults() {
@@ -98,7 +96,6 @@ class QuestionBankPracticeSessionTest {
         assertThrows(IndexOutOfBoundsException.class, () -> session.state(-1));
         assertThrows(IndexOutOfBoundsException.class, () -> session.correct(2));
         assertThrows(IllegalStateException.class, () -> session.correct(0));
-        assertFalse(session.canFinish());
         assertEquals(0, session.index());
     }
 }

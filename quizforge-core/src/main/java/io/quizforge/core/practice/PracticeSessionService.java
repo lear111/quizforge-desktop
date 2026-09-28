@@ -58,9 +58,6 @@ public final class PracticeSessionService {
         java.util.Objects.requireNonNull(view);
         return transactions.execute(repositories -> {
             var session = requireActive(repositories, sessionId, expectedContentId);
-            if (view == PracticeSession.View.SUMMARY && repositories.questions().findBySessionId(sessionId).stream()
-                    .anyMatch(question -> question.practiceState() != PracticeSessionQuestion.State.SUBMITTED))
-                throw new IllegalStateException("Submit every question before finishing");
             repositories.sessions().updateCurrentPosition(sessionId, view, session.currentQuestionId());
             repositories.sessions().touch(sessionId, clock.instant());
             return restore(repositories, sessionId);
@@ -72,12 +69,15 @@ public final class PracticeSessionService {
         Set<String> selected = Set.copyOf(selectedOptionIds);
         return transactions.execute(repositories -> {
             requireCurrent(repositories, sessionId, expectedContentId, questionId);
-            var question = requireUnsubmitted(repositories, sessionId, questionId);
+            var question = requireAnswerable(repositories, sessionId, questionId);
             validateSelection(question.snapshot(), selected);
+            boolean retrying = question.practiceState() == PracticeSessionQuestion.State.RETRYING;
+            if (!retrying && repositories.attempts().countBySessionQuestion(question.id()) != 0)
+                throw new IllegalStateException("Initial answer already exists");
             Instant now = clock.instant();
             repositories.questions().updateDraft(sessionId, questionId,
-                    selected.isEmpty() ? null : answer(selected), selected.isEmpty()
-                            ? PracticeSessionQuestion.State.UNANSWERED : PracticeSessionQuestion.State.DRAFT, now);
+                    selected.isEmpty() ? null : answer(selected), retrying ? PracticeSessionQuestion.State.RETRYING
+                            : selected.isEmpty() ? PracticeSessionQuestion.State.UNANSWERED : PracticeSessionQuestion.State.DRAFT, now);
             repositories.sessions().touch(sessionId, now);
             return restore(repositories, sessionId);
         });
@@ -86,24 +86,58 @@ public final class PracticeSessionService {
     public ActivePracticeSnapshot submitAnswer(String sessionId, String expectedContentId, String questionId) {
         return transactions.execute(repositories -> {
             requireCurrent(repositories, sessionId, expectedContentId, questionId);
-            var question = requireUnsubmitted(repositories, sessionId, questionId);
-            if (question.practiceState() != PracticeSessionQuestion.State.DRAFT)
+            var question = requireAnswerable(repositories, sessionId, questionId);
+            if (question.draftAnswer() == null)
                 throw new IllegalStateException("Select an answer first");
             var selected = PracticeRuntimeMapper.optionIds(question.draftAnswer());
             validateSelection(question.snapshot(), selected);
             if (selected.isEmpty()) throw new IllegalStateException("Select an answer first");
-            if (repositories.attempts().countBySessionQuestion(question.id()) != 0)
-                throw new IllegalStateException("INITIAL attempt already exists");
+            var attempts = repositories.attempts().listBySessionQuestion(question.id());
+            boolean retrying = question.practiceState() == PracticeSessionQuestion.State.RETRYING;
+            if (retrying ? attempts.isEmpty() : !attempts.isEmpty())
+                throw new IllegalStateException("Practice attempt state is inconsistent");
             @SuppressWarnings("unchecked")
             var correctData = (Map<String, Object>) question.snapshot().correctAnswer().value();
             var correct = PracticeRuntimeMapper.optionIds(new PracticePayload(correctData.get("correctOptionIds")));
             Instant now = clock.instant();
-            repositories.attempts().append(new QuestionAttempt(id("pa_"), question.id(), 1, QuestionAttempt.Mode.INITIAL,
+            repositories.attempts().append(new QuestionAttempt(id("pa_"), question.id(),
+                    repositories.attempts().nextAttemptNo(question.id()),
+                    retrying ? QuestionAttempt.Mode.RETRY : QuestionAttempt.Mode.INITIAL,
                     answer(selected), selected.equals(correct) ? QuestionAttempt.Result.CORRECT : QuestionAttempt.Result.INCORRECT,
                     null, null, now));
             repositories.questions().updateDraft(sessionId, questionId, null, PracticeSessionQuestion.State.SUBMITTED, now);
             repositories.sessions().touch(sessionId, now);
             return restore(repositories, sessionId);
+        });
+    }
+
+    public ActivePracticeSnapshot retryQuestion(String sessionId, String expectedContentId, String questionId) {
+        return transactions.execute(repositories -> {
+            requireCurrent(repositories, sessionId, expectedContentId, questionId);
+            var question = requireQuestion(repositories, sessionId, questionId);
+            if (question.practiceState() != PracticeSessionQuestion.State.SUBMITTED
+                    || repositories.attempts().countBySessionQuestion(question.id()) == 0)
+                throw new IllegalStateException("Only a submitted question can be retried");
+            Instant now = clock.instant();
+            repositories.questions().updateDraft(sessionId, questionId, null, PracticeSessionQuestion.State.RETRYING, now);
+            repositories.sessions().touch(sessionId, now);
+            return restore(repositories, sessionId);
+        });
+    }
+
+    public ActivePracticeSnapshot restartPractice(String sessionId, String expectedContentId,
+            QuestionBankFile currentBank, String currentContentId) {
+        validator.validate(currentBank);
+        if (currentContentId == null || !currentContentId.matches("qfb:v1:[0-9a-f]{64}"))
+            throw new IllegalArgumentException("A current QBank contentId is required.");
+        return transactions.execute(repositories -> {
+            var old = requireActive(repositories, sessionId, expectedContentId);
+            if (!old.questionBankAssetId().equals(currentBank.id()))
+                throw new IllegalArgumentException("Restart bank does not match the active session");
+            Instant now = clock.instant();
+            repositories.sessions().archive(sessionId, now);
+            var next = create(repositories, currentBank, currentContentId, now);
+            return restore(repositories, next.id());
         });
     }
 
@@ -128,10 +162,11 @@ public final class PracticeSessionService {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown practice question"));
     }
 
-    private PracticeSessionQuestion requireUnsubmitted(PracticeTransaction.Repositories repositories, String sessionId, String questionId) {
+    private PracticeSessionQuestion requireAnswerable(PracticeTransaction.Repositories repositories, String sessionId, String questionId) {
         var question = requireQuestion(repositories, sessionId, questionId);
         if (question.practiceState() != PracticeSessionQuestion.State.UNANSWERED
-                && question.practiceState() != PracticeSessionQuestion.State.DRAFT)
+                && question.practiceState() != PracticeSessionQuestion.State.DRAFT
+                && question.practiceState() != PracticeSessionQuestion.State.RETRYING)
             throw new IllegalStateException("Answer already submitted");
         return question;
     }

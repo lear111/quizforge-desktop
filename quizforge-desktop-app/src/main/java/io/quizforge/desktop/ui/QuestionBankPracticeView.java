@@ -3,10 +3,15 @@ package io.quizforge.desktop.ui;
 import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.question.QuestionBankPracticeSession;
 import io.quizforge.core.practice.PersistentPracticeRuntime;
+import io.quizforge.core.practice.PracticeSummary;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.Alert;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.RadioButton;
@@ -21,6 +26,7 @@ final class QuestionBankPracticeView extends VBox {
     private final Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources;
     private final QuestionOutlineView outline;
     private QuestionSourceListView sourceRows;
+    private BooleanSupplier restartConfirmation = this::confirmRestart;
 
     QuestionBankPracticeView(PersistentPracticeRuntime runtime,
             Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources) {
@@ -41,7 +47,7 @@ final class QuestionBankPracticeView extends VBox {
         sourceRows = null;
         getChildren().clear();
         getChildren().add(UiTheme.label(session.bank().title(), "section-title"));
-        if (session.finished()) { result(); return; }
+        if (session.finished()) { summary(); return; }
         QuestionBankFile.Entry question = session.current();
         var state = session.state();
         var position = UiTheme.label("Question " + (session.index() + 1) + " / "
@@ -100,16 +106,17 @@ final class QuestionBankPracticeView extends VBox {
                 feedback.getChildren().addAll(UiTheme.label("来源", "editor-caption"), sourceRows);
             }
             getChildren().add(feedback);
+            Button retry = UiTheme.button("重新答题", "refresh", "", () -> command(runtime::retry));
+            retry.setId("practice-retry");
+            getChildren().add(retry);
         }
         Button previous = UiTheme.iconButton("arrow-left", "上一题", () -> { });
         previous.setId("previous-question");
         previous.setDisable(session.index() == 0);
         previous.setOnAction(event -> command(runtime::previous));
         boolean last = session.index() == session.bank().questions().size() - 1;
-        Button next = UiTheme.iconButton(last ? "finish" : "arrow", last ? "完成练习" : "下一题", () -> { });
+        Button next = UiTheme.iconButton("arrow", last ? "查看本次练习" : "下一题", () -> { });
         next.setId("next-question");
-        next.setDisable(session.index() == session.bank().questions().size() - 1
-                && !session.canFinish());
         next.setOnAction(event -> command(runtime::next));
         HBox navigation = new HBox(52, previous, submit, next);
         navigation.setId("practice-navigation");
@@ -119,6 +126,7 @@ final class QuestionBankPracticeView extends VBox {
     }
 
     void refreshSources() { if (sourceRows != null) sourceRows.refresh(); }
+    void setRestartConfirmation(BooleanSupplier confirmation) { restartConfirmation = confirmation; }
 
     QuestionOutlineView outline() { return outline; }
 
@@ -139,20 +147,35 @@ final class QuestionBankPracticeView extends VBox {
         }
     }
 
-    private void result() {
-        var result = session.result();
-        VBox page = new VBox(12, UiTheme.label("本次练习完成", "section-title"),
-                UiTheme.label(result.correct() + " / " + result.total(), "practice-result-score"),
-                UiTheme.label("正确率：" + result.accuracyPercent() + "%", "preview-paragraph"),
-                UiTheme.label("正确：" + result.correct(), "preview-paragraph"),
-                UiTheme.label("错误：" + result.incorrect(), "preview-paragraph"));
-        page.setId("practice-result");
-        Button restart = UiTheme.button("重新开始", "refresh", "primary-button", () -> { });
+    private void summary() {
+        PracticeSummary summary = runtime.summary();
+        VBox page = new VBox(12, UiTheme.label("本次练习", "section-title"),
+                UiTheme.label("正确率：" + (summary.accuracyPercent().isPresent()
+                        ? summary.accuracyPercent().getAsInt() + "%" : "—"), "practice-result-score"),
+                UiTheme.label("已提交：" + summary.submittedCount() + " / " + summary.totalCount(), "preview-paragraph"),
+                UiTheme.label("正确：" + summary.correctCount(), "preview-paragraph"),
+                UiTheme.label("错误：" + summary.incorrectCount(), "preview-paragraph"),
+                UiTheme.label("未完成：" + summary.unfinishedCount(), "preview-paragraph"));
+        page.setId("practice-summary");
+        Button previous = UiTheme.button("上一题", "arrow-left", "", () -> command(runtime::previous));
+        previous.setId("summary-previous");
+        Button restart = UiTheme.button("重新练习", "refresh", "primary-button", () -> {
+            if (restartConfirmation.getAsBoolean()) command(runtime::restart);
+        });
         restart.setId("practice-restart");
-        restart.setDisable(true);
-        restart.setTooltip(new javafx.scene.control.Tooltip("持久化练习的重新开始将在后续步骤提供"));
-        page.getChildren().add(restart);
+        page.getChildren().addAll(previous, restart);
         getChildren().add(page);
+    }
+
+    private boolean confirmRestart() {
+        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType accept = new ButtonType("重新练习", ButtonBar.ButtonData.OK_DONE);
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "当前练习将保存到历史记录，并从第一题重新开始。", cancel, accept);
+        confirm.setHeaderText("重新练习？");
+        if (getScene() != null) confirm.initOwner(getScene().getWindow());
+        UiTheme.apply(confirm);
+        return confirm.showAndWait().orElse(cancel) == accept;
     }
 
     private String answerLabels(QuestionBankFile.Entry question) {

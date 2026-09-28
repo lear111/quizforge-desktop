@@ -200,11 +200,164 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(new QuestionBankPracticeSession.Result(2, 1, 1, 50), restored.session().result());
     }
 
+    @Test void retryClearsCurrentAnswerButPreservesInitialAttemptAcrossRebuild() {
+        runtime.select("opt_b"); runtime.submit();
+        var initial = attempts("q_one").getFirst();
+        runtime.retry();
+        assertEquals(PracticeSessionQuestion.State.RETRYING, question("q_one").practiceState());
+        assertNull(question("q_one").draftAnswer());
+        assertEquals(List.of(initial), attempts("q_one"));
+        assertEquals(QuestionBankPracticeSession.State.UNANSWERED, runtime.session().state());
+        var restored = new PersistentPracticeRuntime(service(database), bank, codec.contentId(bank));
+        assertEquals(QuestionBankPracticeSession.State.UNANSWERED, restored.session().state());
+        assertTrue(restored.session().selected().isEmpty());
+        assertEquals(1, attempts("q_one").size());
+        assertEquals(0, restored.summary().submittedCount());
+        assertEquals(2, restored.summary().unfinishedCount());
+    }
+
+    @Test void retryDraftRemainsRetryingAndMultipleSubmissionsAppendImmutableFacts() {
+        runtime.select("opt_b"); runtime.submit();
+        var initial = attempts("q_one").getFirst();
+        for (int attempt = 2; attempt <= 4; attempt++) {
+            runtime.retry();
+            runtime.select(attempt == 3 ? "opt_a" : "opt_b");
+            assertEquals(PracticeSessionQuestion.State.RETRYING, question("q_one").practiceState());
+            assertNotNull(question("q_one").draftAnswer());
+            runtime.submit();
+            var latest = attempts("q_one").getLast();
+            assertEquals(attempt, latest.attemptNo());
+            assertEquals(QuestionAttempt.Mode.RETRY, latest.attemptMode());
+            assertEquals(attempt == 3 ? QuestionAttempt.Result.CORRECT : QuestionAttempt.Result.INCORRECT, latest.result());
+            assertEquals(PracticeSessionQuestion.State.SUBMITTED, question("q_one").practiceState());
+            assertNull(question("q_one").draftAnswer());
+        }
+        assertEquals(initial, attempts("q_one").getFirst());
+        assertEquals(4, attempts("q_one").size());
+        assertFalse(runtime.session().correct());
+    }
+
+    @Test void emptyRetryDraftKeepsRetryContextAndPreviousAttempts() {
+        runtime.goTo(1); runtime.select("opt_d"); runtime.submit(); runtime.retry();
+        runtime.select("opt_d"); runtime.select("opt_d");
+        assertEquals(PracticeSessionQuestion.State.RETRYING, question("q_two").practiceState());
+        assertNull(question("q_two").draftAnswer());
+        assertEquals(1, attempts("q_two").size());
+        assertThrows(IllegalStateException.class, runtime::submit);
+    }
+
+    @Test void invalidRetryAndRetryTransactionFailureLeaveFactsUntouched() throws Exception {
+        assertThrows(IllegalStateException.class, runtime::retry);
+        runtime.select("opt_b");
+        assertThrows(IllegalStateException.class, runtime::retry);
+        runtime.submit();
+        var before = question("q_one"); var facts = attempts("q_one"); var activity = session().lastActivityAt();
+        sql("CREATE TRIGGER fail_retry BEFORE UPDATE OF practice_state ON practice_session_question WHEN NEW.practice_state = 'RETRYING' BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
+        assertThrows(RuntimeException.class, runtime::retry);
+        assertEquals(before, question("q_one")); assertEquals(facts, attempts("q_one"));
+        assertEquals(activity, session().lastActivityAt());
+        assertEquals(QuestionBankPracticeSession.State.SUBMITTED, runtime.session().state());
+        sql("DROP TRIGGER fail_retry");
+        runtime.retry();
+        assertThrows(IllegalStateException.class, runtime::retry);
+    }
+
+    @Test void summaryCanBeEnteredWithoutSubmissionsAndRestoresWithoutCurrentOutlineQuestion() {
+        runtime.goTo(1); runtime.next();
+        assertEquals(PracticeSession.View.SUMMARY, session().currentView());
+        assertEquals(PracticeSession.Status.ACTIVE, session().status());
+        assertTrue(runtime.session().finished());
+        assertEquals(new PracticeSummary(2, 0, 0, 0, 2, java.util.OptionalInt.empty()), runtime.summary());
+        var restored = new PersistentPracticeRuntime(service(database), bank, codec.contentId(bank));
+        assertTrue(restored.session().finished());
+        assertTrue(restored.summary().accuracyPercent().isEmpty());
+        restored.previous();
+        assertEquals(PracticeSession.View.QUESTION, session().currentView());
+        assertEquals("q_two", session().currentQuestionId());
+        restored.next(); restored.goTo(0);
+        assertEquals(PracticeSession.View.QUESTION, session().currentView());
+        assertEquals("q_one", session().currentQuestionId());
+    }
+
+    @Test void summaryUsesLatestSubmittedResultAndTreatsRetryingAsUnfinished() {
+        runtime.select("opt_b"); runtime.submit(); runtime.goTo(1); runtime.select("opt_d");
+        runtime.select("opt_e"); runtime.submit(); runtime.next();
+        assertEquals(new PracticeSummary(2, 2, 1, 1, 0, java.util.OptionalInt.of(50)), runtime.summary());
+        runtime.goTo(0); runtime.retry(); runtime.goTo(1); runtime.next();
+        assertEquals(new PracticeSummary(2, 1, 1, 0, 1, java.util.OptionalInt.of(100)), runtime.summary());
+        runtime.goTo(0); runtime.select("opt_a"); runtime.submit(); runtime.goTo(1); runtime.next();
+        assertEquals(new PracticeSummary(2, 2, 2, 0, 0, java.util.OptionalInt.of(100)), runtime.summary());
+        assertEquals(2, attempts("q_one").size());
+    }
+
+    @Test void submittingLastQuestionDoesNotOpenSummaryUntilNext() {
+        runtime.goTo(1); runtime.select("opt_d"); runtime.select("opt_e"); runtime.submit();
+        assertEquals(PracticeSession.View.QUESTION, session().currentView());
+        assertFalse(runtime.session().finished());
+        runtime.next();
+        assertEquals(PracticeSession.View.SUMMARY, session().currentView());
+    }
+
+    @Test void restartArchivesEntireOldRoundAndCreatesFreshActiveFromCurrentBank() {
+        runtime.select("opt_b"); runtime.submit(); runtime.goTo(1); runtime.select("opt_d"); runtime.next();
+        String oldId = runtime.sessionId();
+        var oldSession = session();
+        var oldRows = new SqlitePracticeSessionQuestionRepository(database).findBySessionId(oldId);
+        var oldFacts = new SqliteQuestionAttemptRepository(database).listBySessionQuestion(oldRows.getFirst().id());
+        runtime.restart();
+        assertNotEquals(oldId, runtime.sessionId());
+        assertEquals(PracticeSession.Status.ARCHIVED, new SqlitePracticeSessionRepository(database).findById(oldId).orElseThrow().status());
+        assertEquals(NOW, new SqlitePracticeSessionRepository(database).findById(oldId).orElseThrow().archivedAt());
+        assertEquals(oldRows, new SqlitePracticeSessionQuestionRepository(database).findBySessionId(oldId));
+        assertEquals(oldFacts, new SqliteQuestionAttemptRepository(database).listBySessionQuestion(oldRows.getFirst().id()));
+        assertEquals(PracticeSession.Status.ACTIVE, session().status());
+        assertEquals(PracticeSession.View.QUESTION, session().currentView());
+        assertEquals("q_one", session().currentQuestionId());
+        assertEquals(QuestionBankPracticeSession.State.UNANSWERED, runtime.session().state());
+        assertEquals(0, runtime.session().index());
+        assertTrue(attempts("q_one").isEmpty());
+        assertEquals(oldSession.questionBankAssetId(), session().questionBankAssetId());
+        assertEquals(codec.contentId(bank), session().questionBankContentId());
+        assertEquals(1, new SqlitePracticeSessionRepository(database).listArchivedByQuestionBankAssetId(bank.id()).size());
+    }
+
+    @Test void restartUsesUpdatedBankSnapshotWithoutChangingArchivedQuestion() {
+        runtime.select("opt_a"); runtime.submit();
+        String oldId = runtime.sessionId();
+        var oldRow = question("q_one");
+        var first = bank.questions().getFirst();
+        var changed = new QuestionBankFile.Entry(first.id(), first.type(), first.stem() + " updated", first.analysis(), first.sourceRefs(), first.data());
+        var newer = new QuestionBankFile(bank.format(), bank.schemaVersion(), bank.id(), bank.title(),
+                bank.sourceDocuments(), List.of(changed, bank.questions().get(1)));
+        var snapshot = service.restartPractice(oldId, codec.contentId(bank), newer, codec.contentId(newer));
+        assertEquals(codec.contentId(newer), snapshot.session().questionBankContentId());
+        assertEquals(changed.stem(), snapshot.questions().getFirst().sessionQuestion().snapshot().stem());
+        assertEquals(oldRow, new SqlitePracticeSessionQuestionRepository(database)
+                .findBySessionIdAndQuestionId(oldId, "q_one").orElseThrow());
+        var reopened = new PersistentPracticeRuntime(service(database), newer, codec.contentId(newer));
+        assertEquals(snapshot.session().id(), reopened.sessionId());
+        assertThrows(IllegalStateException.class, runtime::retry);
+    }
+
+    @Test void failedNewSessionCreationRollsBackArchiveAndKeepsRuntime() throws Exception {
+        runtime.select("opt_b"); runtime.submit();
+        String oldId = runtime.sessionId(); var oldSession = session(); var oldRow = question("q_one");
+        sql("CREATE TRIGGER fail_new_round BEFORE INSERT ON practice_session WHEN NEW.status = 'ACTIVE' BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
+        assertThrows(RuntimeException.class, runtime::restart);
+        assertEquals(oldId, runtime.sessionId());
+        assertEquals(oldSession, session());
+        assertEquals(oldRow, question("q_one"));
+        assertEquals(QuestionBankPracticeSession.State.SUBMITTED, runtime.session().state());
+        assertTrue(new SqlitePracticeSessionRepository(database).listArchivedByQuestionBankAssetId(bank.id()).isEmpty());
+        sql("DROP TRIGGER fail_new_round");
+        runtime.restart();
+        assertNotEquals(oldId, runtime.sessionId());
+    }
+
     @Test void invalidAndIncompleteCommandsDoNotWriteAnything() {
         assertThrows(IllegalStateException.class, runtime::submit);
         assertThrows(IllegalArgumentException.class, () -> service.saveDraft(runtime.sessionId(), codec.contentId(bank), "q_one", Set.of("A")));
         assertThrows(IllegalArgumentException.class, () -> service.saveDraft(runtime.sessionId(), codec.contentId(bank), "q_one", Set.of("opt_a", "opt_b")));
-        assertThrows(IllegalStateException.class, () -> service.updateCurrentView(runtime.sessionId(), codec.contentId(bank), PracticeSession.View.SUMMARY));
         assertThrows(IllegalArgumentException.class, () -> service.updateCurrentQuestion(runtime.sessionId(), codec.contentId(bank), "missing"));
         assertEquals(PracticeSessionQuestion.State.UNANSWERED, question("q_one").practiceState());
         assertEquals("q_one", session().currentQuestionId());

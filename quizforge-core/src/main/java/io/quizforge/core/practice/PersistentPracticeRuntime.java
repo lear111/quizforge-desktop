@@ -7,9 +7,10 @@ import io.quizforge.core.question.QuestionBankPracticeSession;
 public final class PersistentPracticeRuntime {
     private final PracticeSessionService service;
     private final QuestionBankPracticeSession session;
-    private final String sessionId;
+    private String sessionId;
     private final String contentId;
     private final PracticeRuntimeMapper mapper = new PracticeRuntimeMapper();
+    private ActivePracticeSnapshot snapshot;
 
     public PersistentPracticeRuntime(PracticeSessionService service, QuestionBankFile bank, String contentId) {
         this.service = service;
@@ -17,30 +18,47 @@ public final class PersistentPracticeRuntime {
         session = new QuestionBankPracticeSession(bank);
         var snapshot = service.openOrCreateActiveSession(bank, contentId);
         sessionId = snapshot.session().id();
-        mapper.hydrate(session, snapshot);
+        hydrate(snapshot);
     }
 
     public QuestionBankPracticeSession session() { return session; }
     public String sessionId() { return sessionId; }
+    public PracticeSummary summary() { return PracticeSummary.from(snapshot); }
+
+    private void hydrate(ActivePracticeSnapshot state) {
+        mapper.hydrate(session, state);
+        snapshot = state;
+    }
 
     public void select(String optionId) {
         var selected = session.selectionAfter(optionId);
-        mapper.hydrate(session, service.saveDraft(sessionId, contentId, session.current().id(), selected));
+        hydrate(service.saveDraft(sessionId, contentId, session.current().id(), selected));
     }
 
     public void submit() {
-        mapper.hydrate(session, service.submitAnswer(sessionId, contentId, session.current().id()));
+        hydrate(service.submitAnswer(sessionId, contentId, session.current().id()));
+    }
+
+    public void retry() { hydrate(service.retryQuestion(sessionId, contentId, session.current().id())); }
+
+    public void restart() {
+        var next = service.restartPractice(sessionId, contentId, session.bank(), contentId);
+        hydrate(next);
+        sessionId = next.session().id();
     }
 
     public void goTo(int index) {
         String questionId = session.bank().questions().get(index).id();
-        mapper.hydrate(session, service.updateCurrentQuestion(sessionId, contentId, questionId));
+        hydrate(service.updateCurrentQuestion(sessionId, contentId, questionId));
     }
 
-    public void previous() { if (session.index() > 0) goTo(session.index() - 1); }
+    public void previous() {
+        if (session.finished()) goTo(session.bank().questions().size() - 1);
+        else if (session.index() > 0) goTo(session.index() - 1);
+    }
 
     public void next() {
         if (session.index() < session.bank().questions().size() - 1) goTo(session.index() + 1);
-        else mapper.hydrate(session, service.updateCurrentView(sessionId, contentId, PracticeSession.View.SUMMARY));
+        else hydrate(service.updateCurrentView(sessionId, contentId, PracticeSession.View.SUMMARY));
     }
 }
