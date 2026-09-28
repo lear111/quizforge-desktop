@@ -384,3 +384,16 @@
 .history-card-accuracy { -fx-text-fill: #51485a; -fx-font-size: 19px; -fx-font-weight: bold; }
 .history-empty-state { -fx-padding: 26 4; }
 .history-view .warning { -fx-padding: 4 26; }
+.history-detail { -fx-background-color: #faf9f6; }
+.history-question { -fx-padding: 28 42 40 42; -fx-max-width: 760; }
+.history-option { -fx-padding: 10 12; -fx-background-color: #f5f3ef; -fx-background-radius: 5; }
+.history-option.selected { -fx-border-color: #7394b6; -fx-border-radius: 5; }
+.history-option.correct-option { -fx-background-color: #e0ede1; }
+.history-attempt-header { -fx-font-size: 13px; -fx-text-fill: #756e65; }
+.history-attempt-result { -fx-font-size: 15px; -fx-font-weight: bold; }
+.history-attempt-result.correct { -fx-text-fill: #477052; }
+.history-attempt-result.incorrect { -fx-text-fill: #9b5750; }
+.history-attempt-result.unscored { -fx-text-fill: #756e65; }
+.history-draft { -fx-text-fill: #756e65; -fx-padding: 10 12; -fx-background-color: #eeece7; }
+.history-answer { -fx-text-fill: #51485a; }
+.history-attempt-navigation { -fx-alignment: center-left; }

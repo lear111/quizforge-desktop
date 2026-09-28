@@ -49,8 +49,9 @@ final class FilePane extends BorderPane {
     private WorkspaceId workspace;
     private FilePresentation current;
     private FileMode mode = FileMode.BROWSE;
-    private enum Page { BROWSE, HISTORY_LIST }
+    private enum Page { BROWSE, HISTORY_LIST, HISTORY_DETAIL }
     private Page page = Page.BROWSE;
+    private PracticeHistoryView historyList;
     private FileHeader header;
     private Node browseContent;
     private QuestionBankEditorView bankEditor;
@@ -352,6 +353,7 @@ final class FilePane extends BorderPane {
         markdownEditor = null;
         mode = FileMode.BROWSE;
         page = Page.BROWSE;
+        historyList = null;
         setTop(null);
         setCenter(router.welcome());
     }
@@ -361,14 +363,30 @@ final class FilePane extends BorderPane {
         if (current == null || workspace == null || mode != FileMode.BROWSE
                 || current.kind() != WorkspaceFileKind.QUESTION_BANK || current.file().entry().assetId() == null) return;
         try {
-            var view = new PracticeHistoryView(practice.history(workspace), current.file().entry().assetId(),
-                    current.file().entry().name(), this::returnToBank);
+            historyList = new PracticeHistoryView(practice.history(workspace), current.file().entry().assetId(),
+                    current.file().entry().name(), this::returnToBank, this::openHistoryDetail);
             page = Page.HISTORY_LIST;
             header.showHistory(false);
-            setCenter(view);
+            setCenter(historyList);
         } catch (RuntimeException error) {
             setCenter(UiTheme.quietState("无法读取练习历史", error.getMessage()));
         }
+    }
+
+    private void openHistoryDetail(String sessionId) {
+        if (page != Page.HISTORY_LIST || historyList == null) return;
+        try {
+            var detail = practice.history(workspace).loadArchivedSessionDetail(current.file().entry().assetId(), sessionId);
+            setCenter(new PracticeHistoryDetailView(detail, this::returnToHistoryList));
+            page = Page.HISTORY_DETAIL;
+        } catch (RuntimeException failure) {
+            historyList.showLoadError(failure);
+        }
+    }
+
+    private void returnToHistoryList() {
+        page = Page.HISTORY_LIST;
+        setCenter(historyList);
     }
 
     private void returnToBank() {

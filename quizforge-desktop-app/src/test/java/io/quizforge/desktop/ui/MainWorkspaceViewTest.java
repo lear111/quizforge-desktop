@@ -1960,6 +1960,111 @@ class MainWorkspaceViewTest {
         });
     }
 
+    @Test void historyCardOpensReadOnlyDetailWithQuestionAndAttemptAxes() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            var tab = shell.tabs().active();
+            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            button("practice-retry").fire();
+            ((RadioButton) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
+            button("next-question").fire();
+            ((javafx.scene.control.CheckBox) shell.lookup("#option-0")).fire();
+            String archived = practiceDbSession().id();
+            new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                    .archive(archived, java.time.Instant.parse("2026-09-28T05:00:00Z"));
+            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            tab = shell.tabs().active();
+            var archivedBefore = new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                    .findById(archived).orElseThrow();
+            button("qbank-history-entry").fire(); shell.applyCss(); shell.layout();
+            Node card = shell.lookup("#history-card-" + archived);
+            card.fireEvent(new javafx.scene.input.MouseEvent(javafx.scene.input.MouseEvent.MOUSE_CLICKED,
+                    8, 8, 8, 8, javafx.scene.input.MouseButton.SECONDARY, 1,
+                    false, false, false, false, false, false, false, false, false, true, null));
+            assertNotNull(shell.lookup("#practice-history"));
+            click(card, 1); shell.applyCss(); shell.layout();
+            assertSame(tab, shell.tabs().active());
+            assertNotNull(shell.lookup("#practice-history-detail"), text(shell.lookup("#history-error")));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("第 1 / 2 题"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("第 2 / 2 次作答 · 重新答题"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("你的答案：A"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("正确答案：A"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("按索引访问的时间复杂度"));
+            assertTrue(button("history-previous-question").isDisabled());
+            assertTrue(button("history-next-attempt").isDisabled());
+            assertTrue(button("history-question-number-1").getStyleClass().contains("correct"));
+            assertTrue(button("history-question-number-1").getStyleClass().contains("current"));
+            assertTrue(button("history-question-number-2").getStyleClass().contains("unsubmitted"));
+            assertTrue(text(shell.lookup("#history-question-outline")).contains("单选题"));
+            assertTrue(text(shell.lookup("#history-question-outline")).contains("多选题"));
+            button("history-previous-attempt").fire();
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("第 1 / 2 次作答 · 首次作答"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("你的答案：B"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("错误"));
+            assertTrue(button("history-previous-attempt").isDisabled());
+            button("history-next-attempt").fire();
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("第 2 / 2 次作答"));
+            button("history-question-number-2").fire();
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("第 2 / 2 题"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("本轮未提交"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("未提交选择：A"));
+            assertFalse(text(shell.lookup("#history-detail-question")).contains("0 / 0"));
+            assertTrue(button("history-next-question").isDisabled());
+            button("history-previous-question").fire();
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("第 2 / 2 次作答"));
+            assertNull(shell.lookup("#submit-answer"));
+            assertNull(shell.lookup("#practice-retry"));
+            assertNull(shell.lookup("#practice-restart"));
+            button("history-detail-back").fire();
+            assertNotNull(shell.lookup("#practice-history"));
+            assertSame(tab, shell.tabs().active());
+            assertEquals(archivedBefore, new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                    .findById(archived).orElseThrow());
+        });
+    }
+
+    @Test void historyOutlineUsesArchivedIncorrectState() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            String archived = practiceDbSession().id();
+            new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                    .archive(archived, java.time.Instant.parse("2026-09-28T05:00:00Z"));
+            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            button("qbank-history-entry").fire(); shell.applyCss(); shell.layout();
+            click(shell.lookup("#history-card-" + archived), 1); shell.applyCss(); shell.layout();
+            assertTrue(button("history-question-number-1").getStyleClass().contains("incorrect"));
+            assertTrue(button("history-question-number-1").getStyleClass().contains("current"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("你的答案：B"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("正确答案：A"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("ArrayList 基于可扩容数组"));
+        });
+    }
+
+    @Test void historyDetailShowsIncorrectAndRetryingWithEarlierAttempt() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            button("practice-retry").fire();
+            ((RadioButton) shell.lookup("#option-0")).fire();
+            String archived = practiceDbSession().id();
+            new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                    .archive(archived, java.time.Instant.parse("2026-09-28T05:00:00Z"));
+            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            button("qbank-history-entry").fire(); shell.applyCss(); shell.layout();
+            click(shell.lookup("#history-card-" + archived), 1); shell.applyCss(); shell.layout();
+            assertTrue(button("history-question-number-1").getStyleClass().contains("unsubmitted"));
+            assertTrue(text(shell.lookup("#history-final-state")).contains("未完成"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("未提交选择：A"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("第 1 / 1 次作答"));
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("你的答案：B"));
+            assertTrue(button("history-previous-attempt").isDisabled());
+            assertTrue(button("history-next-attempt").isDisabled());
+            button("history-question-number-2").fire();
+            assertNotNull(shell.lookup("#history-no-attempt"));
+        });
+    }
+
     private io.quizforge.infrastructure.persistence.SqliteDatabase practiceDb() {
         return new io.quizforge.infrastructure.persistence.SqliteDatabase(fixture.alphaRoot.resolve(".quizforge/quizforge.db"));
     }

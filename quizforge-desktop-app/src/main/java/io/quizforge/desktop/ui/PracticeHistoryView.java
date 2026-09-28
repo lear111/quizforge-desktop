@@ -7,7 +7,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.function.Function;
+import java.util.function.Consumer;
 import javafx.geometry.Orientation;
+import javafx.scene.input.MouseButton;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
@@ -21,18 +23,21 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 
-/** Archived rounds for the current QBank; cards have no detail action yet. */
+/** Archived rounds for the current QBank; card navigation and deletion stay separate. */
 final class PracticeHistoryView extends VBox {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private final PracticeHistoryService history;
     private final String bankAssetId;
+    private final Consumer<String> openDetail;
     private final TilePane grid = new TilePane(Orientation.HORIZONTAL);
     private final Label error = UiTheme.label("", "warning");
     private Function<PracticeHistoryEntry, Boolean> deleteConfirmation = this::confirmDelete;
 
-    PracticeHistoryView(PracticeHistoryService history, String bankAssetId, String bankName, Runnable back) {
+    PracticeHistoryView(PracticeHistoryService history, String bankAssetId, String bankName, Runnable back,
+            Consumer<String> openDetail) {
         this.history = history;
         this.bankAssetId = bankAssetId;
+        this.openDetail = openDetail;
         setId("practice-history");
         getStyleClass().add("history-view");
         Label title = UiTheme.label(bankName + " · 历史记录", "page-title");
@@ -60,6 +65,12 @@ final class PracticeHistoryView extends VBox {
         deleteConfirmation = confirmation;
     }
 
+    void showLoadError(RuntimeException failure) {
+        error.setText("无法读取练习详情：" + failure.getMessage());
+        error.setVisible(true);
+        error.setManaged(true);
+    }
+
     private void refresh() {
         grid.getChildren().clear();
         var entries = history.listArchived(bankAssetId);
@@ -82,6 +93,9 @@ final class PracticeHistoryView extends VBox {
                 UiTheme.label("未完成 " + summary.unfinishedCount(), "history-card-meta"));
         card.setId("history-card-" + entry.sessionId());
         card.getStyleClass().add("history-card");
+        card.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY) openDetail.accept(entry.sessionId());
+        });
         MenuItem delete = new MenuItem("删除历史记录");
         delete.setId("history-delete");
         delete.setOnAction(event -> delete(entry));

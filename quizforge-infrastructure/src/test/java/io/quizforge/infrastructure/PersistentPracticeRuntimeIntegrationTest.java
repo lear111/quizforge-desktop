@@ -444,6 +444,91 @@ class PersistentPracticeRuntimeIntegrationTest {
                 new SqlitePracticeSessionRepository(database).findById(active).orElseThrow().status());
     }
 
+    @Test void archivedDetailLoadsOrderedSnapshotAndAllAttemptsWithoutCurrentBank() {
+        runtime.select("opt_b"); runtime.submit(); runtime.retry(); runtime.select("opt_a"); runtime.submit();
+        runtime.goTo(1); runtime.select("opt_d");
+        String archived = runtime.sessionId();
+        runtime.restart();
+        var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
+        var detail = history.loadArchivedSessionDetail(bank.id(), archived);
+        assertEquals(archived, detail.sessionId());
+        assertEquals("Runtime", detail.bankTitle());
+        assertEquals(List.of("q_one", "q_two"), detail.questions().stream().map(PracticeHistoryDetail.Question::questionId).toList());
+        var first = detail.questions().getFirst();
+        assertEquals(0, first.questionOrder());
+        assertEquals("Single?", first.stem());
+        assertEquals(List.of(new PracticeHistoryDetail.Option("opt_a", "Yes"),
+                new PracticeHistoryDetail.Option("opt_b", "No")), first.options());
+        assertEquals(List.of("opt_a"), first.correctOptionIds());
+        assertEquals("Single analysis", first.analysis());
+        assertEquals("Choices", ((java.util.Map<?, ?>) ((List<?>) first.sourceRefs().value()).getFirst()).get("anchorName"));
+        assertEquals(List.of(1, 2), first.attempts().stream().map(PracticeHistoryDetail.Attempt::attemptNo).toList());
+        assertEquals(List.of(QuestionAttempt.Mode.INITIAL, QuestionAttempt.Mode.RETRY),
+                first.attempts().stream().map(PracticeHistoryDetail.Attempt::mode).toList());
+        assertEquals(List.of(QuestionAttempt.Result.INCORRECT, QuestionAttempt.Result.CORRECT),
+                first.attempts().stream().map(PracticeHistoryDetail.Attempt::result).toList());
+        assertEquals(new PracticePayload(List.of("opt_b")), first.attempts().getFirst().answer());
+        assertEquals(new PracticePayload(List.of("opt_a")), first.attempts().getLast().answer());
+        assertEquals(PracticeSessionQuestion.State.DRAFT, detail.questions().get(1).finalState());
+        assertEquals(new PracticePayload(List.of("opt_d")), detail.questions().get(1).draftAnswer());
+        assertTrue(detail.questions().get(1).attempts().isEmpty());
+
+        var changed = new QuestionBankFile.Entry("q_one", "SINGLE_CHOICE", "Changed stem", "Changed analysis",
+                bank.questions().getFirst().sourceRefs(),
+                new QuestionBankFile.Data(List.of(new QuestionBankFile.Option("opt_a", "Changed option"),
+                        new QuestionBankFile.Option("opt_b", "No")), List.of("opt_b")));
+        var current = new QuestionBankFile(bank.format(), bank.schemaVersion(), bank.id(), bank.title(),
+                bank.sourceDocuments(), List.of(changed));
+        service.openOrCreateActiveSession(current, codec.contentId(current));
+        assertEquals(detail, history.loadArchivedSessionDetail(bank.id(), archived));
+    }
+
+    @Test void archivedDetailRejectsActiveWrongBankAndMissingSession() {
+        var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
+        String active = runtime.sessionId();
+        assertThrows(IllegalStateException.class, () -> history.loadArchivedSessionDetail(bank.id(), active));
+        runtime.restart();
+        assertThrows(IllegalStateException.class, () -> history.loadArchivedSessionDetail("qb_other", active));
+        assertThrows(IllegalArgumentException.class, () -> history.loadArchivedSessionDetail(bank.id(), "missing"));
+    }
+
+    @Test void archivedDetailKeepsUnansweredAndRetryingSeparateFromEarlierAttempts() {
+        var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
+        String unanswered = runtime.sessionId(); runtime.restart();
+        assertEquals(PracticeSessionQuestion.State.UNANSWERED,
+                history.loadArchivedSessionDetail(bank.id(), unanswered).questions().getFirst().finalState());
+        assertTrue(history.loadArchivedSessionDetail(bank.id(), unanswered).questions().getFirst().attempts().isEmpty());
+
+        runtime.select("opt_b"); runtime.submit(); runtime.retry(); runtime.select("opt_a");
+        String retrying = runtime.sessionId(); runtime.restart();
+        var question = history.loadArchivedSessionDetail(bank.id(), retrying).questions().getFirst();
+        assertEquals(PracticeSessionQuestion.State.RETRYING, question.finalState());
+        assertEquals(new PracticePayload(List.of("opt_a")), question.draftAnswer());
+        assertEquals(1, question.attempts().size());
+        assertEquals(QuestionAttempt.Result.INCORRECT, question.attempts().getFirst().result());
+    }
+
+    @Test void archivedDetailRetainsRevisionAttemptPayloadAndDoesNotWriteOnRead() {
+        runtime.select("opt_b"); runtime.submit();
+        String archived = runtime.sessionId();
+        String rowId = question("q_one").id();
+        new SqliteQuestionAttemptRepository(database).append(new QuestionAttempt("attempt_revision", rowId, 2,
+                QuestionAttempt.Mode.REVISION, new PracticePayload(List.of("opt_a")),
+                QuestionAttempt.Result.CORRECT, 1.0, 1.0, NOW.plusSeconds(20)));
+        runtime.restart();
+        var sessions = new SqlitePracticeSessionRepository(database);
+        var before = sessions.findById(archived).orElseThrow();
+        var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
+        var detail = history.loadArchivedSessionDetail(bank.id(), archived);
+        assertEquals(QuestionAttempt.Mode.REVISION, detail.questions().getFirst().attempts().getLast().mode());
+        assertEquals(new PracticePayload(List.of("opt_a")), detail.questions().getFirst().attempts().getLast().answer());
+        assertEquals(QuestionAttempt.Result.CORRECT, detail.questions().getFirst().attempts().getLast().result());
+        assertEquals(1.0, detail.questions().getFirst().attempts().getLast().score());
+        assertEquals(1.0, detail.questions().getFirst().attempts().getLast().maxScore());
+        assertEquals(before, sessions.findById(archived).orElseThrow());
+        assertEquals(detail, history.loadArchivedSessionDetail(bank.id(), archived));
+    }
+
     @Test void editSaveReopenSynchronizesNonSemanticThenSemanticRevisionAndRejectsStaleRuntime() throws Exception {
         Path file = temp.resolve("bank.qbank"); Files.writeString(file, codec.write(bank));
         runtime.select("opt_a"); runtime.submit();
