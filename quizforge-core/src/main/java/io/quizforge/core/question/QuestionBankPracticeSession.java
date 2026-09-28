@@ -28,12 +28,20 @@ public final class QuestionBankPracticeSession {
     public QuestionBankFile.Entry current() { return bank.questions().get(index); }
     public Set<String> selected() { return Set.copyOf(selections.getOrDefault(index, Set.of())); }
     public State state() {
-        if (submitted.containsKey(index)) return State.SUBMITTED;
-        return selected().isEmpty() ? State.UNANSWERED : State.SELECTED;
+        return state(index);
+    }
+    /** Read-only inspection of any question, without changing the current position. */
+    public State state(int questionIndex) {
+        bank.questions().get(questionIndex); // Keep the same index bounds as the question list.
+        if (submitted.containsKey(questionIndex)) return State.SUBMITTED;
+        return selections.getOrDefault(questionIndex, Set.of()).isEmpty() ? State.UNANSWERED : State.SELECTED;
     }
     public boolean correct() {
-        if (state() != State.SUBMITTED) throw new IllegalStateException("Answer has not been submitted");
-        return submitted.get(index);
+        return correct(index);
+    }
+    public boolean correct(int questionIndex) {
+        if (state(questionIndex) != State.SUBMITTED) throw new IllegalStateException("Answer has not been submitted");
+        return submitted.get(questionIndex);
     }
 
     public void select(String optionId) {

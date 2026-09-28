@@ -209,12 +209,14 @@ class MainWorkspaceViewTest {
             open("题库/Java集合.qbank");
             assertEquals(FileMode.BROWSE, shell.filePane().mode());
             assertNotNull(shell.lookup("#question-practice"));
+            assertNotNull(shell.lookup("#question-outline"));
             button("next-question").fire();
             Button toggle = button("file-mode-toggle");
             toggle.fire();
             shell.applyCss(); shell.layout();
             assertNotNull(shell.lookup("#question-bank-editor"));
             assertNull(shell.lookup("#question-practice"));
+            assertNull(shell.lookup("#question-outline"));
             toggle.fire();
             assertSame(toggle, button("file-mode-toggle"));
             assertEquals("Question 2 / 2", ((Label) shell.lookup("#question-position")).getText());
@@ -314,7 +316,11 @@ class MainWorkspaceViewTest {
             button("next-question").fire();
             assertTrue(text(shell.lookup("#practice-result")).contains("1 / 2"));
             assertTrue(text(shell.lookup("#practice-result")).contains("50%"));
+            assertFalse(shell.lookup("#question-outline").isVisible());
+            assertFalse(shell.lookup("#question-outline").isManaged());
             button("practice-restart").fire();
+            assertTrue(shell.lookup("#question-outline").isVisible());
+            assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
             assertNotNull(shell.lookup("#submit-answer"));
             assertNull(shell.lookup("#answer-feedback"));
             assertEquals(before, Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
@@ -973,7 +979,7 @@ class MainWorkspaceViewTest {
         fx(() -> {
             open("题库/Java集合.qbank");
             pulse(200);
-            ScrollPane scroll = (ScrollPane) shell.filePane().getCenter();
+            ScrollPane scroll = (ScrollPane) shell.lookup("#practice-scroll");
             Node practice = shell.lookup("#question-practice");
             var bounds = practice.getBoundsInParent();
             assertEquals(scroll.getViewportBounds().getHeight() / 2,
@@ -1101,6 +1107,7 @@ class MainWorkspaceViewTest {
             var documentTab = shell.tabs().active();
             shell.tabs().activate(bankTab);
             assertNotNull(shell.lookup("#answer-feedback"));
+            assertTrue(button("question-number-1").getStyleClass().containsAll(List.of("correct", "current")));
             button("qbank-source-0").fire();
             assertSame(documentTab, shell.tabs().active());
             assertEquals(2, shell.tabs().tabs().size());
@@ -1109,6 +1116,154 @@ class MainWorkspaceViewTest {
             assertTrue(reader.getVvalue() > 0.5, "Second occurrence must scroll to its own body: " + reader.getVvalue());
             assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
         });
+    }
+
+    @Test void questionOutlineGroupsTypesWithGlobalNumbersInDocumentOrder() throws Exception {
+        String path = outlineBank("SINGLE_CHOICE", "MULTIPLE_CHOICE", "SINGLE_CHOICE",
+                "MULTIPLE_CHOICE", "SINGLE_CHOICE", "MULTIPLE_CHOICE");
+        fx(() -> {
+            shell.refresh(); open(path);
+            assertNotNull(shell.lookup("#question-outline"));
+            assertEquals(List.of("1", "3", "5"), outlineNumbers("single_choice"));
+            assertEquals(List.of("2", "4", "6"), outlineNumbers("multiple_choice"));
+            assertTrue(text(shell.lookup("#question-outline-single_choice")).contains("单选题"));
+            assertTrue(text(shell.lookup("#question-outline-multiple_choice")).contains("多选题"));
+            assertTrue(button("question-number-1").getStyleClass().containsAll(List.of("unsubmitted", "current")));
+            assertFalse(button("question-number-2").getStyleClass().contains("current"));
+            assertFalse(text(shell.lookup("#question-outline")).contains("点击题号"));
+        });
+    }
+
+    @Test void questionOutlineOmitsAbsentTypes() throws Exception {
+        String path = outlineBank("SINGLE_CHOICE", "SINGLE_CHOICE", "SINGLE_CHOICE");
+        fx(() -> {
+            shell.refresh(); open(path);
+            assertEquals(List.of("1", "2", "3"), outlineNumbers("single_choice"));
+            assertNull(shell.lookup("#question-outline-multiple_choice"));
+        });
+    }
+
+    @Test void questionOutlineJumpPreservesUnsubmittedSelectionsAndPreviousNextSynchronize() throws Exception {
+        String path = outlineBank("SINGLE_CHOICE", "MULTIPLE_CHOICE", "SINGLE_CHOICE",
+                "MULTIPLE_CHOICE", "SINGLE_CHOICE");
+        fx(() -> {
+            shell.refresh(); open(path);
+            ((RadioButton) shell.lookup("#option-1")).fire();
+            assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
+            button("question-number-5").fire();
+            assertEquals("Question 5 / 5", ((Label) shell.lookup("#question-position")).getText());
+            assertNull(shell.lookup("#answer-feedback"));
+            assertTrue(button("question-number-5").getStyleClass().contains("current"));
+            button("previous-question").fire();
+            assertTrue(button("question-number-4").getStyleClass().contains("current"));
+            assertFalse(button("question-number-5").getStyleClass().contains("current"));
+            button("next-question").fire();
+            assertTrue(button("question-number-5").getStyleClass().contains("current"));
+            button("question-number-1").fire();
+            assertTrue(((RadioButton) shell.lookup("#option-1")).isSelected());
+            assertFalse(button("submit-answer").isDisabled());
+            assertNull(shell.lookup("#answer-feedback"));
+            button("question-number-2").fire();
+            ((CheckBox) shell.lookup("#option-0")).fire();
+            ((CheckBox) shell.lookup("#option-1")).fire();
+            button("question-number-3").fire();
+            button("question-number-2").fire();
+            assertTrue(((CheckBox) shell.lookup("#option-0")).isSelected());
+            assertTrue(((CheckBox) shell.lookup("#option-1")).isSelected());
+            assertTrue(button("question-number-2").getStyleClass().containsAll(List.of("unsubmitted", "current")));
+        });
+    }
+
+    @Test void questionOutlineImmediatelyShowsResultsAndKeepsFeedbackOnRevisit() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            String before = Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
+            ((RadioButton) shell.lookup("#option-1")).fire();
+            button("submit-answer").fire();
+            assertTrue(button("question-number-1").getStyleClass().containsAll(List.of("incorrect", "current")));
+            assertFalse(button("question-number-1").getStyleClass().contains("unsubmitted"));
+            button("question-number-2").fire();
+            ((CheckBox) shell.lookup("#option-0")).fire();
+            ((CheckBox) shell.lookup("#option-1")).fire();
+            button("submit-answer").fire();
+            assertTrue(button("question-number-2").getStyleClass().containsAll(List.of("correct", "current")));
+            button("question-number-1").fire();
+            assertTrue(button("question-number-1").getStyleClass().containsAll(List.of("incorrect", "current")));
+            assertTrue(button("question-number-2").getStyleClass().contains("correct"));
+            assertFalse(button("question-number-2").getStyleClass().contains("current"));
+            assertTrue(((RadioButton) shell.lookup("#option-1")).isSelected());
+            assertTrue(button("submit-answer").isDisabled());
+            assertTrue(text(shell.lookup("#answer-feedback")).contains("回答错误"));
+            assertTrue(text(shell.lookup("#answer-feedback")).contains("正确答案：A"));
+            assertNotNull(shell.lookup("#qbank-source-0"));
+            assertEquals(before, Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+        });
+    }
+
+    @Test void questionOutlineStaysWithItsPracticeAcrossFileAndTabSwitches() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            var bankTab = shell.tabs().active();
+            var outline = shell.lookup("#question-outline");
+            button("question-number-2").fire();
+            ((CheckBox) shell.lookup("#option-0")).fire();
+            shell.tabs().openPinned(fixture.alpha.id(), "Java/Java集合.md");
+            assertNull(shell.lookup("#question-outline"));
+            shell.tabs().activate(bankTab);
+            assertSame(outline, shell.lookup("#question-outline"));
+            assertEquals("Question 2 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertTrue(button("question-number-2").getStyleClass().contains("current"));
+            assertTrue(((CheckBox) shell.lookup("#option-0")).isSelected());
+        });
+    }
+
+    @Test void questionOutlineScrollsIndependentlyWithoutGrowingThePracticePage() throws Exception {
+        String[] types = new String[120];
+        for (int i = 0; i < types.length; i++) types[i] = i % 2 == 0 ? "SINGLE_CHOICE" : "MULTIPLE_CHOICE";
+        String path = outlineBank(types);
+        fx(() -> {
+            shell.refresh(); open(path); shell.applyCss(); shell.layout();
+            ScrollPane outline = (ScrollPane) shell.lookup("#question-outline-scroll");
+            ScrollPane main = (ScrollPane) shell.lookup("#practice-scroll");
+            assertTrue(outline.getContent().getBoundsInLocal().getHeight() > outline.getViewportBounds().getHeight());
+            assertTrue(outline.getHeight() <= shell.filePane().getHeight());
+            double mainPosition = main.getVvalue(), mainHeight = main.getHeight();
+            outline.setVvalue(1); shell.layout();
+            assertEquals(mainPosition, main.getVvalue());
+            assertEquals(mainHeight, main.getHeight());
+            assertTrue(outline.getVvalue() > 0);
+            button("question-number-120").fire();
+            assertEquals("Question 120 / 120", ((Label) shell.lookup("#question-position")).getText());
+        });
+    }
+
+    private List<String> outlineNumbers(String type) {
+        var section = (javafx.scene.layout.VBox) shell.lookup("#question-outline-" + type);
+        var numbers = (javafx.scene.layout.FlowPane) section.getChildren().get(1);
+        return numbers.getChildren().stream().map(node -> ((Button) node).getText()).toList();
+    }
+
+    private String outlineBank(String... types) throws Exception {
+        var template = new QuestionBankV1Codec().parse(Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+        List<QuestionBankFile.Entry> questions = new ArrayList<>();
+        for (int i = 0; i < types.length; i++) {
+            String type = types[i];
+            var original = template.questions().stream().filter(question -> question.type().equals(type)).findFirst().orElseThrow();
+            List<QuestionBankFile.Option> options = new ArrayList<>();
+            List<String> correct = new ArrayList<>();
+            for (int j = 0; j < original.data().options().size(); j++) {
+                var old = original.data().options().get(j);
+                String id = "opt_outline_" + i + "_" + j;
+                options.add(new QuestionBankFile.Option(id, old.content()));
+                if (original.data().correctOptionIds().contains(old.id())) correct.add(id);
+            }
+            questions.add(new QuestionBankFile.Entry("q_outline_" + i, types[i], original.stem(), original.analysis(),
+                    original.sourceRefs(), new QuestionBankFile.Data(options, correct)));
+        }
+        String path = "题库/Outline.qbank";
+        fixture.write(path, new QuestionBankV1Codec().write(new QuestionBankFile(template.format(), template.schemaVersion(),
+                "qb_outline", "Outline practice", template.sourceDocuments(), questions)));
+        return path;
     }
 
     @Test void changedRevisionAfterRenameShowsWarningAndNavigatesWithoutUpdatingRecordedRevision() throws Exception {

@@ -71,4 +71,34 @@ class QuestionBankPracticeSessionTest {
         assertFalse(session.canFinish());
         assertThrows(IllegalStateException.class, session::next);
     }
+
+    @Test void inspectingOtherQuestionsDoesNotNavigateOrChangeSelectionsAndResults() {
+        var session = new QuestionBankPracticeSession(bank());
+        session.select("opt_two");
+        session.submit();
+        session.next();
+        session.select("opt_three");
+        assertEquals(QuestionBankPracticeSession.State.SUBMITTED, session.state(0));
+        assertFalse(session.correct(0));
+        assertEquals(QuestionBankPracticeSession.State.SELECTED, session.state(1));
+        assertThrows(IllegalStateException.class, () -> session.correct(1));
+        assertEquals(1, session.index());
+        assertEquals(java.util.Set.of("opt_three"), session.selected());
+        session.select("opt_four");
+        session.submit();
+        session.previous();
+        assertTrue(session.correct(1));
+        assertFalse(session.correct());
+        assertEquals(0, session.index());
+    }
+
+    @Test void readOnlyInspectionChecksBoundsAndDoesNotSubmitAnUnansweredQuestion() {
+        var session = new QuestionBankPracticeSession(bank());
+        assertEquals(QuestionBankPracticeSession.State.UNANSWERED, session.state(1));
+        assertThrows(IndexOutOfBoundsException.class, () -> session.state(-1));
+        assertThrows(IndexOutOfBoundsException.class, () -> session.correct(2));
+        assertThrows(IllegalStateException.class, () -> session.correct(0));
+        assertFalse(session.canFinish());
+        assertEquals(0, session.index());
+    }
 }

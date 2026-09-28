@@ -3,6 +3,8 @@ package io.quizforge.desktop.ui;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -51,11 +53,17 @@ final class FileViewerRouter {
         practice.setMaxHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
         StackPane aligned = new StackPane(practice);
         aligned.setId("practice-stage");
+        aligned.setMinWidth(0);
         aligned.setAlignment(Pos.CENTER);
         var scroll = UiTheme.scroll(aligned);
+        scroll.setId("practice-scroll");
+        scroll.setMinWidth(0);
         // Fill a short viewport, but let a long question grow and scroll naturally.
         aligned.minHeightProperty().bind(javafx.beans.binding.Bindings.createDoubleBinding(
                 () -> scroll.getViewportBounds().getHeight(), scroll.viewportBoundsProperty()));
-        return scroll;
+        HBox.setHgrow(scroll, Priority.ALWAYS);
+        HBox layout = new HBox(scroll, practice.outline());
+        layout.setId("practice-layout");
+        return layout;
     }
 }

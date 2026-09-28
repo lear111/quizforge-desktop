@@ -17,20 +17,24 @@ import javafx.scene.layout.VBox;
 final class QuestionBankPracticeView extends VBox {
     private final QuestionBankPracticeSession session;
     private final Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources;
+    private final QuestionOutlineView outline;
     private QuestionSourceListView sourceRows;
 
     QuestionBankPracticeView(QuestionBankFile bank,
             Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources) {
         session = new QuestionBankPracticeSession(bank);
         this.sources = sources;
+        outline = new QuestionOutlineView(session, this::jumpToQuestion);
         setId("question-practice");
         getStyleClass().add("practice-view");
         setSpacing(20);
         setMaxWidth(760);
+        setMinWidth(0);
         render();
     }
 
     private void render() {
+        outline.refresh();
         sourceRows = null;
         getChildren().clear();
         getChildren().add(UiTheme.label(session.bank().title(), "section-title"));
@@ -110,6 +114,15 @@ final class QuestionBankPracticeView extends VBox {
     }
 
     void refreshSources() { if (sourceRows != null) sourceRows.refresh(); }
+
+    QuestionOutlineView outline() { return outline; }
+
+    private void jumpToQuestion(int target) {
+        // Reuse the session's existing transitions; a numbered target never reaches the finish transition.
+        while (session.index() < target) session.next();
+        while (session.index() > target) session.previous();
+        render();
+    }
 
     private void result() {
         var result = session.result();
