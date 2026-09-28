@@ -2,6 +2,7 @@ package io.quizforge.desktop.ui;
 
 import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.question.QuestionBankPracticeSession;
+import io.quizforge.core.practice.PersistentPracticeRuntime;
 import java.util.List;
 import java.util.function.Function;
 import javafx.geometry.Pos;
@@ -15,14 +16,16 @@ import javafx.scene.layout.VBox;
 
 /** One question at a time; answer state never alters the .qbank file. */
 final class QuestionBankPracticeView extends VBox {
+    private final PersistentPracticeRuntime runtime;
     private final QuestionBankPracticeSession session;
     private final Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources;
     private final QuestionOutlineView outline;
     private QuestionSourceListView sourceRows;
 
-    QuestionBankPracticeView(QuestionBankFile bank,
+    QuestionBankPracticeView(PersistentPracticeRuntime runtime,
             Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources) {
-        session = new QuestionBankPracticeSession(bank);
+        this.runtime = runtime;
+        session = runtime.session();
         this.sources = sources;
         outline = new QuestionOutlineView(session, this::jumpToQuestion);
         setId("question-practice");
@@ -61,7 +64,7 @@ final class QuestionBankPracticeView extends VBox {
                 RadioButton choice = new RadioButton(label);
                 choice.setToggleGroup(group);
                 choice.setSelected(session.selected().contains(option.id()));
-                choice.setOnAction(event -> { session.select(option.id()); submit.setDisable(false); });
+                choice.setOnAction(event -> command(() -> runtime.select(option.id())));
                 choice.setWrapText(true);
                 choice.setMaxWidth(Double.MAX_VALUE);
                 choice.setDisable(state == QuestionBankPracticeSession.State.SUBMITTED);
@@ -71,8 +74,7 @@ final class QuestionBankPracticeView extends VBox {
                 CheckBox choice = new CheckBox(label);
                 choice.setSelected(session.selected().contains(option.id()));
                 choice.setOnAction(event -> {
-                    session.select(option.id());
-                    submit.setDisable(session.state() != QuestionBankPracticeSession.State.SELECTED);
+                    command(() -> runtime.select(option.id()));
                 });
                 choice.setWrapText(true);
                 choice.setMaxWidth(Double.MAX_VALUE);
@@ -82,7 +84,10 @@ final class QuestionBankPracticeView extends VBox {
             }
         }
         getChildren().add(options);
-        submit.setOnAction(event -> { session.submit(); render(); });
+        submit.setOnAction(event -> {
+            submit.setDisable(true);
+            command(runtime::submit);
+        });
         if (state == QuestionBankPracticeSession.State.SUBMITTED) {
             VBox feedback = new VBox(12, UiTheme.label(session.correct() ? "回答正确" : "回答错误",
                     session.correct() ? "answer" : "incorrect"),
@@ -99,13 +104,13 @@ final class QuestionBankPracticeView extends VBox {
         Button previous = UiTheme.iconButton("arrow-left", "上一题", () -> { });
         previous.setId("previous-question");
         previous.setDisable(session.index() == 0);
-        previous.setOnAction(event -> { session.previous(); render(); });
+        previous.setOnAction(event -> command(runtime::previous));
         boolean last = session.index() == session.bank().questions().size() - 1;
         Button next = UiTheme.iconButton(last ? "finish" : "arrow", last ? "完成练习" : "下一题", () -> { });
         next.setId("next-question");
         next.setDisable(session.index() == session.bank().questions().size() - 1
                 && !session.canFinish());
-        next.setOnAction(event -> { session.next(); render(); });
+        next.setOnAction(event -> command(runtime::next));
         HBox navigation = new HBox(52, previous, submit, next);
         navigation.setId("practice-navigation");
         navigation.getStyleClass().add("practice-navigation");
@@ -118,10 +123,20 @@ final class QuestionBankPracticeView extends VBox {
     QuestionOutlineView outline() { return outline; }
 
     private void jumpToQuestion(int target) {
-        // Reuse the session's existing transitions; a numbered target never reaches the finish transition.
-        while (session.index() < target) session.next();
-        while (session.index() > target) session.previous();
-        render();
+        command(() -> runtime.goTo(target));
+    }
+
+    private void command(Runnable action) {
+        try {
+            action.run();
+            render();
+        } catch (RuntimeException failure) {
+            // The runtime is only hydrated after commit; repaint restores the persisted selection.
+            render();
+            var error = UiTheme.label("练习状态未保存：" + failure.getMessage(), "incorrect");
+            error.setId("practice-error");
+            getChildren().add(error);
+        }
     }
 
     private void result() {
@@ -132,10 +147,10 @@ final class QuestionBankPracticeView extends VBox {
                 UiTheme.label("正确：" + result.correct(), "preview-paragraph"),
                 UiTheme.label("错误：" + result.incorrect(), "preview-paragraph"));
         page.setId("practice-result");
-        Button restart = UiTheme.button("重新开始", "refresh", "primary-button", () -> {
-            session.restart(); render();
-        });
+        Button restart = UiTheme.button("重新开始", "refresh", "primary-button", () -> { });
         restart.setId("practice-restart");
+        restart.setDisable(true);
+        restart.setTooltip(new javafx.scene.control.Tooltip("持久化练习的重新开始将在后续步骤提供"));
         page.getChildren().add(restart);
         getChildren().add(page);
     }

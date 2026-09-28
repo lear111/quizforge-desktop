@@ -5,7 +5,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/** Transient, deterministic practice state over the persisted QuestionBank model. */
+/** In-memory representation of practice state; persistence is handled by application commands. */
 public final class QuestionBankPracticeSession {
     public enum State { UNANSWERED, SELECTED, SUBMITTED }
     public record Result(int total, int correct, int incorrect, int accuracyPercent) { }
@@ -45,14 +45,46 @@ public final class QuestionBankPracticeSession {
     }
 
     public void select(String optionId) {
+        selections.put(index, new HashSet<>(selectionAfter(optionId)));
+    }
+
+    /** Compute a selection without changing the visible state before persistence succeeds. */
+    public Set<String> selectionAfter(String optionId) {
         if (state() == State.SUBMITTED) throw new IllegalStateException("Answer already submitted");
         boolean found = current().data().options().stream().anyMatch(option -> option.id().equals(optionId));
         if (!found) throw new IllegalArgumentException("Unknown option");
-        Set<String> selected = selections.computeIfAbsent(index, ignored -> new HashSet<>());
+        Set<String> selected = new HashSet<>(selected());
         if ("SINGLE_CHOICE".equals(current().type())) {
             selected.clear();
             selected.add(optionId);
         } else if (!selected.add(optionId)) selected.remove(optionId);
+        return Set.copyOf(selected);
+    }
+
+    /** Direct hydration, never replayed clicks or submissions. Validate before replacing state. */
+    public void restoreState(int currentIndex, Map<Integer, Set<String>> restoredSelections,
+            Map<Integer, Boolean> restoredSubmitted, boolean summary) {
+        bank.questions().get(currentIndex);
+        Map<Integer, Set<String>> validated = new HashMap<>();
+        restoredSelections.forEach((questionIndex, values) -> {
+            var question = bank.questions().get(questionIndex);
+            Set<String> optionIds = new HashSet<>();
+            question.data().options().forEach(option -> optionIds.add(option.id()));
+            if (!optionIds.containsAll(values) || "SINGLE_CHOICE".equals(question.type()) && values.size() > 1)
+                throw new IllegalStateException("Invalid restored selection");
+            validated.put(questionIndex, new HashSet<>(values));
+        });
+        restoredSubmitted.forEach((questionIndex, correct) -> {
+            bank.questions().get(questionIndex);
+            if (correct == null || validated.getOrDefault(questionIndex, Set.of()).isEmpty())
+                throw new IllegalStateException("Submitted answer is missing");
+        });
+        if (summary && restoredSubmitted.size() != bank.questions().size())
+            throw new IllegalStateException("Incomplete practice cannot restore Summary");
+        selections.clear(); selections.putAll(validated);
+        submitted.clear(); submitted.putAll(restoredSubmitted);
+        index = currentIndex;
+        finished = summary;
     }
 
     public boolean submit() {

@@ -93,6 +93,13 @@ public class DesktopConfiguration {
     }
 
     @Bean
+    public io.quizforge.core.port.PracticeRuntimeProvider practiceRuntimeProvider(QuizForgeDataDirectory directory,
+            QuestionBankFileCodec codec, Clock clock) {
+        return new io.quizforge.infrastructure.persistence.SqliteWorkspacePracticeRuntimeProvider(
+                new WorkspacePathResolver(directory), codec, clock);
+    }
+
+    @Bean
     public WorkspaceRepository workspaceRepository(SqliteDatabase database) {
         return new SqliteWorkspaceRepository(database);
     }
@@ -337,9 +344,10 @@ public class DesktopConfiguration {
             QuestionBankFileEditService bankEdits,
               MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration,
               AssetIndexRepository assetIndex,
-              io.quizforge.core.question.QuestionSourceLinkService sourceLinks) {
+              io.quizforge.core.question.QuestionSourceLinkService sourceLinks,
+              io.quizforge.core.port.PracticeRuntimeProvider practice) {
         return new DesktopView(workspaces, files, catalog, references, materials, documents,
                 settings, connections, directory.root().resolve("desktop-recent-workspaces.txt"),
-                  bankEdits, markdownEdits, registration, assetIndex, sourceLinks);
+                  bankEdits, markdownEdits, registration, assetIndex, sourceLinks, practice);
     }
 }

@@ -292,7 +292,7 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void wrongAnswerDoesNotPassAndPracticeIsNotPersisted() throws Exception {
+    @Test void wrongAnswerDoesNotPassAndPracticeDoesNotChangeBankFile() throws Exception {
         fx(() -> {
             String before = Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
             open("题库/Java集合.qbank");
@@ -303,7 +303,7 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void practiceResultAndRestartStayTransient() throws Exception {
+    @Test void practiceResultPersistsAndRestartIsTemporarilyDisabled() throws Exception {
         fx(() -> {
             String before = Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
             open("题库/Java集合.qbank");
@@ -318,11 +318,14 @@ class MainWorkspaceViewTest {
             assertTrue(text(shell.lookup("#practice-result")).contains("50%"));
             assertFalse(shell.lookup("#question-outline").isVisible());
             assertFalse(shell.lookup("#question-outline").isManaged());
+            assertTrue(button("practice-restart").isDisabled());
             button("practice-restart").fire();
-            assertTrue(shell.lookup("#question-outline").isVisible());
-            assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
-            assertNotNull(shell.lookup("#submit-answer"));
-            assertNull(shell.lookup("#answer-feedback"));
+            shell.tabs().closeAll();
+            shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#practice-result"));
+            assertTrue(text(shell.lookup("#practice-result")).contains("1 / 2"));
+            assertFalse(shell.lookup("#question-outline").isVisible());
             assertEquals(before, Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
         });
     }
@@ -1635,6 +1638,129 @@ class MainWorkspaceViewTest {
             assertNull(shell.lookup("#markdown-outline"));
             assertEquals(2, shell.tabs().tabs().size());
         });
+    }
+
+    @Test void persistentPracticeReopeningTabRestoresDraftCurrentAndOutlineWithoutSubmit() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-1")).fire();
+            button("next-question").fire();
+            var before = practiceDbSession();
+            shell.tabs().closeAll();
+            shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            shell.applyCss(); shell.layout();
+            assertEquals(before.id(), practiceDbSession().id());
+            assertEquals("Question 2 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertTrue(button("question-number-2").getStyleClass().contains("current"));
+            button("previous-question").fire();
+            assertTrue(((RadioButton) shell.lookup("#option-1")).isSelected());
+            assertNull(shell.lookup("#answer-feedback"));
+            assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
+            button("question-number-2").fire();
+            assertEquals("q_two", practiceDbSession().currentQuestionId());
+        });
+    }
+
+    @Test void recreatedShellRestoresSubmittedFeedbackSourcesAndOutlineFromAttempt() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-1")).fire();
+            button("submit-answer").fire();
+            button("next-question").fire();
+            ((CheckBox) shell.lookup("#option-0")).fire();
+            var id = practiceDbSession().id();
+            shell.tabs().closeAll();
+            shell = fixture.shell(stage);
+            Scene scene = new Scene(shell, 1100, 740); UiTheme.apply(scene); stage.setScene(scene);
+            open("题库/Java集合.qbank");
+            assertEquals(id, practiceDbSession().id());
+            assertEquals("Question 2 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertTrue(((CheckBox) shell.lookup("#option-0")).isSelected());
+            assertNull(shell.lookup("#answer-feedback"));
+            assertTrue(button("question-number-1").getStyleClass().contains("incorrect"));
+            button("question-number-1").fire();
+            assertTrue(((RadioButton) shell.lookup("#option-1")).isSelected());
+            assertTrue(text(shell.lookup("#answer-feedback")).contains("回答错误"));
+            assertNotNull(shell.lookup("#qbank-source-0"));
+            assertTrue(button("submit-answer").isDisabled());
+        });
+    }
+
+    @Test void editSaveThenPracticeRunsRevisionSyncAndPreservesOnlyNonSemanticAnswers() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
+            String id = practiceDbSession().id();
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            ((TextArea) shell.lookup("#qbank-analysis")).appendText(" Updated analysis.");
+            button("qbank-save").fire();
+            assertEquals(id, practiceDbSession().id());
+            assertTrue(button("question-number-1").getStyleClass().contains("correct"));
+            assertTrue(text(shell.lookup("#answer-feedback")).contains("Updated analysis."));
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            ((TextArea) shell.lookup("#qbank-question-stem")).appendText(" Updated stem.");
+            button("qbank-save").fire();
+            assertEquals(id, practiceDbSession().id());
+            assertNull(shell.lookup("#answer-feedback"));
+            assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
+        });
+    }
+
+    @Test void leaveEditWithoutChangesReopensPracticeAndChecksActualFileRevision() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
+            button("file-mode-toggle").fire();
+            var file = fixture.alphaRoot.resolve("题库/Java集合.qbank");
+            var codec = new QuestionBankV1Codec();
+            var bank = codec.parse(Files.readString(file));
+            var q = bank.questions().getFirst();
+            var changed = new QuestionBankFile.Entry(q.id(), q.type(), q.stem() + " Changed", q.analysis(), q.sourceRefs(), q.data());
+            var edited = new QuestionBankFile(bank.format(), bank.schemaVersion(), bank.id(), bank.title(), bank.sourceDocuments(), List.of(changed, bank.questions().get(1)));
+            Files.writeString(file, codec.write(edited));
+            button("file-mode-toggle").fire();
+            shell.applyCss(); shell.layout();
+            assertNull(shell.lookup("#answer-feedback"));
+            assertTrue(text(shell.lookup("#question-practice")).contains("Changed"));
+            assertEquals(codec.contentId(edited), practiceDbSession().questionBankContentId());
+        });
+    }
+
+    @Test void submitPersistenceFailureKeepsSelectionDraftAndFeedbackHiddenThenDoubleConfirmIsSafe() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-0")).fire();
+            var db = practiceDb();
+            try (var connection = db.openConnection(); var statement = connection.createStatement()) {
+                statement.execute("CREATE TRIGGER fail_submit BEFORE UPDATE OF practice_state ON practice_session_question WHEN NEW.practice_state = 'SUBMITTED' BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
+            }
+            button("submit-answer").fire();
+            assertNull(shell.lookup("#answer-feedback"));
+            assertNotNull(shell.lookup("#practice-error"));
+            assertTrue(((RadioButton) shell.lookup("#option-0")).isSelected());
+            assertFalse(button("submit-answer").isDisabled());
+            assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
+            var questions = new io.quizforge.infrastructure.persistence.SqlitePracticeSessionQuestionRepository(db);
+            var row = questions.findBySessionIdAndQuestionId(practiceDbSession().id(), "q_one").orElseThrow();
+            assertEquals(io.quizforge.core.practice.PracticeSessionQuestion.State.DRAFT, row.practiceState());
+            assertEquals(new io.quizforge.core.practice.PracticePayload(List.of("opt_a")), row.draftAnswer());
+            var attempts = new io.quizforge.infrastructure.persistence.SqliteQuestionAttemptRepository(db);
+            assertTrue(attempts.listBySessionQuestion(row.id()).isEmpty());
+            try (var connection = db.openConnection(); var statement = connection.createStatement()) { statement.execute("DROP TRIGGER fail_submit"); }
+            Button confirm = button("submit-answer"); confirm.fire(); confirm.fire();
+            assertNotNull(shell.lookup("#answer-feedback"));
+            assertEquals(1, attempts.listBySessionQuestion(row.id()).size());
+        });
+    }
+
+    private io.quizforge.infrastructure.persistence.SqliteDatabase practiceDb() {
+        return new io.quizforge.infrastructure.persistence.SqliteDatabase(fixture.alphaRoot.resolve(".quizforge/quizforge.db"));
+    }
+    private io.quizforge.core.practice.PracticeSession practiceDbSession() {
+        return new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                .findActiveByQuestionBankAssetId("qb_java").orElseThrow();
     }
 
     private TreeCell<?> fileCell(String path) {

@@ -44,6 +44,109 @@ public final class PracticeSessionService {
         });
     }
 
+    public ActivePracticeSnapshot updateCurrentQuestion(String sessionId, String expectedContentId, String questionId) {
+        return transactions.execute(repositories -> {
+            requireActive(repositories, sessionId, expectedContentId);
+            requireQuestion(repositories, sessionId, questionId);
+            repositories.sessions().updateCurrentPosition(sessionId, PracticeSession.View.QUESTION, questionId);
+            repositories.sessions().touch(sessionId, clock.instant());
+            return restore(repositories, sessionId);
+        });
+    }
+
+    public ActivePracticeSnapshot updateCurrentView(String sessionId, String expectedContentId, PracticeSession.View view) {
+        java.util.Objects.requireNonNull(view);
+        return transactions.execute(repositories -> {
+            var session = requireActive(repositories, sessionId, expectedContentId);
+            if (view == PracticeSession.View.SUMMARY && repositories.questions().findBySessionId(sessionId).stream()
+                    .anyMatch(question -> question.practiceState() != PracticeSessionQuestion.State.SUBMITTED))
+                throw new IllegalStateException("Submit every question before finishing");
+            repositories.sessions().updateCurrentPosition(sessionId, view, session.currentQuestionId());
+            repositories.sessions().touch(sessionId, clock.instant());
+            return restore(repositories, sessionId);
+        });
+    }
+
+    public ActivePracticeSnapshot saveDraft(String sessionId, String expectedContentId, String questionId,
+            Set<String> selectedOptionIds) {
+        Set<String> selected = Set.copyOf(selectedOptionIds);
+        return transactions.execute(repositories -> {
+            requireCurrent(repositories, sessionId, expectedContentId, questionId);
+            var question = requireUnsubmitted(repositories, sessionId, questionId);
+            validateSelection(question.snapshot(), selected);
+            Instant now = clock.instant();
+            repositories.questions().updateDraft(sessionId, questionId,
+                    selected.isEmpty() ? null : answer(selected), selected.isEmpty()
+                            ? PracticeSessionQuestion.State.UNANSWERED : PracticeSessionQuestion.State.DRAFT, now);
+            repositories.sessions().touch(sessionId, now);
+            return restore(repositories, sessionId);
+        });
+    }
+
+    public ActivePracticeSnapshot submitAnswer(String sessionId, String expectedContentId, String questionId) {
+        return transactions.execute(repositories -> {
+            requireCurrent(repositories, sessionId, expectedContentId, questionId);
+            var question = requireUnsubmitted(repositories, sessionId, questionId);
+            if (question.practiceState() != PracticeSessionQuestion.State.DRAFT)
+                throw new IllegalStateException("Select an answer first");
+            var selected = PracticeRuntimeMapper.optionIds(question.draftAnswer());
+            validateSelection(question.snapshot(), selected);
+            if (selected.isEmpty()) throw new IllegalStateException("Select an answer first");
+            if (repositories.attempts().countBySessionQuestion(question.id()) != 0)
+                throw new IllegalStateException("INITIAL attempt already exists");
+            @SuppressWarnings("unchecked")
+            var correctData = (Map<String, Object>) question.snapshot().correctAnswer().value();
+            var correct = PracticeRuntimeMapper.optionIds(new PracticePayload(correctData.get("correctOptionIds")));
+            Instant now = clock.instant();
+            repositories.attempts().append(new QuestionAttempt(id("pa_"), question.id(), 1, QuestionAttempt.Mode.INITIAL,
+                    answer(selected), selected.equals(correct) ? QuestionAttempt.Result.CORRECT : QuestionAttempt.Result.INCORRECT,
+                    null, null, now));
+            repositories.questions().updateDraft(sessionId, questionId, null, PracticeSessionQuestion.State.SUBMITTED, now);
+            repositories.sessions().touch(sessionId, now);
+            return restore(repositories, sessionId);
+        });
+    }
+
+    private PracticeSession requireActive(PracticeTransaction.Repositories repositories, String sessionId, String revision) {
+        var session = repositories.sessions().findById(sessionId)
+                .orElseThrow(() -> new IllegalStateException("Practice session is missing"));
+        if (session.status() != PracticeSession.Status.ACTIVE)
+            throw new IllegalStateException("Archived practice cannot be changed");
+        if (!session.questionBankContentId().equals(revision))
+            throw new IllegalStateException("Practice revision changed; reopen the bank");
+        return session;
+    }
+
+    private void requireCurrent(PracticeTransaction.Repositories repositories, String sessionId, String revision, String questionId) {
+        var session = requireActive(repositories, sessionId, revision);
+        if (session.currentView() != PracticeSession.View.QUESTION || !questionId.equals(session.currentQuestionId()))
+            throw new IllegalStateException("Current practice question changed; reopen the bank");
+    }
+
+    private PracticeSessionQuestion requireQuestion(PracticeTransaction.Repositories repositories, String sessionId, String questionId) {
+        return repositories.questions().findBySessionIdAndQuestionId(sessionId, questionId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown practice question"));
+    }
+
+    private PracticeSessionQuestion requireUnsubmitted(PracticeTransaction.Repositories repositories, String sessionId, String questionId) {
+        var question = requireQuestion(repositories, sessionId, questionId);
+        if (question.practiceState() != PracticeSessionQuestion.State.UNANSWERED
+                && question.practiceState() != PracticeSessionQuestion.State.DRAFT)
+            throw new IllegalStateException("Answer already submitted");
+        return question;
+    }
+
+    private void validateSelection(PracticeSessionQuestion.Snapshot snapshot, Set<String> selected) {
+        if (!Set.of("SINGLE_CHOICE", "MULTIPLE_CHOICE").contains(snapshot.questionType()))
+            throw new IllegalStateException("Unsupported practice question type");
+        Set<String> options = new java.util.HashSet<>();
+        for (Object value : (List<?>) snapshot.options().value()) options.add((String) ((Map<?, ?>) value).get("id"));
+        if (!options.containsAll(selected) || "SINGLE_CHOICE".equals(snapshot.questionType()) && selected.size() > 1)
+            throw new IllegalArgumentException("Invalid selected option IDs");
+    }
+
+    private PracticePayload answer(Set<String> selected) { return new PracticePayload(selected.stream().sorted().toList()); }
+
     private PracticeSession create(PracticeTransaction.Repositories repositories, QuestionBankFile bank,
             String contentId, Instant now) {
         var session = new PracticeSession(id("ps_"), bank.id(), contentId, bank.title(),

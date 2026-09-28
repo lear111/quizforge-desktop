@@ -39,7 +39,8 @@ final class MainWorkspaceView extends BorderPane {
             Runnable settings, BiConsumer<WorkspaceId, FilePresentation> ai,
             QuestionBankFileEditService bankEdits,
             MarkdownFileEditService markdownEdits, MarkdownDocumentRegistration registration,
-            TextClipboard clipboard, AssetIndexRepository index, QuestionSourceLinkService sourceLinks) {
+            TextClipboard clipboard, AssetIndexRepository index, QuestionSourceLinkService sourceLinks,
+            io.quizforge.core.port.PracticeRuntimeProvider practice) {
         this.workspaces = workspaces;
         this.files = files;
         this.history = history;
@@ -51,10 +52,10 @@ final class MainWorkspaceView extends BorderPane {
                 this::navigate, this::showNavigationStatus);
         filePane = new FilePane(loader, references, ai, bankEdits,
                 markdownEdits, registration, this::refreshTree, clipboard, sourceLinks, this::openNavigationUri,
-                sourceNavigation);
+                sourceNavigation, practice);
         tabs = new WorkspaceTabManager(() -> new FilePane(loader, references, ai, bankEdits,
                 markdownEdits, registration, this::refreshTree, clipboard, sourceLinks, this::openNavigationUri,
-                sourceNavigation),
+                sourceNavigation, practice),
                 filePane, this::confirmDiscard);
         navigation = new WorkspaceNavigationService(index, () -> current == null ? null : current.id(), tabs);
         sidebar = new WorkspaceSidebar((entry, pinned) -> {

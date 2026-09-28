@@ -1,0 +1,39 @@
+package io.quizforge.infrastructure.persistence;
+
+import io.quizforge.core.port.PracticeRuntimeProvider;
+import io.quizforge.core.port.QuestionBankFileCodec;
+import io.quizforge.core.practice.PersistentPracticeRuntime;
+import io.quizforge.core.practice.PracticeSessionService;
+import io.quizforge.core.question.QuestionBankFile;
+import io.quizforge.core.workspace.WorkspaceId;
+import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+
+/** Durable practice data is isolated per Workspace; Registry rebuilds cannot delete it. */
+public final class SqliteWorkspacePracticeRuntimeProvider implements PracticeRuntimeProvider {
+    private final WorkspacePathResolver paths;
+    private final QuestionBankFileCodec codec;
+    private final Clock clock;
+    // Database handles do not retain connections or practice state. Every open reads persisted rows.
+    private final Map<Path, SqliteDatabase> databases = new ConcurrentHashMap<>();
+
+    public SqliteWorkspacePracticeRuntimeProvider(WorkspacePathResolver paths, QuestionBankFileCodec codec, Clock clock) {
+        this.paths = paths;
+        this.codec = codec;
+        this.clock = clock;
+    }
+
+    @Override public PersistentPracticeRuntime open(WorkspaceId workspace, QuestionBankFile bank) {
+        Path internal = paths.workspaceRoot(workspace).resolve(".quizforge");
+        Path file = internal.resolve("quizforge.db");
+        if (Files.isSymbolicLink(internal) || Files.isSymbolicLink(file) || !Files.isDirectory(internal))
+            throw new IllegalStateException("Workspace practice database location is unavailable");
+        var database = databases.computeIfAbsent(file, SqliteDatabase::new);
+        var service = new PracticeSessionService(new SqlitePracticeTransaction(database), clock);
+        return new PersistentPracticeRuntime(service, bank, codec.contentId(bank));
+    }
+}

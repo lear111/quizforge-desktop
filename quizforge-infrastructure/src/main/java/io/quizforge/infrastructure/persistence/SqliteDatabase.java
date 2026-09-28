@@ -6,6 +6,7 @@ import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.nio.file.Path;
 import org.flywaydb.core.Flyway;
 import org.sqlite.SQLiteConfig;
 
@@ -13,7 +14,12 @@ public final class SqliteDatabase {
     private final String jdbcUrl;
 
     public SqliteDatabase(QuizForgeDataDirectory directory) {
-        jdbcUrl = "jdbc:sqlite:" + directory.databaseFile();
+        this(directory.databaseFile());
+    }
+
+    /** Explicit database location, also used by the Workspace-scoped durable practice store. */
+    public SqliteDatabase(Path databaseFile) {
+        jdbcUrl = "jdbc:sqlite:" + databaseFile;
         try {
             Flyway.configure().dataSource(jdbcUrl, "", "").load().migrate();
         } catch (RuntimeException e) {

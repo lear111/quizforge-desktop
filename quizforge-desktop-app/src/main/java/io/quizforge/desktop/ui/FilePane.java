@@ -59,7 +59,7 @@ final class FilePane extends BorderPane {
             QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
             MarkdownDocumentRegistration registration, Runnable refreshTree, TextClipboard clipboard,
             QuestionSourceLinkService sourceLinks, Consumer<String> openLink,
-            QuestionSourceNavigationAdapter sourceNavigation) {
+            QuestionSourceNavigationAdapter sourceNavigation, io.quizforge.core.port.PracticeRuntimeProvider practice) {
         this.loader = loader;
         this.references = references;
         this.aiAction = aiAction;
@@ -74,7 +74,8 @@ final class FilePane extends BorderPane {
             @Override public void create(MarkdownSourceRange block) { createSourceReference(block); }
             @Override public void copy(List<NamedMarkdownAnchor> anchors) { copySourceReference(anchors); }
         }, this::copyNavigationLink, openLink,
-                refs -> new QuestionSourceListView(refs, workspace, sourceNavigation, null));
+                refs -> new QuestionSourceListView(refs, workspace, sourceNavigation, null),
+                file -> practice.open(workspace, file.file().questionBank()));
         setId("file-pane");
         clear();
     }
@@ -128,6 +129,16 @@ final class FilePane extends BorderPane {
             centered.setAlignment(Pos.TOP_CENTER);
             setCenter(UiTheme.scroll(centered));
         } else {
+            if (mode == FileMode.BROWSE && current.kind() == WorkspaceFileKind.QUESTION_BANK) {
+                // Re-read the file and synchronize the active revision on every Edit -> Practice entry.
+                try {
+                    current = loader.load(workspace, current.file().entry().relativePath());
+                    browseContent = router.view(current, FileMode.BROWSE);
+                } catch (RuntimeException error) {
+                    browseContent = UiTheme.quietState("无法恢复练习", error.getMessage());
+                }
+                bankEditor = null;
+            }
             setCenter(mode == FileMode.BROWSE ? browseContent : router.view(current, mode));
             if (mode == FileMode.BROWSE) refreshSourceStatus();
         }

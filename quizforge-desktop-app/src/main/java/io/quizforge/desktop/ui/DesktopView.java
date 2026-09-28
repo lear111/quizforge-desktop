@@ -33,6 +33,7 @@ public final class DesktopView {
     private final MarkdownDocumentRegistration registration;
     private final AssetIndexRepository assetIndex;
     private final QuestionSourceLinkService sourceLinks;
+    private final io.quizforge.core.port.PracticeRuntimeProvider practice;
 
     public DesktopView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceFileCatalog catalog,
             QuestionBankReferenceResolver references, MaterialService materials,
@@ -40,7 +41,7 @@ public final class DesktopView {
             AiConnectionService connections, Path historyPath,
             QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
             MarkdownDocumentRegistration registration, AssetIndexRepository assetIndex,
-            QuestionSourceLinkService sourceLinks) {
+            QuestionSourceLinkService sourceLinks, io.quizforge.core.port.PracticeRuntimeProvider practice) {
         this.workspaces = workspaces;
         this.files = files;
         this.catalog = catalog;
@@ -55,6 +56,7 @@ public final class DesktopView {
         this.registration = registration;
         this.assetIndex = assetIndex;
         this.sourceLinks = sourceLinks;
+        this.practice = practice;
     }
 
     public Scene createScene(Stage stage) {
@@ -63,7 +65,7 @@ public final class DesktopView {
         MainWorkspaceView shell = new MainWorkspaceView(workspaces, files, new WorkspaceHistory(historyPath),
                 new FilePresentationLoader(files, catalog), references, stage, settingsDialog::show,
                 (workspace, file) -> ai[0].run(workspace, file), bankEdits,
-                markdownEdits, registration, TextClipboard.system(), assetIndex, sourceLinks);
+                markdownEdits, registration, TextClipboard.system(), assetIndex, sourceLinks, practice);
         ai[0] = new EmptyAssetAiAction(materials, documents, settings, stage,
                 settingsDialog::show, shell::refreshAndOpen);
         Scene scene = new Scene(shell, 1180, 780);
