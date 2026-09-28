@@ -2065,6 +2065,251 @@ class MainWorkspaceViewTest {
         });
     }
 
+    @Test void historySourceNavigationPreservesQuestionAttemptOutlineAndReusesMarkdownTabWithoutWrites() throws Exception {
+        var sample = navigationBank(false);
+        var archived = archiveSourceHistory(sample);
+        fx(() -> {
+            var targetTab = shell.tabs().openPinned(fixture.alpha.id(), sample.documentPath());
+            shell.applyCss(); shell.layout();
+            openSourceHistory(sample, archived);
+            var historyTab = shell.tabs().active();
+            button("history-question-number-2").fire();
+            button("history-previous-attempt").fire();
+            Node detail = shell.lookup("#practice-history-detail"), outline = shell.lookup("#history-question-outline");
+            String position = ((Label) shell.lookup("#history-question-position")).getText();
+            String attempt = ((Label) shell.lookup("#history-attempt-position")).getText();
+            assertTrue(position.contains("第 2 / 2 题"));
+            assertTrue(attempt.contains("第 1 / 2 次作答"));
+            assertEquals("SourceNav · 定义", button("history-source-0").getText());
+            assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
+                    button("history-source-0").getProperties().get("quizforge.sourceStatus"));
+            var before = practiceRows();
+            forbidPracticeWrites();
+            button("history-source-0").fire();
+            assertSame(targetTab, shell.tabs().active());
+            assertEquals(2, shell.tabs().tabs().size());
+            assertNotNull(shell.lookup("#markdown-outline"));
+            shell.applyCss(); shell.layout();
+            var reader = (ScrollPane) shell.lookup("#markdown-preview-scroll");
+            assertTrue(reader.getVvalue() > 0.5, "History occurrence 2 must reach the second bound block");
+            shell.tabs().activate(historyTab);
+            assertSame(detail, shell.lookup("#practice-history-detail"));
+            assertSame(outline, shell.lookup("#history-question-outline"));
+            assertEquals(position, ((Label) shell.lookup("#history-question-position")).getText());
+            assertEquals(attempt, ((Label) shell.lookup("#history-attempt-position")).getText());
+            assertTrue(button("history-question-number-2").getStyleClass().contains("current"));
+            assertEquals(before, practiceRows());
+        });
+    }
+
+    @Test void historyChangedRevisionAndRenamedMovedSourceStayNavigableWithoutUpdatingArchivedContentId() throws Exception {
+        var sample = navigationBank(false);
+        String archived = archiveSourceHistory(sample);
+        String moved = "Other/Java集合框架.md";
+        fixture.write(moved, sample.markdown().replace("First definition.", "Changed definition."));
+        Files.delete(fixture.alphaRoot.resolve(sample.documentPath()));
+        fx(() -> {
+            openSourceHistory(sample, archived);
+            var tab = shell.tabs().active();
+            assertEquals("Java集合框架 · 定义", button("history-source-0").getText());
+            assertTrue(text(shell.lookup("#history-sources")).contains("来源已修改"));
+            assertFalse(button("history-source-0").isDisabled());
+            assertEquals(QuestionBankReferenceResolver.Status.DIFFERENT_REVISION,
+                    button("history-source-0").getProperties().get("quizforge.sourceStatus"));
+            var before = practiceRows();
+            button("history-source-0").fire();
+            assertEquals(moved, shell.tabs().active().path());
+            shell.tabs().activate(tab);
+            var detail = fixture.context.getBean(io.quizforge.core.port.PracticeRuntimeProvider.class)
+                    .history(fixture.alpha.id()).loadArchivedSessionDetail(sample.bank().id(), archived);
+            assertTrue(detail.questions().getFirst().sourceRefs().toString()
+                    .contains(sample.bank().sourceDocuments().getFirst().contentId()));
+            assertEquals(before, practiceRows());
+        });
+    }
+
+    @Test void historyMultipleSourcesHaveIndependentLabelsAndMissingOrOrphanRowsHaveNoClickHandler() throws Exception {
+        var sample = navigationBank(true);
+        var archived = archiveSourceHistory(sample);
+        fx(() -> {
+            openSourceHistory(sample, archived);
+            assertEquals(4, shell.lookupAll(".history-source-item").size());
+            assertEquals(button("history-source-0").getText(), button("history-source-1").getText());
+            assertFalse(button("history-source-1").getText().contains("#2"));
+            var missing = (Label) shell.lookup("#history-source-2");
+            var orphan = (Label) shell.lookup("#history-source-3");
+            assertTrue(missing.isDisabled()); assertNull(missing.getOnMouseClicked());
+            assertTrue(orphan.isDisabled()); assertNull(orphan.getOnMouseClicked());
+            assertEquals(QuestionBankReferenceResolver.Status.MISSING_ANCHOR,
+                    missing.getProperties().get("quizforge.sourceStatus"));
+            assertEquals(QuestionBankReferenceResolver.Status.ORPHAN_ANCHOR,
+                    orphan.getProperties().get("quizforge.sourceStatus"));
+            assertTrue(text(shell.lookup("#history-sources")).contains("来源位置缺失"));
+            assertTrue(text(shell.lookup("#history-sources")).contains("来源锚点无有效内容"));
+            assertFalse(button("history-source-0").isDisabled());
+        });
+    }
+
+    @Test void historyClickRechecksDeletedDocumentAndMissingStatusDoesNotInvalidateDetail() throws Exception {
+        var sample = navigationBank(false);
+        var archived = archiveSourceHistory(sample);
+        fx(() -> {
+            openSourceHistory(sample, archived);
+            Node detail = shell.lookup("#practice-history-detail");
+            Button stale = button("history-source-0");
+            var before = practiceRows();
+            Files.delete(fixture.alphaRoot.resolve(sample.documentPath()));
+            assertDoesNotThrow(stale::fire);
+            assertSame(detail, shell.lookup("#practice-history-detail"));
+            assertTrue(text(shell.lookup(".workspace-navigation-status")).contains("来源文档缺失"));
+            shell.filePane().refreshSourceStatus();
+            Label missing = (Label) shell.lookup("#history-source-0");
+            assertTrue(missing.isDisabled()); assertNull(missing.getOnMouseClicked());
+            assertTrue(text(shell.lookup("#history-sources")).contains("来源文档缺失"));
+            assertNotNull(shell.lookup("#history-attempt-position"));
+            assertEquals(before, practiceRows());
+        });
+    }
+
+    @Test void historyNavigationToEditingMarkdownKeepsUnsavedTextAndHistoryPosition() throws Exception {
+        var sample = navigationBank(false);
+        var archived = archiveSourceHistory(sample);
+        fx(() -> {
+            var target = shell.tabs().openPinned(fixture.alpha.id(), sample.documentPath());
+            button("file-mode-toggle").fire();
+            TextArea editor = (TextArea) shell.lookup("#markdown-source-text");
+            editor.appendText("\nUnsaved changes.\n");
+            String edited = editor.getText();
+            openSourceHistory(sample, archived);
+            var history = shell.tabs().active();
+            button("history-question-number-2").fire(); button("history-previous-attempt").fire();
+            String attempt = ((Label) shell.lookup("#history-attempt-position")).getText();
+            var before = practiceRows();
+            button("history-source-0").fire();
+            assertSame(target, shell.tabs().active());
+            assertSame(editor, shell.lookup("#markdown-source-text"));
+            assertEquals(edited, editor.getText());
+            assertEquals(FileMode.EDIT, target.pane().mode());
+            assertTrue(text(shell.lookup(".workspace-navigation-status")).contains("正在编辑"));
+            shell.tabs().activate(history);
+            assertTrue(text(shell.lookup("#history-question-position")).contains("第 2 / 2 题"));
+            assertEquals(attempt, ((Label) shell.lookup("#history-attempt-position")).getText());
+            assertEquals(before, practiceRows());
+        });
+    }
+
+    @Test void historySourcesUseArchivedSnapshotEvenAfterQuestionDeletedFromCurrentQBank() throws Exception {
+        var sample = navigationBank(false);
+        var archived = archiveSourceHistory(sample);
+        var original = sample.bank().questions().getFirst();
+        var replacement = new QuestionBankFile.Entry("q_replacement", original.type(), "New question", "New analysis",
+                List.of(QuestionBankFile.SourceRef.anchor(original.sourceRefs().getFirst().documentAssetId(),
+                        original.sourceRefs().getFirst().documentContentId(), "Different current source", 1,
+                        "Current document", "Current source")), original.data());
+        fixture.write(sample.bankPath(), new QuestionBankV1Codec().write(new QuestionBankFile(sample.bank().format(),
+                sample.bank().schemaVersion(), sample.bank().id(), sample.bank().title(), sample.bank().sourceDocuments(), List.of(replacement))));
+        fx(() -> {
+            openSourceHistory(sample, archived);
+            assertTrue(text(shell.lookup("#history-detail-question")).contains("Test question"));
+            assertFalse(text(shell.lookup("#history-detail-question")).contains("New question"));
+            assertEquals("SourceNav · 定义", button("history-source-0").getText());
+            assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
+                    button("history-source-0").getProperties().get("quizforge.sourceStatus"));
+            button("history-source-0").fire();
+            assertEquals(sample.documentPath(), shell.tabs().active().path());
+        });
+    }
+
+    @Test void historyAnchorDeletionRefreshDisablesOnlyTheMissingOccurrenceAndRestorationWorks() throws Exception {
+        var sample = navigationBank(true);
+        var archived = archiveSourceHistory(sample);
+        fx(() -> {
+            openSourceHistory(sample, archived);
+            fixture.write(sample.documentPath(), sample.markdown().replace(
+                    "<!-- qf:anchor=定义 -->\nSecond definition.", "Second definition."));
+            shell.filePane().refreshSourceStatus();
+            assertFalse(button("history-source-0").isDisabled());
+            assertInstanceOf(Label.class, shell.lookup("#history-source-1"));
+            assertEquals(QuestionBankReferenceResolver.Status.MISSING_ANCHOR,
+                    shell.lookup("#history-source-1").getProperties().get("quizforge.sourceStatus"));
+            fixture.write(sample.documentPath(), sample.markdown());
+            shell.filePane().refreshSourceStatus();
+            assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
+                    button("history-source-1").getProperties().get("quizforge.sourceStatus"));
+        });
+    }
+
+    @Test void archivedLegacySourceStillShowsItsStatusWithoutInventingAnAnchorButton() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            var archived = practiceDbSession().id();
+            new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                    .archive(archived, java.time.Instant.now());
+            button("qbank-history-entry").fire(); shell.applyCss(); shell.layout();
+            click(shell.lookup("#history-card-" + archived), 1); shell.applyCss(); shell.layout();
+            Label source = (Label) shell.lookup("#history-source-0");
+            assertEquals("Java集合 · ArrayList", source.getText());
+            assertTrue(source.isDisabled()); assertNull(source.getOnMouseClicked());
+            assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
+                    source.getProperties().get("quizforge.sourceStatus"));
+            assertTrue(text(shell.lookup("#history-sources")).contains("旧版节点引用"));
+        });
+    }
+
+    private String archiveSourceHistory(NavigationBank sample) throws Exception {
+        var first = sample.bank().questions().getFirst();
+        var second = new QuestionBankFile.Entry("q_history_second", first.type(), "Archived second question",
+                first.analysis(), first.sourceRefs(), new QuestionBankFile.Data(List.of(
+                        new QuestionBankFile.Option("opt_second_a", "Correct"),
+                        new QuestionBankFile.Option("opt_second_b", "Incorrect")), List.of("opt_second_a")));
+        var bank = new QuestionBankFile(sample.bank().format(), sample.bank().schemaVersion(), sample.bank().id(),
+                sample.bank().title(), sample.bank().sourceDocuments(), List.of(first, second));
+        fixture.write(sample.bankPath(), new QuestionBankV1Codec().write(bank));
+        var runtime = fixture.context.getBean(io.quizforge.core.port.PracticeRuntimeProvider.class).open(fixture.alpha.id(), bank);
+        for (int i = 0; i < 2; i++) {
+            String prefix = i == 0 ? "opt_nav_" : "opt_second_";
+            runtime.select(prefix + "b"); runtime.submit(); runtime.retry();
+            runtime.select(prefix + "a"); runtime.submit();
+            if (i == 0) runtime.next();
+        }
+        String id = runtime.sessionId();
+        new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb()).archive(id, java.time.Instant.now());
+        return id;
+    }
+
+    private void openSourceHistory(NavigationBank sample, String archived) {
+        shell.tabs().openPinned(fixture.alpha.id(), sample.bankPath());
+        button("qbank-history-entry").fire(); shell.applyCss(); shell.layout();
+        click(shell.lookup("#history-card-" + archived), 1); shell.applyCss(); shell.layout();
+        assertNotNull(shell.lookup("#practice-history-detail"));
+    }
+
+    private List<String> practiceRows() throws Exception {
+        List<String> rows = new ArrayList<>();
+        try (var connection = practiceDb().openConnection(); var statement = connection.createStatement()) {
+            for (String table : List.of("practice_session", "practice_session_question", "question_attempt")) {
+                try (var result = statement.executeQuery("SELECT * FROM " + table + " ORDER BY id")) {
+                    int columns = result.getMetaData().getColumnCount();
+                    while (result.next()) {
+                        StringBuilder row = new StringBuilder(table);
+                        for (int i = 1; i <= columns; i++) row.append('|').append(result.getString(i));
+                        rows.add(row.toString());
+                    }
+                }
+            }
+        }
+        return rows;
+    }
+
+    private void forbidPracticeWrites() throws Exception {
+        try (var connection = practiceDb().openConnection(); var statement = connection.createStatement()) {
+            for (String table : List.of("practice_session", "practice_session_question", "question_attempt"))
+                for (String operation : List.of("INSERT", "UPDATE", "DELETE")) statement.execute(
+                        "CREATE TRIGGER no_" + table + "_" + operation + " BEFORE " + operation + " ON " + table
+                                + " BEGIN SELECT RAISE(ABORT, 'History navigation must be read-only'); END");
+        }
+    }
+
     private io.quizforge.infrastructure.persistence.SqliteDatabase practiceDb() {
         return new io.quizforge.infrastructure.persistence.SqliteDatabase(fixture.alphaRoot.resolve(".quizforge/quizforge.db"));
     }

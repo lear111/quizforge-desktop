@@ -52,6 +52,7 @@ final class FilePane extends BorderPane {
     private enum Page { BROWSE, HISTORY_LIST, HISTORY_DETAIL }
     private Page page = Page.BROWSE;
     private PracticeHistoryView historyList;
+    private PracticeHistoryDetailView historyDetail;
     private FileHeader header;
     private Node browseContent;
     private QuestionBankEditorView bankEditor;
@@ -354,6 +355,7 @@ final class FilePane extends BorderPane {
         mode = FileMode.BROWSE;
         page = Page.BROWSE;
         historyList = null;
+        historyDetail = null;
         setTop(null);
         setCenter(router.welcome());
     }
@@ -377,7 +379,9 @@ final class FilePane extends BorderPane {
         if (page != Page.HISTORY_LIST || historyList == null) return;
         try {
             var detail = practice.history(workspace).loadArchivedSessionDetail(current.file().entry().assetId(), sessionId);
-            setCenter(new PracticeHistoryDetailView(detail, this::returnToHistoryList));
+            historyDetail = new PracticeHistoryDetailView(detail, this::returnToHistoryList, workspace,
+                    new HistorySourceNavigationAdapter(sourceNavigation));
+            setCenter(historyDetail);
             page = Page.HISTORY_DETAIL;
         } catch (RuntimeException failure) {
             historyList.showLoadError(failure);
@@ -404,7 +408,9 @@ final class FilePane extends BorderPane {
         } catch (RuntimeException error) { open(workspace, path); }
     }
     void refreshSourceStatus() {
-        if (mode == FileMode.EDIT && bankEditor != null) bankEditor.refreshSources();
+        if (page == Page.HISTORY_DETAIL && historyDetail != null) historyDetail.refreshSources();
+        else if (page == Page.HISTORY_LIST) return;
+        else if (mode == FileMode.EDIT && bankEditor != null) bankEditor.refreshSources();
         else if (browseContent != null
                 && browseContent.lookup("#question-practice") instanceof QuestionBankPracticeView practice)
             practice.refreshSources();

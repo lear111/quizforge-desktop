@@ -4,6 +4,7 @@ import io.quizforge.core.practice.PracticeHistoryDetail;
 import io.quizforge.core.practice.PracticePayload;
 import io.quizforge.core.practice.PracticeSessionQuestion;
 import io.quizforge.core.practice.QuestionAttempt;
+import io.quizforge.core.workspace.WorkspaceId;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -26,11 +27,17 @@ final class PracticeHistoryDetailView extends BorderPane {
     private final HistoryQuestionOutlineView outline;
     private final VBox question = new VBox(18);
     private final ScrollPane scroll;
+    private final WorkspaceId workspace;
+    private final HistorySourceNavigationAdapter sources;
+    private HistorySourceListView sourceList;
     private int questionIndex;
     private int attemptIndex;
 
-    PracticeHistoryDetailView(PracticeHistoryDetail detail, Runnable back) {
+    PracticeHistoryDetailView(PracticeHistoryDetail detail, Runnable back, WorkspaceId workspace,
+            HistorySourceNavigationAdapter sources) {
         this.detail = detail;
+        this.workspace = workspace;
+        this.sources = sources;
         setId("practice-history-detail");
         getStyleClass().add("history-detail");
         Label title = UiTheme.label(detail.bankTitle() + " · "
@@ -132,6 +139,8 @@ final class PracticeHistoryDetailView extends BorderPane {
         question.getChildren().add(UiTheme.label("正确答案：" + labels(row, Set.copyOf(row.correctOptionIds())),
                 "history-answer"));
         if (!row.analysis().isBlank()) question.getChildren().add(UiTheme.label(row.analysis(), "preview-paragraph"));
+        sourceList = new HistorySourceListView(workspace, row.sourceRefs(), sources);
+        question.getChildren().add(sourceList);
 
         Button previous = UiTheme.button("上一题", "arrow-left", "", () -> showQuestion(questionIndex - 1));
         previous.setId("history-previous-question");
@@ -145,6 +154,8 @@ final class PracticeHistoryDetailView extends BorderPane {
         question.getChildren().add(navigation);
         scroll.setVvalue(0);
     }
+
+    void refreshSources() { if (sourceList != null) sourceList.refresh(); }
 
     private static Set<String> optionIds(PracticePayload payload) {
         if (!(payload.value() instanceof List<?> values)) throw new IllegalStateException("Invalid history choice answer");

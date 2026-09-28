@@ -397,3 +397,11 @@
 .history-draft { -fx-text-fill: #756e65; -fx-padding: 10 12; -fx-background-color: #eeece7; }
 .history-answer { -fx-text-fill: #51485a; }
 .history-attempt-navigation { -fx-alignment: center-left; }
+.history-source-section { -fx-spacing: 8; }
+.history-source-item { -fx-spacing: 3; }
+.history-source-link { -fx-background-color: transparent; -fx-padding: 3 0; -fx-text-fill: #705d89;
+    -fx-alignment: center-left; -fx-cursor: hand; }
+.history-source-link:hover { -fx-underline: true; }
+.history-source-disabled { -fx-text-fill: #8b8173; -fx-opacity: 0.8; -fx-cursor: default; }
+.history-source-warning { -fx-text-fill: #9a7540; -fx-font-size: 12px; }
+.history-source-status { -fx-text-fill: #8b8173; -fx-font-size: 12px; }
