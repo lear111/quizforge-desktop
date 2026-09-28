@@ -9,8 +9,10 @@ import javafx.scene.layout.Priority;
 
 final class FileHeader extends HBox {
     private final Button mode;
+    private Button historyButton;
 
-    FileHeader(FilePresentation file, Runnable toggle, java.util.function.Consumer<Button> details, Runnable ai) {
+    FileHeader(FilePresentation file, Runnable toggle, java.util.function.Consumer<Button> details, Runnable ai,
+            Runnable history) {
         setId("file-header");
         getStyleClass().add("file-header");
         setAlignment(Pos.CENTER_LEFT);
@@ -21,6 +23,11 @@ final class FileHeader extends HBox {
         name.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(name, Priority.ALWAYS);
         getChildren().add(name);
+        if (file.kind() == io.quizforge.core.workspace.WorkspaceFileKind.QUESTION_BANK) {
+            historyButton = UiTheme.button("历史记录", "clock", "", history);
+            historyButton.setId("qbank-history-entry");
+            getChildren().add(historyButton);
+        }
         mode = UiTheme.iconButton("book", "切换到编辑模式", toggle);
         mode.setId("file-mode-toggle");
         if (file.supportsMode()) getChildren().add(mode);
@@ -39,9 +46,16 @@ final class FileHeader extends HBox {
     }
 
     void updateMode(FileMode current) {
+        showHistory(current == FileMode.BROWSE);
         mode.setGraphic(UiTheme.icon(current == FileMode.BROWSE ? "book" : "book-pen"));
         String action = current == FileMode.BROWSE ? "切换到编辑模式" : "切换到浏览模式";
         mode.setTooltip(new Tooltip(action));
         mode.setAccessibleText(action);
+    }
+
+    void showHistory(boolean show) {
+        if (historyButton == null) return;
+        historyButton.setVisible(show);
+        historyButton.setManaged(show);
     }
 }

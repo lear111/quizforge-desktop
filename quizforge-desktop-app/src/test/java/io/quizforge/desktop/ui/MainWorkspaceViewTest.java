@@ -1864,6 +1864,102 @@ class MainWorkspaceViewTest {
         });
     }
 
+    @Test void qbankHistoryEntryKeepsTabShowsEmptyStateAndReturnsToPractice() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            var tab = shell.tabs().active();
+            assertNotNull(button("qbank-history-entry"));
+            button("qbank-history-entry").fire();
+            shell.applyCss(); shell.layout();
+            assertSame(tab, shell.tabs().active());
+            assertNotNull(shell.lookup("#practice-history"));
+            assertNotNull(shell.lookup("#history-empty"));
+            assertNull(shell.lookup("#question-practice"));
+            button("history-back").fire();
+            assertSame(tab, shell.tabs().active());
+            assertNotNull(shell.lookup("#question-practice"));
+            assertEquals(io.quizforge.core.practice.PracticeSession.Status.ACTIVE, practiceDbSession().status());
+        });
+    }
+
+    @Test void qbankHistoryCardsExcludeActiveAndDeleteOnlyAfterConfirmation() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            String archived = practiceDbSession().id();
+            new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                    .archive(archived, java.time.Instant.parse("2026-09-28T05:00:00Z"));
+            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            shell.applyCss(); shell.layout();
+            String active = practiceDbSession().id();
+            button("qbank-history-entry").fire();
+            shell.applyCss(); shell.layout();
+            var card = (javafx.scene.layout.VBox) shell.lookup("#history-card-" + archived);
+            assertNotNull(card);
+            assertTrue(text(card).contains("正确率 0%"));
+            assertTrue(text(card).contains("2 道题"));
+            assertEquals(1, ((javafx.scene.layout.TilePane) shell.lookup("#history-grid")).getChildren().size());
+            assertNull(shell.lookup("#history-card-" + active));
+            assertNotNull(card.getOnContextMenuRequested());
+            var menu = (ContextMenu) card.getProperties().get("history.contextMenu");
+            assertEquals("删除历史记录", menu.getItems().getFirst().getText());
+            ((PracticeHistoryView) shell.lookup("#practice-history")).setDeleteConfirmation(entry -> false);
+            menu.getItems().getFirst().fire();
+            assertNotNull(shell.lookup("#history-card-" + archived));
+            ((PracticeHistoryView) shell.lookup("#practice-history")).setDeleteConfirmation(entry -> true);
+            menu.getItems().getFirst().fire();
+            assertNull(shell.lookup("#history-card-" + archived));
+            assertNotNull(shell.lookup("#history-empty"));
+            assertTrue(new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                    .findById(archived).isEmpty());
+            assertEquals(active, practiceDbSession().id());
+        });
+    }
+
+    @Test void qbankHistoryDeleteFailureKeepsCardAndShowsError() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            String archived = practiceDbSession().id();
+            new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                    .archive(archived, java.time.Instant.parse("2026-09-28T05:00:00Z"));
+            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            button("qbank-history-entry").fire();
+            shell.applyCss(); shell.layout();
+            var card = (javafx.scene.layout.VBox) shell.lookup("#history-card-" + archived);
+            var menu = (ContextMenu) card.getProperties().get("history.contextMenu");
+            ((PracticeHistoryView) shell.lookup("#practice-history")).setDeleteConfirmation(entry -> true);
+            try (var connection = practiceDb().openConnection(); var statement = connection.createStatement()) {
+                statement.execute("CREATE TRIGGER fail_history_delete BEFORE DELETE ON practice_session BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
+            }
+            menu.getItems().getFirst().fire();
+            assertNotNull(shell.lookup("#history-card-" + archived));
+            assertTrue(shell.lookup("#history-error").isVisible());
+            try (var connection = practiceDb().openConnection(); var statement = connection.createStatement()) {
+                statement.execute("DROP TRIGGER fail_history_delete");
+            }
+        });
+    }
+
+    @Test void qbankHistoryCardsShowNewestArchiveFirstAndExcludeCurrentRound() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            var sessions = new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb());
+            String first = practiceDbSession().id();
+            sessions.archive(first, java.time.Instant.parse("2026-09-28T05:00:00Z"));
+            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            String second = practiceDbSession().id();
+            sessions.archive(second, java.time.Instant.parse("2026-09-28T05:01:00Z"));
+            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            String active = practiceDbSession().id();
+            button("qbank-history-entry").fire(); shell.applyCss(); shell.layout();
+            var cards = ((javafx.scene.layout.TilePane) shell.lookup("#history-grid")).getChildren();
+            assertEquals(2, cards.size());
+            assertEquals("history-card-" + second, cards.get(0).getId());
+            assertEquals("history-card-" + first, cards.get(1).getId());
+            assertNull(shell.lookup("#history-card-" + active));
+        });
+    }
+
     private io.quizforge.infrastructure.persistence.SqliteDatabase practiceDb() {
         return new io.quizforge.infrastructure.persistence.SqliteDatabase(fixture.alphaRoot.resolve(".quizforge/quizforge.db"));
     }

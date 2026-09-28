@@ -41,6 +41,7 @@ final class FilePane extends BorderPane {
     private final QuestionSourceLinkService sourceLinks;
     private final QuestionSourceNavigationAdapter sourceNavigation;
     private final FileViewerRouter router;
+    private final io.quizforge.core.port.PracticeRuntimeProvider practice;
     private final QuizForgeReferenceCodec referencesCodec = new QuizForgeReferenceCodec();
     private final QuizForgeNavigationLinkCodec navigationCodec = new QuizForgeNavigationLinkCodec();
     private final MarkdownNavigationLinkCodec markdownLinks = new MarkdownNavigationLinkCodec();
@@ -48,6 +49,8 @@ final class FilePane extends BorderPane {
     private WorkspaceId workspace;
     private FilePresentation current;
     private FileMode mode = FileMode.BROWSE;
+    private enum Page { BROWSE, HISTORY_LIST }
+    private Page page = Page.BROWSE;
     private FileHeader header;
     private Node browseContent;
     private QuestionBankEditorView bankEditor;
@@ -70,6 +73,7 @@ final class FilePane extends BorderPane {
         this.clipboard = clipboard;
         this.sourceLinks = sourceLinks;
         this.sourceNavigation = sourceNavigation;
+        this.practice = practice;
         this.router = new FileViewerRouter(new SafeMarkdownPreview.SourceActions() {
             @Override public void create(MarkdownSourceRange block) { createSourceReference(block); }
             @Override public void copy(List<NamedMarkdownAnchor> anchors) { copySourceReference(anchors); }
@@ -92,7 +96,7 @@ final class FilePane extends BorderPane {
                     if (!fresh.asset()) { details.showFailure(anchor); return; }
                     details.show(anchor, fresh, this.workspace, references);
                 } catch (RuntimeException error) { details.showFailure(anchor); }
-            }, this::invokeAi);
+            }, this::invokeAi, this::openHistory);
             setTop(header);
             browseContent = router.view(current, FileMode.BROWSE);
             setCenter(browseContent);
@@ -104,6 +108,7 @@ final class FilePane extends BorderPane {
     }
 
     private void toggleMode() {
+        if (page == Page.HISTORY_LIST) return;
         details.hide();
         if (mode == FileMode.EDIT && (bankEditor != null && bankEditor.dirty()
                 || markdownEditor != null && markdownEditor.dirty())) {
@@ -346,11 +351,31 @@ final class FilePane extends BorderPane {
         bankEditor = null;
         markdownEditor = null;
         mode = FileMode.BROWSE;
+        page = Page.BROWSE;
         setTop(null);
         setCenter(router.welcome());
     }
 
     FilePresentation currentFile() { return current; }
+    private void openHistory() {
+        if (current == null || workspace == null || mode != FileMode.BROWSE
+                || current.kind() != WorkspaceFileKind.QUESTION_BANK || current.file().entry().assetId() == null) return;
+        try {
+            var view = new PracticeHistoryView(practice.history(workspace), current.file().entry().assetId(),
+                    current.file().entry().name(), this::returnToBank);
+            page = Page.HISTORY_LIST;
+            header.showHistory(false);
+            setCenter(view);
+        } catch (RuntimeException error) {
+            setCenter(UiTheme.quietState("无法读取练习历史", error.getMessage()));
+        }
+    }
+
+    private void returnToBank() {
+        page = Page.BROWSE;
+        header.showHistory(true);
+        setCenter(browseContent);
+    }
     void refreshBrowseFromDisk() {
         if (mode != FileMode.BROWSE || current == null || !markdownSource()) return;
         String path = current.file().entry().relativePath();

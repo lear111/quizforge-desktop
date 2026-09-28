@@ -6,9 +6,13 @@ import java.util.OptionalInt;
 public record PracticeSummary(int totalCount, int submittedCount, int correctCount,
         int incorrectCount, int unfinishedCount, OptionalInt accuracyPercent) {
     public static PracticeSummary from(ActivePracticeSnapshot snapshot) {
+        return fromQuestions(snapshot.questions());
+    }
+
+    public static PracticeSummary fromQuestions(java.util.List<ActivePracticeSnapshot.Question> questions) {
         int correct = 0;
         int incorrect = 0;
-        for (var row : snapshot.questions()) {
+        for (var row : questions) {
             if (row.sessionQuestion().practiceState() != PracticeSessionQuestion.State.SUBMITTED) continue;
             if (row.attempts().isEmpty()) throw new IllegalStateException("Submitted attempt is missing");
             switch (row.attempts().getLast().result()) {
@@ -18,8 +22,8 @@ public record PracticeSummary(int totalCount, int submittedCount, int correctCou
             }
         }
         int submitted = correct + incorrect;
-        return new PracticeSummary(snapshot.questions().size(), submitted, correct, incorrect,
-                snapshot.questions().size() - submitted, submitted == 0 ? OptionalInt.empty()
+        return new PracticeSummary(questions.size(), submitted, correct, incorrect,
+                questions.size() - submitted, submitted == 0 ? OptionalInt.empty()
                         : OptionalInt.of((int) Math.round(100.0 * correct / submitted)));
     }
 }

@@ -374,3 +374,13 @@
 .question-number-cell.current { -fx-border-color: #7394b6; }
 .question-number-cell:hover { -fx-opacity: 0.82; }
 .qbank-editor .editor-document-title { -fx-font-size: 28px; -fx-font-weight: bold; -fx-border-width: 0; -fx-padding: 4 0 18 0; }
+.history-view { -fx-background-color: #faf9f6; -fx-spacing: 10; }
+.history-heading { -fx-padding: 18 26 10 26; -fx-alignment: center-left; }
+.history-grid { -fx-padding: 12 26 32 26; -fx-hgap: 14; -fx-vgap: 14; }
+.history-card { -fx-background-color: #f5f3ef; -fx-background-radius: 7; -fx-border-color: #e6e1d9;
+    -fx-border-radius: 7; -fx-padding: 18; -fx-min-height: 172; -fx-pref-width: 228; }
+.history-card:hover { -fx-background-color: #efede7; -fx-border-color: #d9d2c8; }
+.history-card-date, .history-card-meta { -fx-text-fill: #81796f; -fx-font-size: 12px; }
+.history-card-accuracy { -fx-text-fill: #51485a; -fx-font-size: 19px; -fx-font-weight: bold; }
+.history-empty-state { -fx-padding: 26 4; }
+.history-view .warning { -fx-padding: 4 26; }

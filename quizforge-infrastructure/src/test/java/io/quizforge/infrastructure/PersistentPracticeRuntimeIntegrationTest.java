@@ -364,6 +364,86 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertTrue(attempts("q_one").isEmpty());
     }
 
+    @Test void historyQueryExcludesActiveAndUsesArchivedSnapshotsAndLatestAttempts() {
+        var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
+        assertTrue(history.listArchived(bank.id()).isEmpty());
+        runtime.select("opt_b"); runtime.submit(); runtime.retry(); runtime.select("opt_a"); runtime.submit();
+        runtime.goTo(1); runtime.select("opt_d");
+        String archivedId = runtime.sessionId();
+        runtime.restart();
+        var entries = history.listArchived(bank.id());
+        assertEquals(1, entries.size());
+        assertEquals(archivedId, entries.getFirst().sessionId());
+        assertEquals(new PracticeSummary(2, 1, 1, 0, 1, java.util.OptionalInt.of(100)), entries.getFirst().summary());
+        assertEquals(PracticeSession.Status.ACTIVE, session().status());
+        runtime.select("opt_b"); runtime.submit(); // An ACTIVE round is never History.
+        assertEquals(entries, history.listArchived(bank.id()));
+        var original = bank.questions().getFirst();
+        var changed = new QuestionBankFile.Entry(original.id(), original.type(), "changed", original.analysis(),
+                original.sourceRefs(), original.data());
+        var newer = new QuestionBankFile(bank.format(), bank.schemaVersion(), bank.id(), bank.title(),
+                bank.sourceDocuments(), List.of(changed));
+        service.openOrCreateActiveSession(newer, codec.contentId(newer));
+        assertEquals(entries, history.listArchived(bank.id()));
+    }
+
+    @Test void historyOrderingAndRetryingUnfinishedWithZeroAccuracy() {
+        var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
+        runtime.select("opt_b"); runtime.submit(); runtime.retry();
+        String first = runtime.sessionId(); runtime.restart();
+        assertEquals(new PracticeSummary(2, 0, 0, 0, 2, java.util.OptionalInt.empty()),
+                history.listArchived(bank.id()).getFirst().summary());
+        var laterService = new PracticeSessionService(new SqlitePracticeTransaction(database),
+                Clock.fixed(NOW.plusSeconds(60), ZoneOffset.UTC));
+        var later = new PersistentPracticeRuntime(laterService, bank, codec.contentId(bank));
+        later.select("opt_b"); later.submit();
+        String second = later.sessionId(); later.restart();
+        assertEquals(List.of(second, first), history.listArchived(bank.id()).stream()
+                .map(PracticeHistoryEntry::sessionId).toList());
+        assertEquals(new PracticeSummary(2, 1, 0, 1, 1, java.util.OptionalInt.of(0)),
+                history.listArchived(bank.id()).getFirst().summary());
+    }
+
+    @Test void deletingArchivedCascadesOnlyThatRoundAndRejectsActiveOrOtherBank() {
+        var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
+        runtime.select("opt_b"); runtime.submit();
+        String oldId = runtime.sessionId();
+        String oldQuestionId = question("q_one").id();
+        runtime.restart();
+        String activeId = runtime.sessionId();
+        assertThrows(IllegalStateException.class, () -> history.deleteArchivedSession(bank.id(), activeId));
+        assertThrows(IllegalStateException.class, () -> history.deleteArchivedSession("qb_other", oldId));
+        assertThrows(IllegalArgumentException.class, () -> history.deleteArchivedSession(bank.id(), "missing"));
+        history.deleteArchivedSession(bank.id(), oldId);
+        assertTrue(new SqlitePracticeSessionRepository(database).findById(oldId).isEmpty());
+        assertTrue(new SqlitePracticeSessionQuestionRepository(database).findBySessionId(oldId).isEmpty());
+        assertTrue(new SqliteQuestionAttemptRepository(database).listBySessionQuestion(oldQuestionId).isEmpty());
+        assertEquals(activeId, session().id());
+        assertTrue(history.listArchived(bank.id()).isEmpty());
+    }
+
+    @Test void failedHistoryDeleteRollsBackAndLeavesCardSourceRows() throws Exception {
+        var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
+        runtime.select("opt_b"); runtime.submit(); String archivedId = runtime.sessionId(); runtime.restart();
+        var before = history.listArchived(bank.id());
+        sql("CREATE TRIGGER fail_history_delete BEFORE DELETE ON practice_session BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
+        assertThrows(RuntimeException.class, () -> history.deleteArchivedSession(bank.id(), archivedId));
+        assertEquals(before, history.listArchived(bank.id()));
+        sql("DROP TRIGGER fail_history_delete");
+    }
+
+    @Test void deletingOneArchivedRoundPreservesOtherArchivedRound() {
+        var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
+        String first = runtime.sessionId(); runtime.restart();
+        String second = runtime.sessionId(); runtime.restart();
+        String active = runtime.sessionId();
+        history.deleteArchivedSession(bank.id(), first);
+        assertEquals(List.of(second), history.listArchived(bank.id()).stream()
+                .map(PracticeHistoryEntry::sessionId).toList());
+        assertEquals(PracticeSession.Status.ACTIVE,
+                new SqlitePracticeSessionRepository(database).findById(active).orElseThrow().status());
+    }
+
     @Test void editSaveReopenSynchronizesNonSemanticThenSemanticRevisionAndRejectsStaleRuntime() throws Exception {
         Path file = temp.resolve("bank.qbank"); Files.writeString(file, codec.write(bank));
         runtime.select("opt_a"); runtime.submit();

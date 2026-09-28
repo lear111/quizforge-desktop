@@ -4,6 +4,7 @@ import io.quizforge.core.port.PracticeRuntimeProvider;
 import io.quizforge.core.port.QuestionBankFileCodec;
 import io.quizforge.core.practice.PersistentPracticeRuntime;
 import io.quizforge.core.practice.PracticeSessionService;
+import io.quizforge.core.practice.PracticeHistoryService;
 import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
@@ -28,12 +29,19 @@ public final class SqliteWorkspacePracticeRuntimeProvider implements PracticeRun
     }
 
     @Override public PersistentPracticeRuntime open(WorkspaceId workspace, QuestionBankFile bank) {
+        var service = new PracticeSessionService(new SqlitePracticeTransaction(database(workspace)), clock);
+        return new PersistentPracticeRuntime(service, bank, codec.contentId(bank));
+    }
+
+    @Override public PracticeHistoryService history(WorkspaceId workspace) {
+        return new PracticeHistoryService(new SqlitePracticeTransaction(database(workspace)));
+    }
+
+    private SqliteDatabase database(WorkspaceId workspace) {
         Path internal = paths.workspaceRoot(workspace).resolve(".quizforge");
         Path file = internal.resolve("quizforge.db");
         if (Files.isSymbolicLink(internal) || Files.isSymbolicLink(file) || !Files.isDirectory(internal))
             throw new IllegalStateException("Workspace practice database location is unavailable");
-        var database = databases.computeIfAbsent(file, SqliteDatabase::new);
-        var service = new PracticeSessionService(new SqlitePracticeTransaction(database), clock);
-        return new PersistentPracticeRuntime(service, bank, codec.contentId(bank));
+        return databases.computeIfAbsent(file, SqliteDatabase::new);
     }
 }
