@@ -10,6 +10,7 @@ import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.infrastructure.filesystem.*;
 import io.quizforge.infrastructure.persistence.*;
 import java.nio.file.Files;
+import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
@@ -524,22 +525,22 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void editSaveReopenSynchronizesNonSemanticThenSemanticRevisionAndRejectsStaleRuntime() throws Exception {
-        Path file = temp.resolve("bank.qbank"); Files.writeString(file, codec.write(bank));
+        Path file = temp.resolve("bank.qbank"); QBankTestPackageBuilder.write(file, codec.write(bank));
         runtime.select("opt_a"); runtime.submit();
         String id = runtime.sessionId();
         var old = bank.questions().getFirst();
         var changed = Question.choice(old.id(), old.type(), old.prompt(), new TextContent("new analysis"), old.sourceRefs(), old.choicePayload(), old.choiceAnswerSpec());
         var edited = new QuestionBank(bank.assetId(), bank.title(), "2.0", List.of(), List.of(changed, bank.questions().get(1)), List.of());
-        Files.writeString(file, codec.write(edited));
-        var reread = codec.parse(Files.readString(file));
+        QBankTestPackageBuilder.write(file, codec.write(edited));
+        var reread = codec.parse(QBankTestPackageBuilder.read(file));
         var reopened = new PersistentPracticeRuntime(service(database), reread, codec.contentId(reread));
         assertEquals(id, reopened.sessionId()); assertTrue(reopened.session().correct());
         assertEquals("new analysis", QuestionText.analysis(reopened.session().current()));
         assertThrows(IllegalStateException.class, runtime::next);
         changed = Question.choice(old.id(), old.type(), new TextContent("new stem"), changed.analysis(), old.sourceRefs(), old.choicePayload(), old.choiceAnswerSpec());
         edited = new QuestionBank(bank.assetId(), bank.title(), "2.0", List.of(), List.of(changed, bank.questions().get(1)), List.of());
-        Files.writeString(file, codec.write(edited));
-        reread = codec.parse(Files.readString(file));
+        QBankTestPackageBuilder.write(file, codec.write(edited));
+        reread = codec.parse(QBankTestPackageBuilder.read(file));
         reopened = new PersistentPracticeRuntime(service(database), reread, codec.contentId(reread));
         assertEquals(QuestionBankPracticeSession.State.UNANSWERED, reopened.session().state());
         assertTrue(attempts("q_one").isEmpty());

@@ -2,6 +2,7 @@ package io.quizforge.core.port;
 
 import io.quizforge.core.question.*;
 
+/** Internal logical JSON codec and revision hashing; never reads a physical .qbank file. */
 public interface QuestionBankFileCodec {
     String write(QuestionBank bank);
     QuestionBank parse(String json);

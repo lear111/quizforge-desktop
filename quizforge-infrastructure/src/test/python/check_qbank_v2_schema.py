@@ -2,6 +2,7 @@
 from copy import deepcopy
 from pathlib import Path
 import json
+from zipfile import ZipFile
 
 from jsonschema import Draft202012Validator
 
@@ -11,10 +12,19 @@ schema = json.loads((root / "quizforge-infrastructure/src/main/resources/schema/
 Draft202012Validator.check_schema(schema)
 validator = Draft202012Validator(schema)
 
-for relative in ("examples/step7-practice/Java集合练习.qbank", "examples/qbank-v2/rich-foundation.qbank"):
-    validator.validate(json.loads((root / relative).read_text(encoding="utf-8")))
+def logical_bank(relative):
+    with ZipFile(root / relative) as package:
+        manifest = json.loads(package.read("manifest.json"))
+        body = json.loads(package.read("bank.json"))
+    return {**{key: manifest[key] for key in ("assetId", "title", "schemaVersion")},
+            "resources": [{("locator" if key == "path" else key): value for key, value in resource.items()}
+                          for resource in manifest["resources"]], **body}
 
-fixture = json.loads((root / "examples/qbank-v2/rich-foundation.qbank").read_text(encoding="utf-8"))
+
+for relative in ("examples/step7-practice/Java集合练习.qbank", "examples/qbank-v2/rich-foundation.qbank"):
+    validator.validate(logical_bank(relative))
+
+fixture = logical_bank("examples/qbank-v2/rich-foundation.qbank")
 question = fixture["questions"][0]
 question["evaluationSpec"] = {"criteria": [], "evaluatorGuidance": "Guidance"}
 question["sourceRefs"] = [{

@@ -15,6 +15,7 @@ import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLinkCodec;
 import io.quizforge.core.port.WorkspaceAssetScanner;
 import java.nio.file.Files;
+import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -653,18 +654,18 @@ class MainWorkspaceViewTest {
 
     @Test void wrongAnswerDoesNotPassAndPracticeDoesNotChangeBankFile() throws Exception {
         fx(() -> {
-            String before = Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
+            byte[] before = Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
             open("题库/Java集合.qbank");
             ((RadioButton) shell.lookup("#option-1")).fire();
             button("submit-answer").fire();
             assertTrue(text(shell.lookup("#answer-feedback")).contains("回答错误"));
-            assertEquals(before, Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+            assertArrayEquals(before, Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
         });
     }
 
     @Test void practiceSummaryPersistsAndOutlineRemainsAvailable() throws Exception {
         fx(() -> {
-            String before = Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
+            byte[] before = Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
             open("题库/Java集合.qbank");
             ((RadioButton) shell.lookup("#option-1")).fire();
             button("submit-answer").fire();
@@ -686,7 +687,7 @@ class MainWorkspaceViewTest {
             assertEquals("50%", ((Label) shell.lookup("#summary-percentage")).getText());
             assertEquals("1", ((Label) shell.lookup("#summary-correct-count")).getText());
             assertTrue(shell.lookup("#question-outline").isVisible());
-            assertEquals(before, Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+            assertArrayEquals(before, Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
         });
     }
 
@@ -807,7 +808,7 @@ class MainWorkspaceViewTest {
             open("题库/Java集合.qbank");
             var codec = new QuestionBankV2Codec();
             var oldBank = codec.parse(
-                    Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+                    QBankTestPackageBuilder.read(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
             button("file-mode-toggle").fire();
             shell.applyCss(); shell.layout();
             assertNotNull(shell.lookup("#question-bank-editor"));
@@ -819,7 +820,7 @@ class MainWorkspaceViewTest {
             assertEquals(FileMode.BROWSE, shell.filePane().mode());
             assertTrue(text(shell.filePane()).contains("New question stem?"));
             var saved = codec.parse(
-                    Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+                    QBankTestPackageBuilder.read(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
             assertEquals(oldBank.assetId(), saved.assetId());
             assertEquals(3, saved.questions().size());
             assertNotEquals(saved.questions().get(0).id(), saved.questions().get(1).id());
@@ -1111,7 +1112,7 @@ class MainWorkspaceViewTest {
             assertNotNull(shell.lookup("#qbank-source-1"));
             assertEquals("Source · 定义", ((Button) shell.lookup("#qbank-source-1")).getText());
             button("qbank-save").fire();
-            var saved = new QuestionBankV2Codec().parse(Files.readString(
+            var saved = new QuestionBankV2Codec().parse(QBankTestPackageBuilder.read(
                     fixture.alphaRoot.resolve("题库/Java集合.qbank")));
             var question = saved.questions().getFirst();
             assertEquals(link, QuestionText.prompt(question));
@@ -1123,7 +1124,7 @@ class MainWorkspaceViewTest {
             assertEquals(prepared.document().contentId(), source.documentContentId());
             assertEquals("定义", source.anchorName());
             assertEquals(1, source.occurrence());
-            assertFalse(Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank"))
+            assertFalse(QBankTestPackageBuilder.read(fixture.alphaRoot.resolve("题库/Java集合.qbank"))
                     .contains("\"displayLabel\""));
         });
     }
@@ -1165,7 +1166,7 @@ class MainWorkspaceViewTest {
             shell.applyCss(); shell.layout();
             assertEquals("Named · 命名来源", ((Button) shell.lookup("#qbank-source-1")).getText());
             button("qbank-save").fire();
-            var saved = new QuestionBankV2Codec().parse(Files.readString(
+            var saved = new QuestionBankV2Codec().parse(QBankTestPackageBuilder.read(
                     fixture.alphaRoot.resolve("题库/Java集合.qbank")));
             var ref = saved.questions().getFirst().sourceRefs().get(1);
             assertEquals("命名来源", ref.anchorName());
@@ -1176,7 +1177,7 @@ class MainWorkspaceViewTest {
 
     @Test void ordinaryMarkdownFileTreeCopyLinkRegistersWithoutOpeningIt() throws Exception {
         String path = "我的笔记/学习计划.md";
-        String before = Files.readString(fixture.alphaRoot.resolve(path));
+        String before = QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path));
         fx(() -> {
             open("Java/Java集合.md");
             folderCell(path).getContextMenu().getItems().getFirst().fire();
@@ -1186,8 +1187,8 @@ class MainWorkspaceViewTest {
             assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, registered.kind());
             assertEquals(new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec().format(
                     path, QuizForgeNavigationLink.asset(registered.assetId())), fixture.copiedText.get());
-            assertTrue(Files.readString(fixture.alphaRoot.resolve(path)).endsWith(before));
-            assertFalse(Files.readString(fixture.alphaRoot.resolve(path)).contains("qf:anchor="));
+            assertTrue(QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path)).endsWith(before));
+            assertFalse(QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path)).contains("qf:anchor="));
         });
     }
 
@@ -1211,7 +1212,7 @@ class MainWorkspaceViewTest {
             assertEquals(path, registered.file().entry().relativePath());
             assertEquals(new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec().format(
                     path, QuizForgeNavigationLink.heading(assetId, "示例", 2)), fixture.copiedText.get());
-            String saved = Files.readString(fixture.alphaRoot.resolve(path));
+            String saved = QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path));
             assertTrue(saved.contains("title: User note"));
             assertTrue(saved.endsWith(source.substring(source.indexOf("# Java"))));
             assertFalse(saved.contains("qf:id="));
@@ -1225,7 +1226,7 @@ class MainWorkspaceViewTest {
             button("qf-nav-4").getContextMenu().getItems().getFirst().fire();
             assertEquals(new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec().format(
                     path, QuizForgeNavigationLink.anchor(assetId, "定义", 2)), fixture.copiedText.get());
-            assertEquals(saved, Files.readString(fixture.alphaRoot.resolve(path)));
+            assertEquals(saved, QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path)));
             assertEquals(assetId, shell.filePane().currentFile().file().entry().assetId());
         });
     }
@@ -1242,7 +1243,7 @@ class MainWorkspaceViewTest {
             assertEquals(new io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec().format(
                     path, QuizForgeNavigationLink.anchor(entry.assetId(), "手写来源", 1)),
                     fixture.copiedText.get());
-            String saved = Files.readString(fixture.alphaRoot.resolve(path));
+            String saved = QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path));
             assertTrue(saved.endsWith(source));
             assertEquals(1, saved.split("qf:anchor=手写来源", -1).length - 1);
         });
@@ -1266,7 +1267,7 @@ class MainWorkspaceViewTest {
 
     @Test void sourceReferenceCreationRegistersOnlyTheSelectedMarkdownBlock() throws Exception {
         String path = "我的笔记/学习计划.md";
-        String original = Files.readString(fixture.alphaRoot.resolve(path));
+        String original = QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path));
         fx(() -> {
             open(path);
             assertNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
@@ -1277,7 +1278,7 @@ class MainWorkspaceViewTest {
             assertEquals("create-source-reference", menu.getItems().getFirst().getId());
             Platform.runLater(() -> answerDialog(ButtonType.CANCEL.getText()));
             menu.getItems().getFirst().fire();
-            assertEquals(original, Files.readString(fixture.alphaRoot.resolve(path)));
+            assertEquals(original, QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path)));
             assertEquals(WorkspaceFileKind.MARKDOWN, shell.filePane().currentFile().kind());
 
             Platform.runLater(() -> {
@@ -1295,9 +1296,9 @@ class MainWorkspaceViewTest {
             assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, shell.filePane().currentFile().kind());
             assertNotNull(shell.filePane().currentFile().registeredMarkdown());
             assertNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
-            assertTrue(Files.readString(fixture.alphaRoot.resolve(path)).contains("quizforge:"));
-            assertTrue(Files.readString(fixture.alphaRoot.resolve(path)).contains("<!-- qf:anchor=学习计划来源 -->"));
-            assertFalse(Files.readString(fixture.alphaRoot.resolve(path)).contains("qf:id=node_"));
+            assertTrue(QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path)).contains("quizforge:"));
+            assertTrue(QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path)).contains("<!-- qf:anchor=学习计划来源 -->"));
+            assertFalse(QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path)).contains("qf:id=node_"));
             shell.refresh();
             open(path);
             assertNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
@@ -1354,7 +1355,7 @@ class MainWorkspaceViewTest {
             menu.getItems().get(1).fire();
             assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, shell.filePane().currentFile().kind());
             assertNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
-            String saved = Files.readString(fixture.alphaRoot.resolve(path));
+            String saved = QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path));
             assertEquals(1, saved.split("qf:anchor=手写来源", -1).length - 1);
             assertTrue(saved.contains("quizforge:"));
             var document = shell.filePane().currentFile().registeredMarkdown();
@@ -1667,7 +1668,7 @@ class MainWorkspaceViewTest {
 
     @Test void rootFilesKeepDedicatedIconsAndQuestionBankActivation() throws Exception {
         fixture.write("Root.md", "# Root Markdown");
-        fixture.write("Root.qbank", Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+        fixture.write("Root.qbank", QBankTestPackageBuilder.read(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
         fx(() -> {
             shell.refresh();
             TreeCell<?> markdown = folderCell("Root.md");
@@ -1983,7 +1984,7 @@ class MainWorkspaceViewTest {
             shell.applyCss(); shell.layout();
             var reader = (ScrollPane) shell.lookup("#markdown-preview-scroll");
             assertTrue(reader.getVvalue() > 0.5, "Second occurrence must scroll to its own body: " + reader.getVvalue());
-            assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
+            assertEquals(sample.json(), QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(sample.bankPath())));
         });
     }
 
@@ -2046,7 +2047,7 @@ class MainWorkspaceViewTest {
     @Test void questionOutlineImmediatelyShowsResultsAndKeepsFeedbackOnRevisit() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank");
-            String before = Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
+            byte[] before = Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
             ((RadioButton) shell.lookup("#option-1")).fire();
             button("submit-answer").fire();
             assertTrue(button("question-number-1").getStyleClass().containsAll(List.of("incorrect", "current")));
@@ -2065,7 +2066,7 @@ class MainWorkspaceViewTest {
             assertTrue(text(shell.lookup("#answer-feedback")).contains("回答错误"));
             assertTrue(text(shell.lookup("#answer-feedback")).contains("正确答案：A"));
             assertNotNull(shell.lookup("#qbank-source-0"));
-            assertEquals(before, Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+            assertArrayEquals(before, Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
         });
     }
 
@@ -2196,7 +2197,7 @@ class MainWorkspaceViewTest {
     }
 
     private String outlineBank(String... types) throws Exception {
-        var template = new QuestionBankV2Codec().parse(Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+        var template = new QuestionBankV2Codec().parse(QBankTestPackageBuilder.read(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
         List<Question> questions = new ArrayList<>();
         for (int i = 0; i < types.length; i++) {
             String type = types[i];
@@ -2232,7 +2233,7 @@ class MainWorkspaceViewTest {
             button("qbank-source-0").fire();
             assertEquals(moved, shell.tabs().active().path());
             assertTrue(text(shell.filePane().getCenter()).contains("Changed current definition."));
-            assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
+            assertEquals(sample.json(), QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(sample.bankPath())));
             var reread = new QuestionBankV2Codec().parse(sample.json());
             assertEquals(sample.bank().questions().getFirst().sourceRefs().getFirst().documentContentId(),
                     reread.questions().getFirst().sourceRefs().getFirst().documentContentId());
@@ -2277,7 +2278,7 @@ class MainWorkspaceViewTest {
             button("qbank-source-0").fire();
             assertEquals(2, shell.tabs().tabs().size());
             assertTrue(text(shell.filePane().getCenter()).contains("Fresh current content."));
-            assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
+            assertEquals(sample.json(), QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(sample.bankPath())));
         });
     }
 
@@ -2292,7 +2293,7 @@ class MainWorkspaceViewTest {
             assertEquals(sample.bankPath(), shell.tabs().active().path());
             assertTrue(text(shell.tabs().getBottom()).contains("来源文档缺失"));
             assertEquals(1, shell.tabs().tabs().size());
-            assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
+            assertEquals(sample.json(), QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(sample.bankPath())));
         });
     }
 
@@ -2311,7 +2312,7 @@ class MainWorkspaceViewTest {
             adapter.open(fixture.alpha.id(), sample.bank().questions().getFirst().sourceRefs().getFirst());
             assertTrue(text(shell.tabs().getBottom()).contains("找不到这个文档资产"));
             assertEquals(sample.bankPath(), shell.tabs().active().path());
-            assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
+            assertEquals(sample.json(), QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(sample.bankPath())));
         });
     }
 
@@ -2662,11 +2663,11 @@ class MainWorkspaceViewTest {
             button("file-mode-toggle").fire();
             var file = fixture.alphaRoot.resolve("题库/Java集合.qbank");
             var codec = new QuestionBankV2Codec();
-            var bank = codec.parse(Files.readString(file));
+            var bank = codec.parse(QBankTestPackageBuilder.read(file));
             var q = bank.questions().getFirst();
             var changed = Question.choice(q.id(), q.type(), new TextContent(QuestionText.prompt(q) + " Changed"), q.analysis(), q.sourceRefs(), q.choicePayload(), q.choiceAnswerSpec());
             var edited = new QuestionBank(bank.assetId(), bank.title(), "2.0", List.of(), List.of(changed, bank.questions().get(1)), List.of());
-            Files.writeString(file, codec.write(edited));
+            QBankTestPackageBuilder.write(file, codec.write(edited));
             button("file-mode-toggle").fire();
             shell.applyCss(); shell.layout();
             assertNull(shell.lookup("#answer-feedback"));

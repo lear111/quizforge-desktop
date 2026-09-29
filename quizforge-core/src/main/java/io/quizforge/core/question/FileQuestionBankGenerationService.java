@@ -60,7 +60,9 @@ public final class FileQuestionBankGenerationService {
 
     public QuestionBank read(WorkspaceId workspaceId, String bankAssetId) {
         Asset asset = findAsset(workspaceId, bankAssetId, AssetType.QUESTION_BANK);
-        return codec.parse(files.read(workspaceId, asset.currentPath()));
+        QuestionBank bank = files.read(workspaceId, asset.currentPath());
+        codec.validate(bank);
+        return bank;
     }
 
     public SourceDocumentSnapshot inspectDocument(WorkspaceId workspaceId, String documentAssetId) {
@@ -139,7 +141,6 @@ public final class FileQuestionBankGenerationService {
         QuestionBank bank = assembled.bank();
         if (bank.questions().isEmpty()) throw fail(ErrorCode.NO_VALID_QUESTION_GENERATED, "No valid questions were generated.");
         codec.validate(bank);
-        String json = codec.write(bank);
         // Re-read every source immediately before publication. No candidate file exists yet.
         for (SourceDocumentSnapshot original : snapshots) {
             SourceDocumentSnapshot current;
@@ -155,15 +156,15 @@ public final class FileQuestionBankGenerationService {
         }
         progress.accept("Saving QuestionBank file");
         try (QuestionBankFileStorage.StagedFile staged = previous == null
-                ? files.stageCreate(workspaceId, title, json)
-                : files.stageReplace(workspaceId, previous.currentPath(), json)) {
+                ? files.stageCreate(workspaceId, title, bank)
+                : files.stageReplace(workspaceId, previous.currentPath(), bank)) {
             staged.publish();
             try {
                 Asset registered = findAsset(workspaceId, bank.assetId(), AssetType.QUESTION_BANK);
                 if (!registered.currentPath().equals(staged.currentPath())) {
                     throw fail(ErrorCode.QUESTION_BANK_STORAGE_FAILED, "Registered path does not match saved file.");
                 }
-                QuestionBank saved = codec.parse(files.read(workspaceId, registered.currentPath()));
+                QuestionBank saved = files.read(workspaceId, registered.currentPath());
                 staged.complete();
                 return new Outcome(registered, saved, count, saved.questions().size(), assembled.rejected());
             } catch (RuntimeException failure) {

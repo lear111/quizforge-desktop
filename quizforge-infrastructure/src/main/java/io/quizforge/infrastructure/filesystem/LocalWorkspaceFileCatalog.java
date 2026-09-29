@@ -1,6 +1,7 @@
 package io.quizforge.infrastructure.filesystem;
 
 import io.quizforge.core.question.*;
+import io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader;
 
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
@@ -93,11 +94,17 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
             throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
                     "Selected workspace file is not a regular file.");
         }
+        if (relativePath.toLowerCase(Locale.ROOT).endsWith(".qbank"))
+            throw new QuizForgeException(ErrorCode.INVALID_PACKAGE, "QBank packages are binary; use readBank");
         try { return Files.readString(file, StandardCharsets.UTF_8); }
         catch (IOException error) {
             throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
                     "Could not read workspace file.", error);
         }
+    }
+
+    @Override public QuestionBank readBank(WorkspaceId workspaceId, String relativePath) {
+        return new QBankPackageReader().read(checked(paths.workspaceRoot(workspaceId), relativePath));
     }
 
     private WorkspaceFileEntry describe(Path root, Path file) {
@@ -135,10 +142,11 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
         }
         if (lower.endsWith(".qbank")) {
             try {
-                var bank = banks.parse(Files.readString(file, StandardCharsets.UTF_8));
+                var bank = new QBankPackageReader().inspect(file);
+                banks.validate(bank);
                 return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.QUESTION_BANK,
                         bank.assetId(), banks.contentId(bank), bank.title(), null);
-            } catch (IOException | RuntimeException error) {
+            } catch (RuntimeException error) {
                 return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.INVALID_QUESTION_BANK,
                         null, null, null, error.getMessage());
             }

@@ -37,9 +37,9 @@ final class FilePresentationLoader {
         if (kind == WorkspaceFileKind.QUESTION_BANK) return new FilePresentation(file, file.questionBank().questions().isEmpty(), false);
         if (kind == WorkspaceFileKind.INVALID_STANDARD_DOCUMENT || kind == WorkspaceFileKind.INVALID_QUESTION_BANK) {
             try {
-                String source = catalog.readText(workspace, path);
                 FilePresentation draft = kind == WorkspaceFileKind.INVALID_STANDARD_DOCUMENT
-                        ? documentDraft(file, source) : bankDraft(file, source);
+                        ? documentDraft(file, catalog.readText(workspace, path))
+                        : bankDraft(file, catalog.readBank(workspace, path));
                 if (draft != null) return draft;
             } catch (Exception invalidDraft) {
                 // Keep the original invalid-file presentation and its authoritative error.
@@ -63,16 +63,17 @@ final class FilePresentationLoader {
                 front.path("quizforge_id").asText(), front.path("title").asText(), null);
     }
 
-    private FilePresentation bankDraft(OpenedWorkspaceFile original, String source) throws Exception {
-        QuestionBank bank = new io.quizforge.infrastructure.filesystem.QuestionBankV2Codec().parseEmptyDraft(source);
-        return draft(original, source, WorkspaceFileKind.QUESTION_BANK, bank.assetId(), bank.title(), bank);
+    private FilePresentation bankDraft(OpenedWorkspaceFile original, QuestionBank bank) {
+        new QuestionBankValidator().validateEmptyDraft(bank);
+        return draft(original, null, WorkspaceFileKind.QUESTION_BANK, bank.assetId(), bank.title(), bank);
     }
 
     private FilePresentation draft(OpenedWorkspaceFile original, String source, WorkspaceFileKind kind,
             String id, String title, QuestionBank bank) {
         var old = original.entry();
         var entry = new WorkspaceFileEntry(old.relativePath(), old.name(), kind, id, null, title, old.issue());
-        return new FilePresentation(new OpenedWorkspaceFile(entry, source, bank), true, true);
+        return new FilePresentation(new OpenedWorkspaceFile(entry, source, bank, bank == null ? null
+                : new io.quizforge.infrastructure.filesystem.QuestionBankV2Codec().contentId(bank)), true, true);
     }
 
     private boolean emptyMarkdown(String source) {

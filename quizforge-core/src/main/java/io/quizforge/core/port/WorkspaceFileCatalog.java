@@ -7,5 +7,6 @@ import java.util.List;
 public interface WorkspaceFileCatalog {
     List<WorkspaceFileEntry> list(WorkspaceId workspaceId);
     WorkspaceFileEntry inspect(WorkspaceId workspaceId, String relativePath);
+    io.quizforge.core.question.QuestionBank readBank(WorkspaceId workspaceId, String relativePath);
     String readText(WorkspaceId workspaceId, String relativePath);
 }

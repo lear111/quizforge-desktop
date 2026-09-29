@@ -8,6 +8,7 @@ import io.quizforge.core.workspace.WorkspaceService;
 import io.quizforge.infrastructure.filesystem.*;
 import io.quizforge.infrastructure.persistence.*;
 import java.nio.file.Files;
+import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Set;
@@ -17,15 +18,21 @@ import org.junit.jupiter.api.io.TempDir;
 class QuestionBankExampleTest {
     @TempDir Path temp;
 
-    @Test void richFoundationExampleRoundTripsWithoutResourceFiles() throws Exception {
+    @Test void richFoundationPackageRoundTripsWithEmbeddedResourceBytes() throws Exception {
         Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
         if (!Files.isDirectory(root.resolve("examples"))) root = root.getParent();
         var codec = new QuestionBankV2Codec();
-        var bank = codec.parse(Files.readString(root.resolve("examples/qbank-v2/rich-foundation.qbank")));
+        var bank = codec.parse(QBankTestPackageBuilder.read(root.resolve("examples/qbank-v2/rich-foundation.qbank")));
         assertEquals(bank, codec.parse(codec.write(bank)));
         assertEquals(2, bank.resources().size());
         assertEquals(1, bank.stimuli().size());
         assertEquals(new java.math.BigDecimal("1.5"), bank.questions().getFirst().scoreSpec().defaultMaxScore());
+        try (var loaded = new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader()
+                .open(root.resolve("examples/qbank-v2/rich-foundation.qbank"))) {
+            for (var resource : loaded.bank().resources()) try (var input = loaded.open(resource)) {
+                assertTrue(input.readAllBytes().length > 0);
+            }
+        }
     }
 
     @Test void longMarkdownExampleIsAValidFileAssetForScrolling() throws Exception {
@@ -48,7 +55,7 @@ class QuestionBankExampleTest {
         var documentCodec = new StandardKnowledgeDocumentV1();
         var bankCodec = new QuestionBankV2Codec();
         var document = documentCodec.parseIfStandard(Files.readString(documentFile)).orElseThrow();
-        var bank = bankCodec.parse(Files.readString(bankFile));
+        var bank = bankCodec.parse(QBankTestPackageBuilder.read(bankFile));
         assertEquals(4, bank.questions().size());
         assertEquals(2, bank.questions().stream().filter(q -> q.type().equals("SINGLE_CHOICE")).count());
         assertEquals(2, bank.questions().stream().filter(q -> q.type().equals("MULTIPLE_CHOICE")).count());

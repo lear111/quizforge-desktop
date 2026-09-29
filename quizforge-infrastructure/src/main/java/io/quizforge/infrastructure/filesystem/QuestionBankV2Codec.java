@@ -17,7 +17,9 @@ import java.util.HexFormat;
 import java.util.TreeMap;
 
 /**
- * Only QBank v2 JSON is accepted. Discriminators never depend on Java class names.
+ * Internal logical QBank v2 JSON serialization, used to assemble bank.json and manifest.json.
+ * Physical .qbank files are read exclusively by QBankPackageReader.
+ * Discriminators never depend on Java class names.
  * Missing and explicit-null optional properties both become null in the logical model.
  * NON_NULL omits them from both writer output and the logical tree used by contentId.
  * Required fields retain their normal validation; null never replaces a required value.

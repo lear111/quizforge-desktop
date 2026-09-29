@@ -12,6 +12,13 @@
     <dependencies>
         <dependency>
             <groupId>io.quizforge</groupId>
+            <artifactId>quizforge-infrastructure</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quizforge</groupId>
             <artifactId>quizforge-core</artifactId>
         </dependency>
         <dependency>

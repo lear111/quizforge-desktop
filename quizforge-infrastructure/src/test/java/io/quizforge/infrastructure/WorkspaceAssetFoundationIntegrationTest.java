@@ -19,6 +19,7 @@ import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -54,6 +55,74 @@ class WorkspaceAssetFoundationIntegrationTest {
     private FileSystemWorkspaceAssetScanner scanner;
     private Workspace workspace;
     private Path root;
+
+    private Path packageFixture() {
+        Path file = root.resolve("question-banks/package.qbank");
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(file,
+                QuestionBankV2CodecTest.valid("SINGLE_CHOICE"));
+        return file;
+    }
+
+    @Test void packageScanHasLogicalRevision() {
+        packageFixture();
+        var bank = scanner.scan(workspace.id()).getFirst();
+        assertEquals("qb_one", bank.assetId());
+        assertEquals("2.0", bank.schemaVersion());
+        assertEquals(new io.quizforge.infrastructure.filesystem.QuestionBankV2Codec()
+                .contentId(QuestionBankV2CodecTest.valid("SINGLE_CHOICE")), bank.contentId());
+    }
+
+    @Test void emptyPackageHasRevisionAndUnsupportedNeighborDoesNotAbortScan() throws Exception {
+        var draft = new io.quizforge.core.question.QuestionBank("qb_empty", "Empty draft",
+                java.util.List.of(), java.util.List.of(), java.util.List.of());
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter()
+                .write(root.resolve("question-banks/empty.qbank"), draft);
+        Files.writeString(root.resolve("C.qbank"),
+                "{\"format\":\"quizforge-question-bank\",\"schemaVersion\":\"1.0\"}");
+
+        var result = scanner.scanWithReport(workspace.id());
+        assertEquals(1, result.assets().size());
+        var asset = index.findById(workspace.id(), "qb_empty").orElseThrow();
+        assertEquals("question-banks/empty.qbank", asset.currentPath());
+        assertEquals(new io.quizforge.infrastructure.filesystem.QuestionBankV2Codec()
+                .contentId(draft), asset.contentId());
+        assertEquals(1, result.issues().size());
+        assertEquals("INVALID_ASSET_FILE", result.issues().getFirst().code());
+        assertEquals("C.qbank", result.issues().getFirst().currentPath());
+    }
+
+    @Test void packageRenameMoveKeepsIdentityAndRevision() throws Exception {
+        Path file = packageFixture(); var before = scanner.scan(workspace.id()).getFirst();
+        Path folder = Files.createDirectories(root.resolve("custom/packages"));
+        Files.move(file, folder.resolve("renamed.qbank"));
+        var after = scanner.scan(workspace.id()).getFirst();
+        assertEquals(before.assetId(), after.assetId()); assertEquals(before.contentId(), after.contentId());
+        assertEquals("custom/packages/renamed.qbank", after.currentPath());
+    }
+
+    @Test void packageContentChangeUpdatesRegistryRevision() {
+        Path file = packageFixture(); var before = scanner.scan(workspace.id()).getFirst();
+        var bank = QuestionBankV2CodecTest.valid("SINGLE_CHOICE");
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(file,
+                new io.quizforge.core.question.QuestionBank(bank.assetId(), "Changed", bank.stimuli(), bank.questions(), bank.resources()));
+        var after = scanner.scan(workspace.id()).getFirst();
+        assertEquals(before.assetId(), after.assetId()); assertFalse(before.contentId().equals(after.contentId()));
+    }
+
+    @Test void duplicatePackageIdentityIsExcludedFromRegistry() throws Exception {
+        Path file = packageFixture(); scanner.scan(workspace.id());
+        Files.copy(file, root.resolve("duplicate.qbank"));
+        var result = scanner.scanWithReport(workspace.id());
+        assertTrue(result.assets().isEmpty());
+        assertTrue(result.issues().stream().anyMatch(issue -> issue.code().equals("DUPLICATE_ASSET_ID")));
+        assertTrue(index.findById(workspace.id(), "qb_one").isEmpty());
+    }
+
+    @Test void deletedPackageIsRemovedOnRescan() throws Exception {
+        Path file = packageFixture(); scanner.scan(workspace.id()); Files.delete(file);
+        assertTrue(scanner.scan(workspace.id()).isEmpty());
+        assertTrue(index.findById(workspace.id(), "qb_one").isEmpty());
+    }
 
     @BeforeEach void setup() {
         dataDirectory = new QuizForgeDataDirectory(temporaryDirectory.resolve("data"));
@@ -113,10 +182,10 @@ class WorkspaceAssetFoundationIntegrationTest {
     @Test void scansDeclaredAssetsAndSkipsOrdinaryAndInternalFiles() throws Exception {
         Path custom = Files.createDirectories(root.resolve("notes/semester-one"));
         Files.writeString(custom.resolve("study.md"), DOCUMENT, StandardCharsets.UTF_8);
-        Files.writeString(root.resolve("question-banks/quiz.qbank"),
-                "{\"schemaVersion\":\"2.0\","
-                + "\"assetId\":\"qb_java\",\"title\":\"Java Quiz\","
-                + "\"questions\":[{\"prompt\":{\"kind\":\"TEXT\",\"text\":\"Example\"}}]}");
+        QBankTestPackageBuilder.write(root.resolve("question-banks/quiz.qbank"),
+                new io.quizforge.infrastructure.filesystem.QuestionBankV2Codec().write(
+                    new io.quizforge.core.question.QuestionBank("qb_java", "Java Quiz", java.util.List.of(),
+                        QuestionBankV2CodecTest.valid("SINGLE_CHOICE").questions(), java.util.List.of())));
         Files.writeString(root.resolve("sources/plain.md"), "# An ordinary note");
         Files.writeString(root.resolve("documents/ignored.markdown"),
                 DOCUMENT.replace("doc_java", "doc_ignored"));
@@ -163,9 +232,9 @@ class WorkspaceAssetFoundationIntegrationTest {
     @Test void damagedFilesDoNotStopScanAndDeletedIndexCanBeRebuilt() throws Exception {
         Files.writeString(root.resolve("documents/good.md"), DOCUMENT);
         Files.writeString(root.resolve("documents/broken.md"), "---\nquizforge_id: [\n---\n");
-        Files.writeString(root.resolve("question-banks/broken.qbank"),
+        QBankTestPackageBuilder.write(root.resolve("question-banks/broken.qbank"),
                 "{\"assetId\":\"qb_broken\",\"questions\":[");
-        Files.writeString(root.resolve("question-banks/wrong.qbank"),
+        QBankTestPackageBuilder.write(root.resolve("question-banks/wrong.qbank"),
                 "{\"format\":\"something-else\",\"assetId\":\"qb_wrong\"}");
         var report = scanner.scanWithReport(workspace.id());
         assertEquals(1, report.assets().size());

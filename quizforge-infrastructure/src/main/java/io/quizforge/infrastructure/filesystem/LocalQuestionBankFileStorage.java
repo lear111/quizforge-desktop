@@ -7,8 +7,8 @@ import io.quizforge.core.asset.AssetType;
 import io.quizforge.core.port.QuestionBankFileStorage;
 import io.quizforge.core.workspace.WorkspaceId;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
+import io.quizforge.core.question.QuestionBank;
+import io.quizforge.infrastructure.filesystem.qbank.*;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -27,7 +27,7 @@ public final class LocalQuestionBankFileStorage implements QuestionBankFileStora
     }
 
     @Override
-    public StagedFile stageCreate(WorkspaceId workspaceId, String title, String json) {
+    public StagedFile stageCreate(WorkspaceId workspaceId, String title, QuestionBank bank) {
         Path root = paths.workspaceRoot(workspaceId);
         Path folder = root.resolve("question-banks");
         try {
@@ -39,37 +39,41 @@ public final class LocalQuestionBankFileStorage implements QuestionBankFileStora
             for (int suffix = 2; Files.exists(target, LinkOption.NOFOLLOW_LINKS); suffix++) {
                 target = folder.resolve(base + " (" + suffix + ").qbank");
             }
-            return stage(folder, target, root, json, false);
+            return stage(folder, target, root, bank, false);
         } catch (IOException error) { throw failure("stage QuestionBank", error); }
     }
 
     @Override
-    public StagedFile stageReplace(WorkspaceId workspaceId, String relativePath, String json) {
+    public StagedFile stageReplace(WorkspaceId workspaceId, String relativePath, QuestionBank bank) {
         Path root = paths.workspaceRoot(workspaceId);
         Path target = checked(root, relativePath);
         if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(target)) {
             throw failure("replace missing QuestionBank", null);
         }
-        try { return stage(target.getParent(), target, root, json, true); }
+        try { return stage(target.getParent(), target, root, bank, true); }
         catch (IOException error) { throw failure("stage QuestionBank replacement", error); }
     }
 
     @Override
-    public String read(WorkspaceId workspaceId, String relativePath) {
+    public QuestionBank read(WorkspaceId workspaceId, String relativePath) {
         Path target = checked(paths.workspaceRoot(workspaceId), relativePath);
         if (Files.isSymbolicLink(target)) throw failure("read linked QuestionBank", null);
-        try { return Files.readString(target, StandardCharsets.UTF_8); }
-        catch (IOException error) { throw failure("read QuestionBank", error); }
+        return new QBankPackageReader().read(target);
     }
 
-    private StagedFile stage(Path folder, Path target, Path root, String json,
+    private StagedFile stage(Path folder, Path target, Path root, QuestionBank bank,
             boolean replace) throws IOException {
         Path candidate = Files.createTempFile(folder, ".qf-bank-", ".tmp");
         try {
-            Files.writeString(candidate, json, StandardCharsets.UTF_8);
+            if (replace) {
+                try (var existing = new QBankPackageReader().open(target)) {
+                    new QBankPackageWriter().write(candidate, bank, existing);
+                }
+            } else new QBankPackageWriter().write(candidate, bank);
             return new Pending(candidate, target, root.relativize(target).toString().replace('\\', '/'), replace);
-        } catch (IOException | RuntimeException error) {
-            Files.deleteIfExists(candidate);
+        } catch (RuntimeException error) {
+            try { Files.deleteIfExists(candidate); }
+            catch (IOException cleanup) { error.addSuppressed(cleanup); }
             throw error;
         }
     }
@@ -100,11 +104,8 @@ public final class LocalQuestionBankFileStorage implements QuestionBankFileStora
     }
 
     private static void move(Path source, Path destination) throws IOException {
-        try { Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING); }
-        catch (AtomicMoveNotSupportedException error) {
-            Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING);
-        }
+        Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING);
     }
 
     private static QuizForgeException failure(String action, Throwable cause) {
@@ -135,8 +136,15 @@ public final class LocalQuestionBankFileStorage implements QuestionBankFileStora
             try {
                 if (Files.isSymbolicLink(target)) throw failure("replace linked QuestionBank", null);
                 if (replace && Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-                    backup = Files.createTempFile(target.getParent(), ".qf-bank-backup-", ".tmp");
-                    move(target, backup);
+                    Path copy = Files.createTempFile(target.getParent(), ".qf-bank-backup-", ".tmp");
+                    try {
+                        Files.copy(target, copy, StandardCopyOption.REPLACE_EXISTING);
+                        backup = copy;
+                    } catch (IOException error) {
+                        try { Files.deleteIfExists(copy); }
+                        catch (IOException cleanup) { error.addSuppressed(cleanup); }
+                        throw error;
+                    }
                 }
                 if (replace) move(candidate, target);
                 else Files.move(candidate, target);

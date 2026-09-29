@@ -1,8 +1,6 @@
 package io.quizforge.infrastructure.filesystem;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader;
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.asset.Asset;
@@ -31,7 +29,6 @@ import java.util.Set;
 
 /** Recursively discovers file-backed assets. A damaged asset is skipped, not indexed. */
 public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScanner {
-    private static final ObjectMapper JSON = new ObjectMapper();
     private final StandardKnowledgeDocumentV1 documents = new StandardKnowledgeDocumentV1();
     private final RegisteredMarkdownCodec registeredMarkdown = new RegisteredMarkdownCodec();
     private final QuestionBankV2Codec banks = new QuestionBankV2Codec();
@@ -87,7 +84,7 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
                                 + found.get(asset.assetId()).currentPath()));
                     }
                 }
-            } catch (IOException | IllegalArgumentException error) {
+            } catch (IOException | IllegalArgumentException | QuizForgeException error) {
                 issues.add(new WorkspaceScanIssue("INVALID_ASSET_FILE", relative, error.getMessage()));
             }
         }
@@ -126,38 +123,10 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
     }
 
     private Optional<Asset> questionBank(Path root, Path file) throws IOException {
-        String id = "";
-        String title = "";
-        String version = "";
-        try (JsonParser parser = JSON.createParser(file.toFile())) {
-            if (parser.nextToken() != JsonToken.START_OBJECT) return Optional.empty();
-            JsonToken token;
-            while ((token = parser.nextToken()) != JsonToken.END_OBJECT) {
-                if (token == null || token != JsonToken.FIELD_NAME) return Optional.empty();
-                String field = parser.currentName();
-                JsonToken value = parser.nextToken();
-                if (value == null) return Optional.empty();
-                String text = value == JsonToken.VALUE_STRING ? parser.getText() : "";
-                switch (field) {
-                    case "assetId" -> id = text;
-                    case "title" -> title = text;
-                    case "schemaVersion" -> version = text;
-                    default -> { }
-                }
-                parser.skipChildren();
-            }
-            if (parser.nextToken() != null) throw new IllegalArgumentException("Trailing QuestionBank JSON");
-        }
-        if (id.isBlank() && version.isBlank()) return Optional.empty();
-        if (!"2.0".equals(version)
-                || !id.matches("qb_[A-Za-z0-9_-]+") || title.isBlank()) {
-            throw new IllegalArgumentException("Invalid QuestionBank metadata");
-        }
-        String revision;
-        try { revision = banks.contentId(banks.parse(Files.readString(file, StandardCharsets.UTF_8))); }
-        catch (RuntimeException invalidDraft) { revision = null; }
-        return Optional.of(new Asset(id, AssetType.QUESTION_BANK, relative(root, file),
-                title, revision, version));
+        var bank = new QBankPackageReader().inspect(file);
+        String revision = banks.contentId(bank);
+        return Optional.of(new Asset(bank.assetId(), AssetType.QUESTION_BANK, relative(root, file),
+                bank.title(), revision, bank.schemaVersion()));
     }
 
     private String relative(Path root, Path file) {

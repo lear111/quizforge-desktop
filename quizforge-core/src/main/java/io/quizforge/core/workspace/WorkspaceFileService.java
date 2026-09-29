@@ -68,8 +68,9 @@ public final class WorkspaceFileService {
                     relativePath.toLowerCase(java.util.Locale.ROOT).endsWith(".md")
                             ? catalog.readText(workspaceId, relativePath) : null, null);
             case QUESTION_BANK -> {
-                String source = catalog.readText(workspaceId, relativePath);
-                yield new OpenedWorkspaceFile(entry, source, banks.parse(source));
+                var bank = catalog.readBank(workspaceId, relativePath);
+                banks.validate(bank);
+                yield new OpenedWorkspaceFile(entry, null, bank, banks.contentId(bank));
             }
             default -> new OpenedWorkspaceFile(entry, null, null);
         };

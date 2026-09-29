@@ -20,6 +20,7 @@ import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
 import java.nio.file.Files;
+import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
@@ -112,7 +113,8 @@ class WorkspaceFileExplorerIntegrationTest {
         var bank = service.open(workspace.id(), "面试/Bank.qbank");
         assertEquals(markdown, document.sourceText());
         assertEquals("doc_alpha", document.entry().assetId());
-        assertEquals(json, bank.sourceText());
+        assertEquals(null, bank.sourceText());
+        assertEquals(banks.contentId(validBank()), bank.bankRevision());
         assertEquals(validBank(), bank.questionBank());
         assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
                 new QuestionBankReferenceResolver(scanner).resolve(workspace.id(), bank.questionBank())
@@ -148,7 +150,7 @@ class WorkspaceFileExplorerIntegrationTest {
         String qbank = service.createFile(workspace.id(), folder, "练习", WorkspaceFileType.QUESTION_BANK);
         assertEquals("自定义/笔记.md", markdown);
         assertEquals("", Files.readString(root.resolve(markdown)));
-        var bank = banks.parseEmptyDraft(Files.readString(root.resolve(qbank)));
+        var bank = banks.parseEmptyDraft(QBankTestPackageBuilder.read(root.resolve(qbank)));
         assertEquals("练习", bank.title());
         assertEquals(2, service.refresh(workspace.id()).childrenOf(folder).size());
         assertEquals(1, scanner.scan(workspace.id()).size());
@@ -160,7 +162,7 @@ class WorkspaceFileExplorerIntegrationTest {
     @Test void renameMoveAndDeleteKeepRegistryInSyncAndProtectOtherFiles() throws Exception {
         String folder = service.createFolder(workspace.id(), "", "My Folder");
         String file = service.createFile(workspace.id(), folder, "Study", WorkspaceFileType.MARKDOWN);
-        Files.writeString(root.resolve(file), formalDocument("doc_study", "Study", "Learning content."));
+        QBankTestPackageBuilder.write(root.resolve(file), formalDocument("doc_study", "Study", "Learning content."));
         String id = scanner.scan(workspace.id()).getFirst().assetId();
         assertEquals(root.resolve(file), service.absolutePath(workspace.id(), file));
         String renamed = service.rename(workspace.id(), file, "Renamed.md");
@@ -188,7 +190,7 @@ class WorkspaceFileExplorerIntegrationTest {
     private void write(String relativePath, String content) throws Exception {
         Path file = root.resolve(relativePath);
         Files.createDirectories(file.getParent());
-        Files.writeString(file, content);
+        QBankTestPackageBuilder.write(file, content);
     }
 
     private String formalDocument(String id, String title, String content) {

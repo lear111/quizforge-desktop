@@ -365,7 +365,7 @@ final class FilePane extends BorderPane {
 
     private void saveBank(io.quizforge.core.question.QuestionBank edited) {
         String path = current.file().entry().relativePath();
-        bankEdits.save(workspace, path, current.file().entry().contentId(), current.file().sourceText(), edited);
+        bankEdits.save(workspace, path, current.file().entry().contentId(), current.file().bankRevision(), edited);
         open(workspace, path);
     }
 

@@ -63,23 +63,21 @@ public final class QuestionBankFileEditService {
     }
 
     public Asset save(WorkspaceId workspace, String path, String expectedContentId,
-            String expectedSourceText, QuestionBank edited) {
+            String expectedDraftContentId, QuestionBank edited) {
         workspaces.getWorkspace(workspace);
         if (path == null || !path.toLowerCase(java.util.Locale.ROOT).endsWith(".qbank"))
             throw new IllegalArgumentException("Only .qbank files can be edited here");
         QuestionBank saved = edited;
         codec.validate(saved);
-        String content = codec.write(saved);
         String revision = codec.contentId(saved);
-        String currentText = files.read(workspace, path);
-        QuestionBank current = expectedContentId == null ? codec.parseEmptyDraft(currentText)
-                : codec.parse(currentText);
+        QuestionBank current = files.read(workspace, path);
+        if (expectedContentId != null) codec.validate(current);
         if (!current.assetId().equals(edited.assetId())) throw new IllegalArgumentException("QuestionBank assetId cannot change");
-        if (expectedContentId == null ? expectedSourceText == null || !currentText.equals(expectedSourceText)
+        if (expectedContentId == null ? expectedDraftContentId == null || !codec.contentId(current).equals(expectedDraftContentId)
                 : !codec.contentId(current).equals(expectedContentId))
             throw new IllegalStateException("QuestionBank changed externally. Please reload before saving.");
         validateNewRefs(workspace, current, edited);
-        try (QuestionBankFileStorage.StagedFile staged = files.stageReplace(workspace, path, content)) {
+        try (QuestionBankFileStorage.StagedFile staged = files.stageReplace(workspace, path, saved)) {
             staged.publish();
             try {
                 Asset registered = scanner.scan(workspace).stream()
@@ -88,7 +86,7 @@ public final class QuestionBankFileEditService {
                         .findFirst().orElseThrow(() -> new IllegalStateException("Saved QuestionBank was not indexed"));
                 if (!path.equals(registered.currentPath()) || !revision.equals(registered.contentId()))
                     throw new IllegalStateException("Asset Registry does not match the saved QuestionBank");
-                QuestionBank reread = codec.parse(files.read(workspace, path));
+                QuestionBank reread = files.read(workspace, path);
                 if (!revision.equals(codec.contentId(reread)))
                     throw new IllegalStateException("Saved QuestionBank revision changed unexpectedly");
                 staged.complete();

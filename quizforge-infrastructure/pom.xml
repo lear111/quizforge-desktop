@@ -44,4 +44,15 @@
             <artifactId>jna-platform</artifactId>
         </dependency>
     </dependencies>
+    <build><plugins><plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <executions><execution>
+            <id>shared-test-fixtures</id>
+            <phase>test-compile</phase>
+            <goals><goal>test-jar</goal></goals>
+            <configuration><includes><include>io/quizforge/infrastructure/testing/**</include></includes></configuration>
+        </execution></executions>
+    </plugin></plugins></build>
 </project>

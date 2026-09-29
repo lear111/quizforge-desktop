@@ -1,6 +1,7 @@
 package io.quizforge.infrastructure.filesystem;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quizforge.core.question.QuestionBank;
+import io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter;
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.port.WorkspaceFileOperations;
@@ -24,8 +25,6 @@ import java.util.stream.Stream;
 /** Workspace-relative filesystem actions; no operation follows links or touches .quizforge. */
 public final class LocalWorkspaceFileOperations implements WorkspaceFileOperations {
     private final WorkspacePathResolver paths;
-    private final QuestionBankV2Codec banks = new QuestionBankV2Codec();
-    private final ObjectMapper json = new ObjectMapper();
 
     public LocalWorkspaceFileOperations(WorkspacePathResolver paths) { this.paths = paths; }
 
@@ -48,13 +47,15 @@ public final class LocalWorkspaceFileOperations implements WorkspaceFileOperatio
         fileName = name(fileName);
         Path target = parent.resolve(fileName);
         String title = fileName.substring(0, fileName.length() - type.extension().length());
-        String content = switch (type) {
-            case MARKDOWN -> "";
-            case QUESTION_BANK -> emptyQuestionBank(title);
-        };
-        try { Files.writeString(target, content, StandardCharsets.UTF_8,
-                java.nio.file.StandardOpenOption.CREATE_NEW, java.nio.file.StandardOpenOption.WRITE); }
-        catch (IOException error) { throw failure("create file", error); }
+        try {
+            if (type == WorkspaceFileType.QUESTION_BANK) {
+                // Reserve with CREATE_NEW; the package writer only replaces this newly created file.
+                Files.createFile(target);
+                try { new QBankPackageWriter().write(target, emptyQuestionBank(title)); }
+                catch (RuntimeException error) { Files.deleteIfExists(target); throw error; }
+            } else Files.writeString(target, "", StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE_NEW, java.nio.file.StandardOpenOption.WRITE);
+        } catch (IOException error) { throw failure("create file", error); }
         return relative(root, target);
     }
 
@@ -153,19 +154,9 @@ public final class LocalWorkspaceFileOperations implements WorkspaceFileOperatio
         return value;
     }
 
-    private String emptyQuestionBank(String title) {
-        var root = json.createObjectNode();
-        root.put("schemaVersion", "2.0");
-        root.put("assetId", "qb_" + UUID.randomUUID().toString().replace("-", ""));
-        root.put("title", title);
-        root.putArray("stimuli");
-        root.putArray("resources");
-        root.putArray("questions");
-        try {
-            String content = json.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n";
-            banks.parseEmptyDraft(content);
-            return content;
-        } catch (IOException error) { throw new IllegalStateException("Could not create QuestionBank draft", error); }
+    private QuestionBank emptyQuestionBank(String title) {
+        return new QuestionBank("qb_" + UUID.randomUUID().toString().replace("-", ""), title,
+                List.of(), List.of(), List.of());
     }
 
     private String relative(Path root, Path target) {

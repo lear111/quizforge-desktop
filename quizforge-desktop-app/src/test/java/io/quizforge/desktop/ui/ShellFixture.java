@@ -12,6 +12,7 @@ import io.quizforge.core.workspace.WorkspaceService;
 import io.quizforge.desktop.config.DesktopConfiguration;
 import io.quizforge.infrastructure.filesystem.*;
 import java.nio.file.Files;
+import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -100,7 +101,7 @@ final class ShellFixture implements AutoCloseable {
     void write(String path, String text) throws Exception {
         Path file = alphaRoot.resolve(path);
         Files.createDirectories(file.getParent());
-        Files.writeString(file, text);
+        QBankTestPackageBuilder.write(file, text);
     }
 
     @Override public void close() { context.close(); }

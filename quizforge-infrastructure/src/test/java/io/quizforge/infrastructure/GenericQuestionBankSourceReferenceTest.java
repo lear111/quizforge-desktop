@@ -156,6 +156,9 @@ class GenericQuestionBankSourceReferenceTest {
             @Override public WorkspaceFileEntry inspect(WorkspaceId id, String path) {
                 throw new UnsupportedOperationException();
             }
+            @Override public QuestionBank readBank(WorkspaceId id, String path) {
+                throw new UnsupportedOperationException();
+            }
             @Override public String readText(WorkspaceId id, String path) { return source.get(); }
         };
         return new QuestionBankReferenceResolver(scanner, new FileDocumentNodeLookup(files));
