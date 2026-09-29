@@ -1,5 +1,7 @@
 package io.quizforge.infrastructure.filesystem;
 
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.port.QuestionBankFileCodec;
@@ -135,7 +137,7 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
             try {
                 var bank = banks.parse(Files.readString(file, StandardCharsets.UTF_8));
                 return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.QUESTION_BANK,
-                        bank.id(), banks.contentId(bank), bank.title(), null);
+                        bank.assetId(), banks.contentId(bank), bank.title(), null);
             } catch (IOException | RuntimeException error) {
                 return new WorkspaceFileEntry(relative, name, WorkspaceFileKind.INVALID_QUESTION_BANK,
                         null, null, null, error.getMessage());

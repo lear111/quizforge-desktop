@@ -1,15 +1,10 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.ai.AiSettingsService;
 import io.quizforge.core.asset.Asset;
-import io.quizforge.core.question.FileQuestionBankGenerationService;
-import io.quizforge.core.question.GenerationScopeType;
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankReferenceResolver;
-import io.quizforge.core.question.QuestionType;
-import io.quizforge.core.question.SourceDocumentSnapshot;
-import io.quizforge.core.question.StandardDocumentSelection;
 import io.quizforge.core.workspace.Workspace;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -74,9 +69,9 @@ final class FileQuestionBankPage {
     }
 
     private void showBank(VBox page, Workspace workspace, Asset asset) {
-        QuestionBankFile bank = questions.read(workspace.id(), asset.assetId());
+        QuestionBank bank = questions.read(workspace.id(), asset.assetId());
         page.getChildren().addAll(UiTheme.label(bank.title(), "section-title"),
-                UiTheme.label(bank.id() + "  ·  " + asset.currentPath(), "muted"),
+                UiTheme.label(bank.assetId() + "  ·  " + asset.currentPath(), "muted"),
                 UiTheme.label(bank.questions().size() + " questions  ·  "
                         + bank.sourceDocuments().size() + " source documents", "muted"));
         for (var resolution : references.resolve(workspace.id(), bank)) {
@@ -85,19 +80,19 @@ final class FileQuestionBankPage {
                     "muted"));
         }
         int index = 1;
-        for (QuestionBankFile.Entry question : bank.questions()) {
+        for (Question question : bank.questions()) {
             VBox card = new VBox(10, UiTheme.label(String.format("%02d  /  %s", index++, question.type()), "eyebrow"),
-                    wrapping(question.stem()));
+                    wrapping(QuestionText.prompt(question)));
             card.getStyleClass().add("question-card");
             List<String> correct = new ArrayList<>();
-            for (int i = 0; i < question.data().options().size(); i++) {
-                QuestionBankFile.Option option = question.data().options().get(i);
+            for (int i = 0; i < question.choicePayload().options().size(); i++) {
+                ChoiceOption option = question.choicePayload().options().get(i);
                 String label = Character.toString('A' + i);
-                card.getChildren().add(UiTheme.label(label + ".  " + option.content(), "question-option"));
-                if (question.data().correctOptionIds().contains(option.id())) correct.add(label);
+                card.getChildren().add(UiTheme.label(label + ".  " + QuestionText.option(option), "question-option"));
+                if (question.choiceAnswerSpec().correctOptionIds().contains(option.id())) correct.add(label);
             }
             TitledPane reveal = new TitledPane("Answer & explanation", new VBox(8,
-                    UiTheme.label(String.join(", ", correct), "answer"), wrapping(question.analysis())));
+                    UiTheme.label(String.join(", ", correct), "answer"), wrapping(QuestionText.analysis(question))));
             reveal.setExpanded(false);
             card.getChildren().add(reveal);
             page.getChildren().add(card);

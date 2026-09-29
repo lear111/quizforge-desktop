@@ -1,8 +1,8 @@
 package io.quizforge.core.practice;
 
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.port.PracticeTransaction;
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankValidator;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -26,14 +26,14 @@ public final class PracticeSessionService {
     }
 
     /** The caller supplies the contentId of this exact current file model; no path is accepted. */
-    public ActivePracticeSnapshot openOrCreateActiveSession(QuestionBankFile bank, String contentId) {
+    public ActivePracticeSnapshot openOrCreateActiveSession(QuestionBank bank, String contentId) {
         validator.validate(bank); // Includes the existing rule that empty banks cannot be practiced.
-        if (contentId == null || !contentId.matches("qfb:v1:[0-9a-f]{64}")) {
+        if (contentId == null || !contentId.matches("qfb:v2:[0-9a-f]{64}")) {
             throw new IllegalArgumentException("A current QBank contentId is required.");
         }
         return transactions.execute(repositories -> {
             Instant now = clock.instant();
-            PracticeSession session = repositories.sessions().findActiveByQuestionBankAssetId(bank.id())
+            PracticeSession session = repositories.sessions().findActiveByQuestionBankAssetId(bank.assetId())
                     .orElseGet(() -> create(repositories, bank, contentId, now));
             if (!session.questionBankContentId().equals(contentId)) {
                 synchronize(repositories, session, bank, contentId, now);
@@ -126,13 +126,13 @@ public final class PracticeSessionService {
     }
 
     public ActivePracticeSnapshot restartPractice(String sessionId, String expectedContentId,
-            QuestionBankFile currentBank, String currentContentId) {
+            QuestionBank currentBank, String currentContentId) {
         validator.validate(currentBank);
-        if (currentContentId == null || !currentContentId.matches("qfb:v1:[0-9a-f]{64}"))
+        if (currentContentId == null || !currentContentId.matches("qfb:v2:[0-9a-f]{64}"))
             throw new IllegalArgumentException("A current QBank contentId is required.");
         return transactions.execute(repositories -> {
             var old = requireActive(repositories, sessionId, expectedContentId);
-            if (!old.questionBankAssetId().equals(currentBank.id()))
+            if (!old.questionBankAssetId().equals(currentBank.assetId()))
                 throw new IllegalArgumentException("Restart bank does not match the active session");
             Instant now = clock.instant();
             repositories.sessions().archive(sessionId, now);
@@ -182,9 +182,9 @@ public final class PracticeSessionService {
 
     private PracticePayload answer(Set<String> selected) { return new PracticePayload(selected.stream().sorted().toList()); }
 
-    private PracticeSession create(PracticeTransaction.Repositories repositories, QuestionBankFile bank,
+    private PracticeSession create(PracticeTransaction.Repositories repositories, QuestionBank bank,
             String contentId, Instant now) {
-        var session = new PracticeSession(id("ps_"), bank.id(), contentId, bank.title(),
+        var session = new PracticeSession(id("ps_"), bank.assetId(), contentId, bank.title(),
                 PracticeSession.Status.ACTIVE, PracticeSession.View.QUESTION, bank.questions().getFirst().id(),
                 now, now, null);
         repositories.sessions().create(session);
@@ -199,11 +199,11 @@ public final class PracticeSessionService {
     }
 
     private void synchronize(PracticeTransaction.Repositories repositories, PracticeSession session,
-            QuestionBankFile bank, String contentId, Instant now) {
+            QuestionBank bank, String contentId, Instant now) {
         List<PracticeSessionQuestion> previous = repositories.questions().findBySessionId(session.id());
         Map<String, PracticeSessionQuestion> byId = new HashMap<>();
         for (var question : previous) byId.put(question.questionId(), question);
-        Set<String> currentIds = bank.questions().stream().map(QuestionBankFile.Entry::id).collect(Collectors.toSet());
+        Set<String> currentIds = bank.questions().stream().map(Question::id).collect(Collectors.toSet());
         boolean needsQuestionView = false;
         for (var question : previous) {
             if (!currentIds.contains(question.questionId())) {

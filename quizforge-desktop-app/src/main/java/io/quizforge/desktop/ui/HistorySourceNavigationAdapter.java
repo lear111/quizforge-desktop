@@ -1,8 +1,8 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.practice.PracticePayload;
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionSourceAddress;
 import io.quizforge.core.workspace.WorkspaceId;
 import java.math.BigDecimal;
 import java.util.List;
@@ -18,9 +18,9 @@ final class HistorySourceNavigationAdapter {
         return sources.inspect(workspace, references(snapshot));
     }
 
-    void open(WorkspaceId workspace, QuestionBankFile.SourceRef ref) { sources.open(workspace, ref); }
+    void open(WorkspaceId workspace, SourceRef ref) { sources.open(workspace, ref); }
 
-    private static List<QuestionBankFile.SourceRef> references(PracticePayload snapshot) {
+    private static List<SourceRef> references(PracticePayload snapshot) {
         if (!(snapshot.value() instanceof List<?> values))
             throw new IllegalArgumentException("Invalid archived source snapshot");
         return values.stream().map(value -> {
@@ -36,7 +36,7 @@ final class HistorySourceNavigationAdapter {
                 address = QuestionSourceAddress.anchor(text(fields, "anchorName"), occurrence.intValueExact());
             } else if (fields.containsKey("nodeId")) address = QuestionSourceAddress.node(text(fields, "nodeId"));
             else address = QuestionSourceAddress.section(text(fields, "sectionId"));
-            return new QuestionBankFile.SourceRef(text(fields, "documentAssetId"),
+            return new SourceRef(text(fields, "documentAssetId"),
                     text(fields, "documentContentId"), address,
                     displayText(fields, "documentTitle"), displayText(fields, "sectionTitle"));
         }).toList();

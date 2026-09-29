@@ -10,7 +10,7 @@ import java.util.Set;
 /** One mapping between persisted state and the existing Practice/Outline runtime representation. */
 public final class PracticeRuntimeMapper {
     public void hydrate(QuestionBankPracticeSession runtime, ActivePracticeSnapshot snapshot) {
-        if (!runtime.bank().id().equals(snapshot.session().questionBankAssetId())
+        if (!runtime.bank().assetId().equals(snapshot.session().questionBankAssetId())
                 || snapshot.questions().size() != runtime.bank().questions().size())
             throw new IllegalStateException("Practice snapshot does not match the bank");
         Map<Integer, Set<String>> selections = new HashMap<>();

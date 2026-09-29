@@ -1,5 +1,7 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.question.*;
+
 import static org.junit.jupiter.api.Assertions.*;
 import io.quizforge.core.asset.Asset;
 import io.quizforge.core.asset.AssetType;
@@ -7,9 +9,6 @@ import io.quizforge.core.asset.WorkspaceScanResult;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
 import io.quizforge.core.port.AssetIndexRepository;
 import io.quizforge.core.port.DocumentNodeLookup;
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankReferenceResolver;
-import io.quizforge.core.question.QuestionSourceLinkService;
 import io.quizforge.core.workspace.WorkspaceId;
 import java.time.Instant;
 import java.util.List;
@@ -92,8 +91,8 @@ class QuestionSourceNavigationAdapterTest {
         assertFalse(lost.navigable());
     }
 
-    @Test void sourcesHaveIndependentStatusesAndLegacyNodesRemainReadOnly() {
-        var legacy = new QuestionBankFile.SourceRef("doc_a", A, "node_old", "Old", "Node");
+    @Test void sourcesHaveIndependentStatusesAndArchivedNodesRemainReadOnly() {
+        var legacy = new SourceRef("doc_a", A, "node_old", "Old", "Node");
         var states = adapter.inspect(workspace, List.of(ref("定义", 1), ref("absent", 1),
                 ref("定义", 2), ref("unreadable", 1), legacy));
         assertTrue(states.get(0).navigable());
@@ -135,8 +134,8 @@ class QuestionSourceNavigationAdapterTest {
         assertEquals(A, ref.documentContentId());
     }
 
-    private QuestionBankFile.SourceRef ref(String name, int occurrence) {
-        return QuestionBankFile.SourceRef.anchor("doc_a", A, name, occurrence, "Snapshot title", "Snapshot section");
+    private SourceRef ref(String name, int occurrence) {
+        return SourceRef.anchor("doc_a", A, name, occurrence, "Snapshot title", "Snapshot section");
     }
     private static Asset asset(String id, String path, String revision) {
         return new Asset(id, AssetType.STANDARD_DOCUMENT, path, "Old title", revision, "1.0");

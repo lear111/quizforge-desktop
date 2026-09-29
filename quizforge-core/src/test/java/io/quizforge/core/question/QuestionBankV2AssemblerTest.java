@@ -9,8 +9,8 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-class QuestionBankV1AssemblerTest {
-    private final QuestionBankV1Assembler assembler = new QuestionBankV1Assembler();
+class QuestionBankV2AssemblerTest {
+    private final QuestionBankV2Assembler assembler = new QuestionBankV2Assembler();
     private final SourceDocumentSnapshot source = new SourceDocumentSnapshot("doc_a",
             "qfd:v1:" + "a".repeat(64), "Document", List.of(new SourceDocumentSnapshot.Chapter(
                     "chapter_a", "Chapter", List.of(new SourceDocumentSnapshot.Section(
@@ -54,9 +54,9 @@ class QuestionBankV1AssemblerTest {
         var first = result.bank().questions().getFirst();
         var second = result.bank().questions().getLast();
         assertNotEquals(first.id(), second.id());
-        assertNotEquals(first.data().options().getFirst().id(), second.data().options().getFirst().id());
-        assertTrue(first.data().options().stream().map(QuestionBankFile.Option::id).toList()
-                .containsAll(first.data().correctOptionIds()));
+        assertNotEquals(first.choicePayload().options().getFirst().id(), second.choicePayload().options().getFirst().id());
+        assertTrue(first.choicePayload().options().stream().map(ChoiceOption::id).toList()
+                .containsAll(first.choiceAnswerSpec().correctOptionIds()));
         assertEquals(source.contentId(), first.sourceRefs().getFirst().documentContentId());
     }
 
@@ -64,7 +64,7 @@ class QuestionBankV1AssemblerTest {
         assertEquals(1, assemble(candidate).rejected());
     }
 
-    private QuestionBankV1Assembler.Result assemble(SourceAwareQuestionGenerator.Candidate candidate) {
+    private QuestionBankV2Assembler.Result assemble(SourceAwareQuestionGenerator.Candidate candidate) {
         return assembler.assemble("Bank", null, List.of(source), Map.of("doc_a", Set.of("section_a")),
                 List.of(candidate), EnumSet.allOf(QuestionType.class), 1);
     }

@@ -1,5 +1,7 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.document.MarkdownFileEditService;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLinkCodec;
@@ -9,8 +11,6 @@ import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
 import io.quizforge.core.document.registered.NamedMarkdownAnchor;
 import io.quizforge.core.document.registered.MarkdownSourceRange;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
-import io.quizforge.core.question.QuestionBankFileEditService;
-import io.quizforge.core.question.QuestionSourceLinkService;
 import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.core.workspace.WorkspaceFileEntry;
 import io.quizforge.core.workspace.WorkspaceFileKind;
@@ -363,7 +363,7 @@ final class FilePane extends BorderPane {
         open(workspace, path);
     }
 
-    private void saveBank(io.quizforge.core.question.QuestionBankFile edited) {
+    private void saveBank(io.quizforge.core.question.QuestionBank edited) {
         String path = current.file().entry().relativePath();
         bankEdits.save(workspace, path, current.file().entry().contentId(), current.file().sourceText(), edited);
         open(workspace, path);

@@ -24,19 +24,19 @@ import java.util.function.Consumer;
 
 /** New file-backed pipeline; legacy SQLite question generation remains separate. */
 public final class FileQuestionBankGenerationService {
-    public record Outcome(Asset asset, QuestionBankFile bank, int requested, int accepted, int rejected) { }
+    public record Outcome(Asset asset, QuestionBank bank, int requested, int accepted, int rejected) { }
 
     private final WorkspaceService workspaces;
     private final WorkspaceAssetScanner scanner;
     private final FormalDocumentReader documents;
     private final SourceAwareQuestionGenerator generator;
-    private final QuestionBankV1Assembler assembler;
+    private final QuestionBankV2Assembler assembler;
     private final QuestionBankFileCodec codec;
     private final QuestionBankFileStorage files;
 
     public FileQuestionBankGenerationService(WorkspaceService workspaces, WorkspaceAssetScanner scanner,
             FormalDocumentReader documents, SourceAwareQuestionGenerator generator,
-            QuestionBankV1Assembler assembler, QuestionBankFileCodec codec, QuestionBankFileStorage files) {
+            QuestionBankV2Assembler assembler, QuestionBankFileCodec codec, QuestionBankFileStorage files) {
         this.workspaces = workspaces;
         this.scanner = scanner;
         this.documents = documents;
@@ -58,7 +58,7 @@ public final class FileQuestionBankGenerationService {
         return scanner.scan(workspaceId).stream().filter(a -> a.assetType() == AssetType.QUESTION_BANK).toList();
     }
 
-    public QuestionBankFile read(WorkspaceId workspaceId, String bankAssetId) {
+    public QuestionBank read(WorkspaceId workspaceId, String bankAssetId) {
         Asset asset = findAsset(workspaceId, bankAssetId, AssetType.QUESTION_BANK);
         return codec.parse(files.read(workspaceId, asset.currentPath()));
     }
@@ -134,9 +134,9 @@ public final class FileQuestionBankGenerationService {
                     "Question generation failed.", error);
         }
         progress.accept("Validating questions");
-        QuestionBankV1Assembler.Result assembled = assembler.assemble(title.trim(), existingId, snapshots,
+        QuestionBankV2Assembler.Result assembled = assembler.assemble(title.trim(), existingId, snapshots,
                 selected, candidates, types, count);
-        QuestionBankFile bank = assembled.bank();
+        QuestionBank bank = assembled.bank();
         if (bank.questions().isEmpty()) throw fail(ErrorCode.NO_VALID_QUESTION_GENERATED, "No valid questions were generated.");
         codec.validate(bank);
         String json = codec.write(bank);
@@ -159,11 +159,11 @@ public final class FileQuestionBankGenerationService {
                 : files.stageReplace(workspaceId, previous.currentPath(), json)) {
             staged.publish();
             try {
-                Asset registered = findAsset(workspaceId, bank.id(), AssetType.QUESTION_BANK);
+                Asset registered = findAsset(workspaceId, bank.assetId(), AssetType.QUESTION_BANK);
                 if (!registered.currentPath().equals(staged.currentPath())) {
                     throw fail(ErrorCode.QUESTION_BANK_STORAGE_FAILED, "Registered path does not match saved file.");
                 }
-                QuestionBankFile saved = codec.parse(files.read(workspaceId, registered.currentPath()));
+                QuestionBank saved = codec.parse(files.read(workspaceId, registered.currentPath()));
                 staged.complete();
                 return new Outcome(registered, saved, count, saved.questions().size(), assembled.rejected());
             } catch (RuntimeException failure) {

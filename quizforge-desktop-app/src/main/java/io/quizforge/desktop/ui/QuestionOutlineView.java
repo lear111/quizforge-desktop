@@ -1,7 +1,7 @@
 package io.quizforge.desktop.ui;
 
-import io.quizforge.core.question.QuestionBankPracticeSession;
-import io.quizforge.core.question.QuestionBankFile;
+import io.quizforge.core.question.*;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,7 +20,7 @@ final class QuestionOutlineView extends VBox {
     private final Map<Integer, Button> cells = new LinkedHashMap<>();
     private final Map<String, Integer> practiceIndexes = new LinkedHashMap<>();
     private final VBox groups = new VBox();
-    private List<QuestionBankFile.Entry> questions;
+    private List<Question> questions;
     private IntConsumer jump;
 
     QuestionOutlineView(QuestionBankPracticeSession session, IntConsumer jump) {
@@ -72,8 +72,8 @@ final class QuestionOutlineView extends VBox {
 
     int currentIndex() { return session.index(); }
 
-    void showEditor(QuestionBankFile bank, int selected, IntConsumer editorJump) {
-        List<QuestionBankFile.Entry> edited = bank.questions();
+    void showEditor(QuestionBank bank, int selected, IntConsumer editorJump) {
+        List<Question> edited = bank.questions();
         boolean changed = questions.size() != edited.size();
         for (int i = 0; !changed && i < edited.size(); i++)
             changed = !questions.get(i).id().equals(edited.get(i).id())

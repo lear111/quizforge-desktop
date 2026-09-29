@@ -1,3 +1,3 @@
 package io.quizforge.core.question;
 
-public record QuestionBankView(QuestionBank bank, boolean outdated) { }
+public record QuestionBankView(StoredQuestionBank bank, boolean outdated) { }

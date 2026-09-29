@@ -2,79 +2,134 @@ package io.quizforge.core.question;
 
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.math.BigDecimal;
+import java.util.*;
 
-/** Portable v1 schema validation; source availability is a separate runtime concern. */
+/** Logical-bank validation includes references; resource bytes remain outside this contract. */
 public final class QuestionBankValidator {
-    public void validate(QuestionBankFile bank) {
-        if (bank == null || !"quizforge-question-bank".equals(bank.format())
-                || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion())
-                        || "1.2".equals(bank.schemaVersion()))
-                || !id(bank.id(), "qb_")
-                || blank(bank.title()) || bank.sourceDocuments().isEmpty()
-                || bank.questions().isEmpty()) fail("Invalid QuestionBank metadata");
-        Map<String, String> sources = new HashMap<>();
-        for (QuestionBankFile.SourceDocument source : bank.sourceDocuments()) {
-            if (source == null || !id(source.assetId(), "doc_")
-                    || !contentId(source.contentId()) || blank(source.title())
-                    || sources.putIfAbsent(source.assetId(), source.contentId()) != null) {
-                fail("Invalid sourceDocuments");
-            }
+    public void validate(QuestionBank bank) { validate(bank, false); }
+    public void validateEmptyDraft(QuestionBank bank) { validate(bank, true); }
+    private void validate(QuestionBank bank, boolean draft) {
+        if (bank == null || !"2.0".equals(bank.schemaVersion()) || !id(bank.assetId(), "qb_")
+                || blank(bank.title()) || (draft ? !bank.questions().isEmpty() : bank.questions().isEmpty()))
+            fail("Invalid QBank v2 metadata");
+        Map<String,QBankResource> resources = new HashMap<>();
+        for (var resource : bank.resources()) {
+            if (!id(resource.id(), "res_") || resource.kind() == null || blank(resource.mediaType())
+                    || !resource.mediaType().matches("[A-Za-z0-9.+-]+/[A-Za-z0-9.+-]+")
+                    || !resource.mediaType().startsWith(resource.kind() == ResourceKind.IMAGE ? "image/" : "audio/")
+                    || !locator(resource.locator()) || resource.sha256() == null
+                    || !resource.sha256().matches("[0-9a-f]{64}")
+                    || resources.putIfAbsent(resource.id(), resource) != null) fail("Invalid or duplicate resource");
         }
-        Set<String> questions = new HashSet<>();
-        Set<String> allOptions = new HashSet<>();
-        for (QuestionBankFile.Entry entry : bank.questions()) {
-            if (entry == null || !id(entry.id(), "q_") || !questions.add(entry.id())
-                    || blank(entry.stem()) || blank(entry.analysis()) || entry.data() == null
-                    || entry.sourceRefs().isEmpty()) fail("Invalid question");
-            boolean single = "SINGLE_CHOICE".equals(entry.type());
-            boolean multiple = "MULTIPLE_CHOICE".equals(entry.type());
-            if (!single && !multiple) fail("Invalid question type");
-            Set<String> refs = new HashSet<>();
-            for (QuestionBankFile.SourceRef ref : entry.sourceRefs()) {
-                if (ref == null || !id(ref.documentAssetId(), "doc_")
-                        || !contentId(ref.documentContentId()) || !address(ref, bank.schemaVersion())
-                        || blank(ref.documentTitle()) || blank(ref.sectionTitle())
-                        || !ref.documentContentId().equals(sources.get(ref.documentAssetId()))
-                        || !refs.add(ref.documentAssetId() + "\0" + ref.address())) {
-                    fail("Invalid sourceRefs");
-                }
-            }
+        Set<String> stimuli = new HashSet<>();
+        for (var stimulus : bank.stimuli()) {
+            if (!identifier(stimulus.id()) || !stimuli.add(stimulus.id())) fail("Invalid or duplicate stimulus");
+            content(stimulus.content(), true, resources);
+        }
+        Set<String> questionIds = new HashSet<>(), allOptions = new HashSet<>();
+        Map<String,String> revisions = new HashMap<>();
+        for (var question : bank.questions()) {
+            if (!id(question.id(), "q_") || !questionIds.add(question.id())) fail("Invalid question id");
+            boolean single = "SINGLE_CHOICE".equals(question.type()), multiple = "MULTIPLE_CHOICE".equals(question.type());
+            if (!single && !multiple) fail("Unsupported question type: " + question.type());
+            Set<String> usedStimuli = new HashSet<>();
+            for (String ref : question.stimulusRefs())
+                if (!stimuli.contains(ref) || !usedStimuli.add(ref)) fail("Invalid stimulusRef");
+            content(question.prompt(), true, resources);
+            if (question.analysis() != null) content(question.analysis(), false, resources);
+            if (question.scoreSpec() == null || question.scoreSpec().defaultMaxScore() == null
+                    || question.scoreSpec().defaultMaxScore().signum() <= 0) fail("defaultMaxScore must be positive");
+            if (!(question.payload() instanceof ChoicePayload) || !(question.answerSpec() instanceof ChoiceAnswerSpec))
+                fail("Choice requires ChoicePayload and ChoiceAnswerSpec");
             Set<String> options = new HashSet<>();
-            for (QuestionBankFile.Option option : entry.data().options()) {
-                if (option == null || !id(option.id(), "opt_") || blank(option.content())
-                        || !options.add(option.id()) || !allOptions.add(option.id())) fail("Invalid option");
+            for (var option : question.choicePayload().options()) {
+                if (!id(option.id(), "opt_") || !options.add(option.id()) || !allOptions.add(option.id())) fail("Invalid option id");
+                content(option.content(), true, resources);
             }
-            Set<String> correct = new HashSet<>(entry.data().correctOptionIds());
-            if (options.size() < 2 || correct.size() != entry.data().correctOptionIds().size()
-                    || !options.containsAll(correct)
-                    || single && correct.size() != 1
-                    || multiple && (correct.size() < 2 || correct.size() >= options.size())) {
+            List<String> answers = question.choiceAnswerSpec().correctOptionIds();
+            Set<String> correct = new HashSet<>(answers);
+            if (options.size() < 2 || correct.size() != answers.size() || !options.containsAll(correct)
+                    || single && correct.size() != 1 || multiple && (correct.size() < 2 || correct.size() >= options.size()))
                 fail("Invalid correctOptionIds");
+            Set<String> refs = new HashSet<>();
+            for (var ref : question.sourceRefs()) {
+                if (!id(ref.documentAssetId(), "doc_") || ref.documentContentId() == null
+                        || !ref.documentContentId().matches("qfd:v[12]:[0-9a-f]{64}")
+                        || ref.address() == null || ref.address().kind() != QuestionSourceAddress.Kind.ANCHOR
+                        || ref.occurrence() == null || ref.occurrence() < 1
+                        || !refs.add(ref.documentAssetId() + "\0" + ref.address())) fail("Invalid sourceRefs");
+                String previous = revisions.putIfAbsent(ref.documentAssetId(), ref.documentContentId());
+                if (previous != null && !previous.equals(ref.documentContentId())) fail("Conflicting source revisions");
+            }
+            evaluation(question.evaluationSpec());
+        }
+    }
+    private void evaluation(EvaluationSpec spec) {
+        if (spec == null) return;
+        Set<String> ids = new HashSet<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (var criterion : spec.criteria()) {
+            if (!identifier(criterion.id()) || !ids.add(criterion.id()) || blank(criterion.description())
+                    || criterion.weight() == null || criterion.weight().signum() <= 0) fail("Invalid evaluation criterion");
+            total = total.add(criterion.weight());
+        }
+        if (!spec.criteria().isEmpty() && total.compareTo(BigDecimal.ONE) != 0)
+            fail("Evaluation criterion weights must sum exactly to 1");
+    }
+    private void content(QuestionContent content, boolean nonblank, Map<String,QBankResource> resources) {
+        if (content == null) fail("Question content is required");
+        if (content instanceof TextContent text) {
+            if (nonblank && blank(text.text())) fail("Content cannot be blank");
+        } else if (content instanceof RichContent rich) {
+            if (nonblank && rich.document().blocks().stream().noneMatch(this::meaningful))
+                fail("Rich content cannot be blank");
+            for (var block : rich.document().blocks()) {
+                if (block instanceof ParagraphNode p) inline(p.children(), resources);
+                else if (block instanceof BlockImageNode i) image(i.resourceId(), resources);
+                else if (block instanceof BlockMathNode m && blank(m.tex())) fail("Math TeX is required");
+            }
+        } else fail("Unsupported content kind");
+    }
+    private void inline(List<InlineNode> nodes, Map<String,QBankResource> resources) {
+        for (var node : nodes) {
+            if (node instanceof InlineTextNode t && t.text() == null) fail("Inline text cannot be null");
+            else if (node instanceof InlineImageNode i) image(i.resourceId(), resources);
+            else if (node instanceof InlineMathNode m && blank(m.tex())) fail("Math TeX is required");
+            else if (node instanceof LinkNode link) {
+                if (blank(link.href())) fail("Link href is required");
+                inline(link.children(), resources);
             }
         }
     }
-
-    private boolean id(String value, String prefix) {
-        return value != null && value.matches(prefix + "[A-Za-z0-9_-]+");
+    private void image(String id, Map<String,QBankResource> resources) {
+        if (!resources.containsKey(id) || resources.get(id).kind() != ResourceKind.IMAGE) fail("Invalid image resourceId");
     }
-    private boolean contentId(String value) {
-        return value != null && value.matches("qfd:v[12]:[0-9a-f]{64}");
+    private boolean meaningful(BlockNode node) {
+        return switch (node) {
+            case ParagraphNode paragraph -> paragraph.children().stream().anyMatch(this::meaningful);
+            case BlockImageNode image -> true;
+            case BlockMathNode math -> !blank(math.tex());
+        };
     }
-    private boolean nodeId(String value) {
-        return value != null && value.matches("[A-Za-z][A-Za-z0-9_-]*");
+    private boolean meaningful(InlineNode node) {
+        return switch (node) {
+            case InlineTextNode text -> !blank(text.text());
+            case InlineImageNode image -> true;
+            case InlineMathNode math -> !blank(math.tex());
+            case LineBreakNode lineBreak -> false;
+            case LinkNode link -> link.children().stream().anyMatch(this::meaningful);
+        };
     }
-    private boolean address(QuestionBankFile.SourceRef ref, String version) {
-        if (ref.address() == null) return false;
-        if ("1.2".equals(version)) return ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR
-                && ref.occurrence() != null && ref.occurrence() >= 1;
-        return ref.address().kind() != QuestionSourceAddress.Kind.ANCHOR && nodeId(ref.nodeId());
+    private boolean locator(String value) {
+        if (blank(value) || value.startsWith("/") || value.contains("\\") || value.contains(":")
+                || value.chars().anyMatch(Character::isISOControl)) return false;
+        for (String segment : value.split("/", -1))
+            if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) return false;
+        return true;
     }
+    private boolean id(String value,String prefix) { return value != null && value.matches(prefix + "[A-Za-z0-9_-]+"); }
+    private boolean identifier(String value) { return value != null && value.matches("[A-Za-z][A-Za-z0-9_-]*"); }
     private boolean blank(String value) { return value == null || value.isBlank(); }
-    private void fail(String message) {
-        throw new QuizForgeException(ErrorCode.QUESTION_BANK_FILE_INVALID, message);
-    }
+    private void fail(String message) { throw new QuizForgeException(ErrorCode.QUESTION_BANK_FILE_INVALID,message); }
 }

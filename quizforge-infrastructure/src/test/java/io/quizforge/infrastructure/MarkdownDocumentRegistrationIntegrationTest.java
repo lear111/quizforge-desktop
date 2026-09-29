@@ -14,7 +14,7 @@ import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
 import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileCatalog;
 import io.quizforge.infrastructure.filesystem.MarkdownDocumentRegistrationService;
 import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
-import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
+import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
@@ -99,7 +99,7 @@ class MarkdownDocumentRegistrationIntegrationTest {
         assertEquals(document.contentId(), asset.contentId());
         assertEquals("custom/notes/study.md", asset.currentPath());
         assertEquals("1", asset.schemaVersion());
-        var catalog = new LocalWorkspaceFileCatalog(paths, new QuestionBankV1Codec());
+        var catalog = new LocalWorkspaceFileCatalog(paths, new QuestionBankV2Codec());
         assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT,
                 catalog.inspect(workspace, "custom/notes/study.md").kind());
 

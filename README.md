@@ -57,8 +57,11 @@ section ID comments, prose, lists, and code. Front Matter `quizforge_id`, file p
 mtime, UI state, cache, and database values are excluded. The hash is computed on scan and
 is never written into Markdown.
 
-A `.qbank` is recognized by top-level JSON `format: quizforge-question-bank`,
-`schemaVersion: "1.0"`, stable `id`, and `title`; its `contentId` is currently null.
+A `.qbank` is a QBank v2 JSON document with `schemaVersion: "2.0"`, stable `assetId`,
+`title`, `stimuli`, `questions`, and `resources`. Valid logical content has a `qfb:v2:`
+SHA-256 revision independent of asset identity, filesystem path and UI state.
+QBank v1 files are not accepted. See [QBank v2 foundation](docs/qbank-v2-foundation.md)
+and the JSON Schema at `quizforge-infrastructure/src/main/resources/schema/qbank-v2.schema.json`.
 The registry records only normalized workspace-relative paths. A rescan updates paths for
 moved or renamed assets, updates content IDs after edits, and removes entries for deleted
 files. Duplicate asset IDs are reported as `DUPLICATE_ASSET_ID` and neither conflicting file

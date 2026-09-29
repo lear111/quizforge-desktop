@@ -1,0 +1,545 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QuizForge QBank v2",
+  "description": "Reader schema: optional properties may be omitted or null; null is normalized to absent. The canonical writer omits absent properties and never emits null. Non-null properties must satisfy their declared types. ID uniqueness, cross references, content semantics and exact decimal weights are additionally validated by QuestionBankValidator. Empty questions represent an editor draft.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "2.0"
+    },
+    "assetId": {
+      "type": "string",
+      "pattern": "^qb_[A-Za-z0-9_-]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stimuli": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/stimulus"
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/question"
+      }
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resource"
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "assetId",
+    "title",
+    "stimuli",
+    "questions",
+    "resources"
+  ],
+  "$defs": {
+    "content": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/text"
+        },
+        {
+          "$ref": "#/$defs/rich"
+        }
+      ]
+    },
+    "text": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "TEXT"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ]
+    },
+    "rich": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "RICH"
+        },
+        "document": {
+          "$ref": "#/$defs/document"
+        }
+      },
+      "required": [
+        "kind",
+        "document"
+      ]
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        }
+      },
+      "required": [
+        "blocks"
+      ]
+    },
+    "block": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/paragraph"
+        },
+        {
+          "$ref": "#/$defs/blockImage"
+        },
+        {
+          "$ref": "#/$defs/blockMath"
+        }
+      ]
+    },
+    "paragraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "PARAGRAPH"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inline"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "children"
+      ]
+    },
+    "blockImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "IMAGE"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "alt": {
+          "type": ["string", "null"]
+        },
+        "caption": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "type",
+        "resourceId"
+      ]
+    },
+    "blockMath": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "MATH"
+        },
+        "tex": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "tex"
+      ]
+    },
+    "inline": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/inlineText"
+        },
+        {
+          "$ref": "#/$defs/inlineImage"
+        },
+        {
+          "$ref": "#/$defs/inlineMath"
+        },
+        {
+          "$ref": "#/$defs/lineBreak"
+        },
+        {
+          "$ref": "#/$defs/link"
+        }
+      ]
+    },
+    "inlineText": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "TEXT"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "text"
+      ]
+    },
+    "inlineImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "IMAGE"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "alt": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "type",
+        "resourceId"
+      ]
+    },
+    "inlineMath": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "MATH"
+        },
+        "tex": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "tex"
+      ]
+    },
+    "lineBreak": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "LINE_BREAK"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "LINK"
+        },
+        "href": {
+          "type": "string",
+          "minLength": 1
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inline"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "href",
+        "children"
+      ]
+    },
+    "option": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^opt_[A-Za-z0-9_-]+$"
+        },
+        "content": {
+          "$ref": "#/$defs/content"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "CHOICE"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/option"
+          },
+          "minItems": 2
+        }
+      },
+      "required": [
+        "kind",
+        "options"
+      ]
+    },
+    "answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "CHOICE"
+        },
+        "correctOptionIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^opt_[A-Za-z0-9_-]+$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind",
+        "correctOptionIds"
+      ]
+    },
+    "score": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultMaxScore": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "defaultMaxScore"
+      ]
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "weight"
+      ]
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "criteria": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/criterion"
+          }
+        },
+        "evaluatorGuidance": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "criteria"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "documentAssetId": {
+          "type": "string",
+          "pattern": "^doc_[A-Za-z0-9_-]+$"
+        },
+        "documentContentId": {
+          "type": "string",
+          "pattern": "^qfd:v[12]:[0-9a-f]{64}$"
+        },
+        "anchorName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "occurrence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "documentTitle": {
+          "type": ["string", "null"]
+        },
+        "sectionTitle": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "documentAssetId",
+        "documentContentId",
+        "anchorName",
+        "occurrence"
+      ]
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^q_[A-Za-z0-9_-]+$"
+        },
+        "type": {
+          "enum": [
+            "SINGLE_CHOICE",
+            "MULTIPLE_CHOICE"
+          ]
+        },
+        "stimulusRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "prompt": {
+          "$ref": "#/$defs/content"
+        },
+        "payload": {
+          "$ref": "#/$defs/payload"
+        },
+        "answerSpec": {
+          "$ref": "#/$defs/answer"
+        },
+        "scoreSpec": {
+          "$ref": "#/$defs/score"
+        },
+        "evaluationSpec": {
+          "anyOf": [
+            { "$ref": "#/$defs/evaluation" },
+            { "type": "null" }
+          ]
+        },
+        "analysis": {
+          "anyOf": [
+            { "$ref": "#/$defs/content" },
+            { "type": "null" }
+          ]
+        },
+        "sourceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "stimulusRefs",
+        "prompt",
+        "payload",
+        "answerSpec",
+        "scoreSpec",
+        "sourceRefs"
+      ]
+    },
+    "stimulus": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+        },
+        "content": {
+          "$ref": "#/$defs/content"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ]
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^res_[A-Za-z0-9_-]+$"
+        },
+        "kind": {
+          "enum": [
+            "IMAGE",
+            "AUDIO"
+          ]
+        },
+        "mediaType": {
+          "type": "string",
+          "pattern": "^(image|audio)/[A-Za-z0-9.+-]+$"
+        },
+        "locator": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[:\\\\\\r\\n])[^/]+(?:/[^/]+)*$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "mediaType",
+        "locator",
+        "sha256"
+      ]
+    }
+  }
+}

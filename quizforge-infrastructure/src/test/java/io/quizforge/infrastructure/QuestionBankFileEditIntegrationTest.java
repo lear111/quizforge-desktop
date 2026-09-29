@@ -1,8 +1,9 @@
 package io.quizforge.infrastructure;
 
+import io.quizforge.core.question.*;
+
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.quizforge.core.question.*;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceService;
 import io.quizforge.infrastructure.filesystem.*;
@@ -24,11 +25,11 @@ class QuestionBankFileEditIntegrationTest {
     private LocalStandardDocumentFileStorage documents;
     private FileSystemWorkspaceAssetScanner scanner;
     private SqliteAssetIndexRepository index;
-    private final QuestionBankV1Codec codec = new QuestionBankV1Codec();
+    private final QuestionBankV2Codec codec = new QuestionBankV2Codec();
     private final StandardKnowledgeDocumentV1 markdown = new StandardKnowledgeDocumentV1();
     private String bankPath;
     private String documentPath;
-    private QuestionBankFile original;
+    private QuestionBank original;
 
     @BeforeEach void setup() {
         QuizForgeDataDirectory directory = new QuizForgeDataDirectory(temp.resolve("data"));
@@ -44,15 +45,12 @@ class QuestionBankFileEditIntegrationTest {
             staged.publish(); staged.complete(); documentPath = staged.currentPath();
         }
         String revision = markdown.parseIfStandard(document()).orElseThrow().contentId();
-        var source = new QuestionBankFile.SourceDocument("doc_source", revision, "Source");
-        var ref = new QuestionBankFile.SourceRef("doc_source", revision,
-                QuestionSourceAddress.section("section_one"), "Source", "One");
-        var question = new QuestionBankFile.Entry("q_one", "SINGLE_CHOICE", "Original?", "Reason",
-                List.of(ref), new QuestionBankFile.Data(List.of(
-                        new QuestionBankFile.Option("opt_a", "A"),
-                        new QuestionBankFile.Option("opt_b", "B")), List.of("opt_a")));
-        original = new QuestionBankFile("quizforge-question-bank", "1.0", "qb_editor", "Bank",
-                List.of(source), List.of(question));
+        var source = new QuestionSourceDocument("doc_source", revision, "Source");
+        var ref = SourceRef.anchor("doc_source", revision, "section_one", 1, "Source", "One");
+        var question = Question.choice("q_one", "SINGLE_CHOICE", new TextContent("Original?"), new TextContent("Reason"), List.of(ref), new ChoicePayload(List.of(
+                        new ChoiceOption("opt_a", new TextContent("A")),
+                        new ChoiceOption("opt_b", new TextContent("B")))), new ChoiceAnswerSpec(List.of("opt_a")));
+        original = new QuestionBank("qb_editor", "Bank", "2.0", List.of(), List.of(question), List.of());
         try (var staged = banks.stageCreate(workspace.id(), original.title(), codec.write(original))) {
             staged.publish(); staged.complete(); bankPath = staged.currentPath();
         }
@@ -63,12 +61,13 @@ class QuestionBankFileEditIntegrationTest {
         return "---\nquizforge_format: \"study-document\"\nschema_version: \"1.0\"\n"
                 + "quizforge_id: \"doc_source\"\ntitle: \"Source\"\nlanguage: \"en-US\"\n---\n"
                 + "# Source\n\n## Chapter\n<!-- qf:id=chapter_one -->\n\n"
-                + "### One\n<!-- qf:id=section_one -->\n\nLearning content\n";
+                + "<!-- qf:anchor=section_one -->\n### One\n<!-- qf:id=section_one -->\n\nLearning content\n";
     }
 
     private QuestionBankFileEditService service() {
         return new QuestionBankFileEditService(workspaces, banks, codec, scanner,
-                new FormalMarkdownDocumentReader(documents));
+                new FormalMarkdownDocumentReader(documents),
+                new FileDocumentNodeLookup(new LocalWorkspaceFileCatalog(paths, codec)));
     }
 
     @Test void saveRereadAndRescanKeepIdentityAndUpdateRevision() {
@@ -78,13 +77,13 @@ class QuestionBankFileEditIntegrationTest {
         edit.setAnalysis(0, "Changed analysis");
         edit.setCorrect(0, "opt_b", true);
         var saved = service().save(workspace.id(), bankPath, codec.contentId(original), edit.bank());
-        assertEquals(original.id(), saved.assetId());
+        assertEquals(original.assetId(), saved.assetId());
         assertNotEquals(codec.contentId(original), saved.contentId());
-        assertEquals(codec.parse(codec.write(upgraded(edit.bank()))),
+        assertEquals(codec.parse(codec.write(edit.bank())),
                 codec.parse(banks.read(workspace.id(), bankPath)));
-        assertEquals(saved, index.findById(workspace.id(), original.id()).orElseThrow());
+        assertEquals(saved, index.findById(workspace.id(), original.assetId()).orElseThrow());
         assertEquals(saved.contentId(), scanner.scan(workspace.id()).stream()
-                .filter(asset -> asset.assetId().equals(original.id())).findFirst().orElseThrow().contentId());
+                .filter(asset -> asset.assetId().equals(original.assetId())).findFirst().orElseThrow().contentId());
     }
 
     @Test void invalidEditAndExternalChangeNeverOverwriteExistingFile() throws Exception {
@@ -122,8 +121,7 @@ class QuestionBankFileEditIntegrationTest {
                 .chapters().getFirst().sections().getFirst().id());
         var edit = new QuestionBankEditorModel(original);
         var ref = original.questions().getFirst().sourceRefs().getFirst();
-        edit.addSourceRef(0, new QuestionBankFile.SourceRef(ref.documentAssetId(),
-                ref.documentContentId(), "section_missing", ref.documentTitle(), "Missing"));
+        edit.addSourceRef(0, SourceRef.anchor(ref.documentAssetId(), ref.documentContentId(), "section_missing", 1, ref.documentTitle(), "Missing"));
         assertThrows(IllegalArgumentException.class,
                 () -> service().save(workspace.id(), bankPath, codec.contentId(original), edit.bank()));
         assertEquals(codec.write(original), banks.read(workspace.id(), bankPath));
@@ -142,33 +140,22 @@ class QuestionBankFileEditIntegrationTest {
 
     @Test void emptyDraftCanBecomeFormalBankWithoutLosingExternalEditProtection() throws Exception {
         String path = "draft.qbank";
-        String draft = "{\"format\":\"quizforge-question-bank\",\"schemaVersion\":\"1.0\","
-                + "\"id\":\"qb_draft\",\"title\":\"Draft\",\"sourceDocuments\":[],\"questions\":[]}";
+        String draft = codec.write(new QuestionBank("qb_draft", "Draft", List.of(), List.of(), List.of()));
         Files.writeString(paths.workspaceRoot(workspace.id()).resolve(path), draft);
-        QuestionBankFile empty = codec.parseEmptyDraft(draft);
+        QuestionBank empty = codec.parseEmptyDraft(draft);
         var edit = new QuestionBankEditorModel(empty);
         edit.addQuestion("SINGLE_CHOICE");
         var source = service().source(workspace.id(), "doc_source");
-        edit.addSourceRef(0, new QuestionBankFile.SourceRef(source.assetId(), source.contentId(),
-                "section_one", source.title(), "One"));
+        edit.addSourceRef(0, SourceRef.anchor(source.assetId(), source.contentId(), "section_one", 1, source.title(), "One"));
         Files.writeString(paths.workspaceRoot(workspace.id()).resolve(path), draft + "\n");
         assertThrows(IllegalStateException.class,
                 () -> service().save(workspace.id(), path, null, draft, edit.bank()));
         assertEquals(draft + "\n", banks.read(workspace.id(), path));
         var saved = service().save(workspace.id(), path, null, draft + "\n", edit.bank());
         assertEquals("qb_draft", saved.assetId());
-        assertEquals(codec.contentId(upgraded(edit.bank())), saved.contentId());
-        assertEquals(codec.parse(codec.write(upgraded(edit.bank()))),
+        assertEquals(codec.contentId(edit.bank()), saved.contentId());
+        assertEquals(codec.parse(codec.write(edit.bank())),
                 codec.parse(banks.read(workspace.id(), path)));
     }
 
-    private QuestionBankFile upgraded(QuestionBankFile bank) {
-        var questions = bank.questions().stream().map(question -> new QuestionBankFile.Entry(
-                question.id(), question.type(), question.stem(), question.analysis(),
-                question.sourceRefs().stream().map(ref -> QuestionBankFile.SourceRef.anchor(
-                        ref.documentAssetId(), ref.documentContentId(), ref.address().value(), 1,
-                        ref.documentTitle(), ref.sectionTitle())).toList(), question.data())).toList();
-        return new QuestionBankFile(bank.format(), "1.2", bank.id(), bank.title(),
-                bank.sourceDocuments(), questions);
-    }
 }

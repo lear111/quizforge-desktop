@@ -1,16 +1,15 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankReferenceResolver;
-import io.quizforge.core.question.QuestionSourceLinkService;
 import io.quizforge.core.workspace.WorkspaceId;
 import java.util.List;
 import java.util.function.Consumer;
 
 /** Bridges revision-sensitive source inspection to current-location navigation without writing assets. */
 final class QuestionSourceNavigationAdapter {
-    record Source(QuestionBankFile.SourceRef ref, String label,
+    record Source(SourceRef ref, String label,
             QuestionBankReferenceResolver.Status status, String message, boolean navigable) { }
 
     private final QuestionBankReferenceResolver resolver;
@@ -26,7 +25,7 @@ final class QuestionSourceNavigationAdapter {
         this.feedback = feedback;
     }
 
-    List<Source> inspect(WorkspaceId workspace, List<QuestionBankFile.SourceRef> refs) {
+    List<Source> inspect(WorkspaceId workspace, List<SourceRef> refs) {
         try {
             return resolver.resolveCurrentRefs(workspace, refs).stream().map(resolved -> {
                 var ref = resolved.sourceRef();
@@ -46,7 +45,7 @@ final class QuestionSourceNavigationAdapter {
         }
     }
 
-    void open(WorkspaceId workspace, QuestionBankFile.SourceRef ref) {
+    void open(WorkspaceId workspace, SourceRef ref) {
         Source current = inspect(workspace, List.of(ref)).getFirst();
         if (!current.navigable()) {
             feedback.accept(current.message());

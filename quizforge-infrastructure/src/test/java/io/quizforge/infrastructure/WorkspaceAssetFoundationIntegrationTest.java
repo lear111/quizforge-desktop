@@ -114,9 +114,9 @@ class WorkspaceAssetFoundationIntegrationTest {
         Path custom = Files.createDirectories(root.resolve("notes/semester-one"));
         Files.writeString(custom.resolve("study.md"), DOCUMENT, StandardCharsets.UTF_8);
         Files.writeString(root.resolve("question-banks/quiz.qbank"),
-                "{\"format\":\"quizforge-question-bank\",\"schemaVersion\":\"1.0\","
-                + "\"id\":\"qb_java\",\"title\":\"Java Quiz\","
-                + "\"questions\":[{\"stem\":\"Example\"}]}");
+                "{\"schemaVersion\":\"2.0\","
+                + "\"assetId\":\"qb_java\",\"title\":\"Java Quiz\","
+                + "\"questions\":[{\"prompt\":{\"kind\":\"TEXT\",\"text\":\"Example\"}}]}");
         Files.writeString(root.resolve("sources/plain.md"), "# An ordinary note");
         Files.writeString(root.resolve("documents/ignored.markdown"),
                 DOCUMENT.replace("doc_java", "doc_ignored"));
@@ -164,9 +164,9 @@ class WorkspaceAssetFoundationIntegrationTest {
         Files.writeString(root.resolve("documents/good.md"), DOCUMENT);
         Files.writeString(root.resolve("documents/broken.md"), "---\nquizforge_id: [\n---\n");
         Files.writeString(root.resolve("question-banks/broken.qbank"),
-                "{\"format\":\"quizforge-question-bank\",\"id\":\"qb_broken\",\"questions\":[");
+                "{\"assetId\":\"qb_broken\",\"questions\":[");
         Files.writeString(root.resolve("question-banks/wrong.qbank"),
-                "{\"format\":\"something-else\",\"id\":\"qb_wrong\"}");
+                "{\"format\":\"something-else\",\"assetId\":\"qb_wrong\"}");
         var report = scanner.scanWithReport(workspace.id());
         assertEquals(1, report.assets().size());
         assertTrue(report.issues().stream().anyMatch(issue -> issue.currentPath().equals(

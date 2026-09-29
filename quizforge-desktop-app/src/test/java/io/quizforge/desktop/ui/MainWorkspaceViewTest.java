@@ -1,19 +1,18 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.question.*;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.quizforge.core.workspace.WorkspaceFileEntry;
 import io.quizforge.core.workspace.WorkspaceFileKind;
 import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentV1;
-import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
+import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
 import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
 import io.quizforge.core.document.registered.QuizForgeReference;
 import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLinkCodec;
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankReferenceResolver;
-import io.quizforge.core.question.QuestionSourceLinkService;
 import io.quizforge.core.port.WorkspaceAssetScanner;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -63,6 +62,23 @@ class MainWorkspaceViewTest {
     }
 
     @AfterAll static void stopFx() { Platform.exit(); }
+
+    @Test void richQuestionBankShowsExplicitUnsupportedContentAndCannotEnterTextEditor() throws Exception {
+        var q = Question.choice("q_rich_ui", "SINGLE_CHOICE",
+                new RichContent(new RichDocument(List.of(new BlockMathNode("x^2")))), null, List.of(),
+                new ChoicePayload(List.of(new ChoiceOption("opt_rich_a", new TextContent("A")),
+                        new ChoiceOption("opt_rich_b", new TextContent("B")))), new ChoiceAnswerSpec(List.of("opt_rich_a")));
+        var bank = new QuestionBank("qb_rich_ui", "Rich", List.of(), List.of(q), List.of());
+        fixture.write("题库/Rich.qbank", new QuestionBankV2Codec().write(bank));
+        fx(() -> {
+            shell.refresh();
+            open("题库/Rich.qbank");
+            assertTrue(text(shell.filePane()).contains("暂不支持此题库内容"));
+            assertTrue(button("file-mode-toggle").isDisabled());
+            assertNull(shell.lookup("#question-practice"));
+            assertEquals(FileMode.BROWSE, shell.filePane().mode());
+        });
+    }
 
     @Test void switchingWorkspaceReplacesTreeAndClearsCurrentFile() throws Exception {
         fx(() -> {
@@ -558,7 +574,7 @@ class MainWorkspaceViewTest {
             shell.applyCss(); shell.layout();
             assertNotNull(shell.lookup("#question-bank-editor"));
             assertNull(shell.lookup("#question-practice"));
-            assertNull(shell.lookup("#question-outline"));
+            assertNotNull(shell.lookup("#question-outline"));
             toggle.fire();
             assertSame(toggle, button("file-mode-toggle"));
             assertEquals("第 2 / 2 题", ((Label) shell.lookup("#question-position")).getText());
@@ -623,7 +639,7 @@ class MainWorkspaceViewTest {
             ((RadioButton) shell.lookup("#option-0")).fire();
             button("submit-answer").fire();
             assertTrue(text(shell.lookup("#answer-feedback")).contains("回答正确"));
-            assertEquals("Java集合 · ArrayList", button("qbank-source-0").getText());
+            assertEquals("Java集合 · section_list", button("qbank-source-0").getText());
             button("next-question").fire();
             assertNull(shell.lookup("#answer-feedback"));
             ((CheckBox) shell.lookup("#option-0")).fire();
@@ -786,11 +802,10 @@ class MainWorkspaceViewTest {
         });
     }
 
-
     @Test void questionBankEditorSavesToRealFileAndReturnsToPractice() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank");
-            var codec = new QuestionBankV1Codec();
+            var codec = new QuestionBankV2Codec();
             var oldBank = codec.parse(
                     Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
             button("file-mode-toggle").fire();
@@ -805,11 +820,11 @@ class MainWorkspaceViewTest {
             assertTrue(text(shell.filePane()).contains("New question stem?"));
             var saved = codec.parse(
                     Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
-            assertEquals(oldBank.id(), saved.id());
+            assertEquals(oldBank.assetId(), saved.assetId());
             assertEquals(3, saved.questions().size());
             assertNotEquals(saved.questions().get(0).id(), saved.questions().get(1).id());
-            assertEquals("Updated option", saved.questions().getFirst().data().options().getFirst().content());
-            assertEquals("Updated analysis", saved.questions().getFirst().analysis());
+            assertEquals("Updated option", QuestionText.option(saved.questions().getFirst().choicePayload().options().getFirst()));
+            assertEquals("Updated analysis", QuestionText.analysis(saved.questions().getFirst()));
             assertNotEquals(codec.contentId(oldBank), codec.contentId(saved));
         });
     }
@@ -1096,12 +1111,12 @@ class MainWorkspaceViewTest {
             assertNotNull(shell.lookup("#qbank-source-1"));
             assertEquals("Source · 定义", ((Button) shell.lookup("#qbank-source-1")).getText());
             button("qbank-save").fire();
-            var saved = new QuestionBankV1Codec().parse(Files.readString(
+            var saved = new QuestionBankV2Codec().parse(Files.readString(
                     fixture.alphaRoot.resolve("题库/Java集合.qbank")));
             var question = saved.questions().getFirst();
-            assertEquals(link, question.stem());
-            assertEquals(link, question.data().options().getFirst().content());
-            assertEquals(link, question.analysis());
+            assertEquals(link, QuestionText.prompt(question));
+            assertEquals(link, QuestionText.option(question.choicePayload().options().getFirst()));
+            assertEquals(link, QuestionText.analysis(question));
             assertEquals(2, question.sourceRefs().size());
             var source = question.sourceRefs().get(1);
             assertEquals(prepared.document().documentAssetId(), source.documentAssetId());
@@ -1130,6 +1145,7 @@ class MainWorkspaceViewTest {
     @Test void formalMarkdownNamedAnchorCanBecomeSourceButLegacyIdCannot() throws Exception {
         String path = "Java/Named.md";
         String markdown = ShellFixture.document("A formal document section.").replace("doc_java", "doc_named")
+                .replace("<!-- qf:anchor=section_list -->\n", "")
                 + "\n<!-- qf:anchor=命名来源 -->\nNamed anchor body.\n";
         fixture.write(path, markdown);
         fx(() -> {
@@ -1149,7 +1165,7 @@ class MainWorkspaceViewTest {
             shell.applyCss(); shell.layout();
             assertEquals("Named · 命名来源", ((Button) shell.lookup("#qbank-source-1")).getText());
             button("qbank-save").fire();
-            var saved = new QuestionBankV1Codec().parse(Files.readString(
+            var saved = new QuestionBankV2Codec().parse(Files.readString(
                     fixture.alphaRoot.resolve("题库/Java集合.qbank")));
             var ref = saved.questions().getFirst().sourceRefs().get(1);
             assertEquals("命名来源", ref.anchorName());
@@ -1512,7 +1528,7 @@ class MainWorkspaceViewTest {
             open("错误文件/broken.qbank");
             assertFalse(shell.filePane().currentFile().draft());
             assertNull(shell.lookup("#empty-asset-ai"));
-            fixture.write("空草稿/新题库.qbank", "{\"format\":\"quizforge-question-bank\",\"schemaVersion\":\"9.0\",\"id\":\"qb_x\",\"title\":\"Bad\",\"sourceDocuments\":[],\"questions\":[]}");
+            fixture.write("空草稿/新题库.qbank", "{\"schemaVersion\":\"9.0\",\"assetId\":\"qb_x\",\"title\":\"Bad\",\"stimuli\":[],\"resources\":[],\"questions\":[]}");
             shell.refresh();
             open("空草稿/新题库.qbank");
             assertFalse(shell.filePane().currentFile().draft());
@@ -2135,7 +2151,7 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void questionOutlineDividerTracksSidebarAndDisappearsInEditMode() throws Exception {
+    @Test void questionOutlineDividerTracksSidebarAndRemainsInEditMode() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank"); pulse(100);
             var outer = (SplitPane) shell.getCenter();
@@ -2158,9 +2174,13 @@ class MainWorkspaceViewTest {
             assertEquals(divider(layout).localToScene(0, 0).getX(), topDivider.localToScene(0, 0).getX(), 0.5);
 
             button("file-mode-toggle").fire();
-            assertFalse(seam.isVisible());
-            assertNull(shell.lookup("#question-outline"));
-            assertNotNull(shell.filePane().getTop());
+            shell.applyCss(); shell.layout();
+            assertTrue(seam.isVisible());
+            assertNotNull(shell.lookup("#question-outline"));
+            assertNotNull(shell.lookup("#question-bank-editor"));
+            assertNull(shell.filePane().getTop());
+            assertSame(shell.lookup("#file-header"), readerColumn.getTop());
+            assertEquals(divider(layout).localToScene(0, 0).getX(), seam.localToScene(0, 0).getX(), 0.5);
             button("file-mode-toggle").fire(); pulse(100);
             assertTrue(seam.isVisible());
             assertNotNull(shell.lookup("#question-outline"));
@@ -2176,25 +2196,23 @@ class MainWorkspaceViewTest {
     }
 
     private String outlineBank(String... types) throws Exception {
-        var template = new QuestionBankV1Codec().parse(Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
-        List<QuestionBankFile.Entry> questions = new ArrayList<>();
+        var template = new QuestionBankV2Codec().parse(Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+        List<Question> questions = new ArrayList<>();
         for (int i = 0; i < types.length; i++) {
             String type = types[i];
             var original = template.questions().stream().filter(question -> question.type().equals(type)).findFirst().orElseThrow();
-            List<QuestionBankFile.Option> options = new ArrayList<>();
+            List<ChoiceOption> options = new ArrayList<>();
             List<String> correct = new ArrayList<>();
-            for (int j = 0; j < original.data().options().size(); j++) {
-                var old = original.data().options().get(j);
+            for (int j = 0; j < original.choicePayload().options().size(); j++) {
+                var old = original.choicePayload().options().get(j);
                 String id = "opt_outline_" + i + "_" + j;
-                options.add(new QuestionBankFile.Option(id, old.content()));
-                if (original.data().correctOptionIds().contains(old.id())) correct.add(id);
+                options.add(new ChoiceOption(id, old.content()));
+                if (original.choiceAnswerSpec().correctOptionIds().contains(old.id())) correct.add(id);
             }
-            questions.add(new QuestionBankFile.Entry("q_outline_" + i, types[i], original.stem(), original.analysis(),
-                    original.sourceRefs(), new QuestionBankFile.Data(options, correct)));
+            questions.add(Question.choice("q_outline_" + i, types[i], original.prompt(), original.analysis(), original.sourceRefs(), new ChoicePayload(options), new ChoiceAnswerSpec(correct)));
         }
         String path = "题库/Outline.qbank";
-        fixture.write(path, new QuestionBankV1Codec().write(new QuestionBankFile(template.format(), template.schemaVersion(),
-                "qb_outline", "Outline practice", template.sourceDocuments(), questions)));
+        fixture.write(path, new QuestionBankV2Codec().write(new QuestionBank("qb_outline", "Outline practice", "2.0", List.of(), questions, List.of())));
         return path;
     }
 
@@ -2215,10 +2233,10 @@ class MainWorkspaceViewTest {
             assertEquals(moved, shell.tabs().active().path());
             assertTrue(text(shell.filePane().getCenter()).contains("Changed current definition."));
             assertEquals(sample.json(), Files.readString(fixture.alphaRoot.resolve(sample.bankPath())));
-            var reread = new QuestionBankV1Codec().parse(sample.json());
+            var reread = new QuestionBankV2Codec().parse(sample.json());
             assertEquals(sample.bank().questions().getFirst().sourceRefs().getFirst().documentContentId(),
                     reread.questions().getFirst().sourceRefs().getFirst().documentContentId());
-            assertEquals("1.2", reread.schemaVersion());
+            assertEquals("2.0", reread.schemaVersion());
             assertFalse(sample.json().contains("displayName"));
         });
     }
@@ -2297,21 +2315,24 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void legacySourceUiRetainsReadOnlyResolutionAndRemoval() throws Exception {
+    @Test void namedSourceUiResolvesAndCanBeRemovedInTheV2Editor() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank"); button("file-mode-toggle").fire();
             assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
                     button("qbank-source-0").getProperties().get("quizforge.sourceStatus"));
-            assertTrue(button("qbank-source-0").isDisabled());
-            assertTrue(text(shell.lookup("#question-bank-editor")).contains("旧版节点引用"));
+            assertFalse(button("qbank-source-0").isDisabled());
+            assertFalse(text(shell.lookup("#question-bank-editor")).contains("旧版节点引用"));
             assertNull(shell.lookup("#qbank-change-source-0"));
             assertFalse(button("qbank-remove-source-0").isDisabled());
             assertFalse(shell.filePane().hasUnsavedChanges());
+            button("qbank-remove-source-0").fire();
+            assertTrue(shell.filePane().hasUnsavedChanges());
+            assertNull(shell.lookup("#qbank-source-0"));
         });
     }
 
     private record NavigationBank(String documentPath, String bankPath, String markdown,
-            QuestionBankFile bank, String json) { }
+            QuestionBank bank, String json) { }
 
     private NavigationBank navigationBank(boolean multiple) throws Exception {
         String documentPath = "Java/SourceNav.md", bankPath = "题库/SourceNav.qbank";
@@ -2320,22 +2341,18 @@ class MainWorkspaceViewTest {
         text.append("<!-- qf:anchor=定义 -->\nSecond definition.\n\n<!-- qf:anchor=孤立 -->\n");
         var prepared = new RegisteredMarkdownCodec().prepareRegistration(text.toString(), documentPath);
         var document = prepared.document();
-        var first = QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+        var first = SourceRef.anchor(document.documentAssetId(), document.contentId(),
                 "定义", 1, "Historical document title", "Historical section title");
-        var second = QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+        var second = SourceRef.anchor(document.documentAssetId(), document.contentId(),
                 "定义", 2, "Historical document title", "Historical section title");
-        var missing = QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+        var missing = SourceRef.anchor(document.documentAssetId(), document.contentId(),
                 "不存在", 1, "Historical document title", "Historical section title");
-        var orphan = QuestionBankFile.SourceRef.anchor(document.documentAssetId(), document.contentId(),
+        var orphan = SourceRef.anchor(document.documentAssetId(), document.contentId(),
                 "孤立", 1, "Historical document title", "Historical section title");
-        var question = new QuestionBankFile.Entry("q_navigation", "SINGLE_CHOICE", "Test question", "Analysis",
-                multiple ? List.of(first, second, missing, orphan) : List.of(second),
-                new QuestionBankFile.Data(List.of(new QuestionBankFile.Option("opt_nav_a", "Correct"),
-                        new QuestionBankFile.Option("opt_nav_b", "Incorrect")), List.of("opt_nav_a")));
-        var bank = new QuestionBankFile("quizforge-question-bank", "1.2", "qb_navigation", "Navigation bank",
-                List.of(new QuestionBankFile.SourceDocument(document.documentAssetId(), document.contentId(),
-                        "Historical document title")), List.of(question));
-        String json = new QuestionBankV1Codec().write(bank);
+        var question = Question.choice("q_navigation", "SINGLE_CHOICE", new TextContent("Test question"), new TextContent("Analysis"), multiple ? List.of(first, second, missing, orphan) : List.of(second), new ChoicePayload(List.of(new ChoiceOption("opt_nav_a", new TextContent("Correct")),
+                        new ChoiceOption("opt_nav_b", new TextContent("Incorrect")))), new ChoiceAnswerSpec(List.of("opt_nav_a")));
+        var bank = new QuestionBank("qb_navigation", "Navigation bank", "2.0", List.of(), List.of(question), List.of());
+        String json = new QuestionBankV2Codec().write(bank);
         fixture.write(documentPath, prepared.source()); fixture.write(bankPath, json);
         return new NavigationBank(documentPath, bankPath, prepared.source(), bank, json);
     }
@@ -2644,11 +2661,11 @@ class MainWorkspaceViewTest {
             ((RadioButton) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
             button("file-mode-toggle").fire();
             var file = fixture.alphaRoot.resolve("题库/Java集合.qbank");
-            var codec = new QuestionBankV1Codec();
+            var codec = new QuestionBankV2Codec();
             var bank = codec.parse(Files.readString(file));
             var q = bank.questions().getFirst();
-            var changed = new QuestionBankFile.Entry(q.id(), q.type(), q.stem() + " Changed", q.analysis(), q.sourceRefs(), q.data());
-            var edited = new QuestionBankFile(bank.format(), bank.schemaVersion(), bank.id(), bank.title(), bank.sourceDocuments(), List.of(changed, bank.questions().get(1)));
+            var changed = Question.choice(q.id(), q.type(), new TextContent(QuestionText.prompt(q) + " Changed"), q.analysis(), q.sourceRefs(), q.choicePayload(), q.choiceAnswerSpec());
+            var edited = new QuestionBank(bank.assetId(), bank.title(), "2.0", List.of(), List.of(changed, bank.questions().get(1)), List.of());
             Files.writeString(file, codec.write(edited));
             button("file-mode-toggle").fire();
             shell.applyCss(); shell.layout();
@@ -2949,7 +2966,7 @@ class MainWorkspaceViewTest {
             assertEquals(moved, shell.tabs().active().path());
             shell.tabs().activate(tab);
             var detail = fixture.context.getBean(io.quizforge.core.port.PracticeRuntimeProvider.class)
-                    .history(fixture.alpha.id()).loadArchivedSessionDetail(sample.bank().id(), archived);
+                    .history(fixture.alpha.id()).loadArchivedSessionDetail(sample.bank().assetId(), archived);
             assertTrue(detail.questions().getFirst().sourceRefs().toString()
                     .contains(sample.bank().sourceDocuments().getFirst().contentId()));
             assertEquals(before, practiceRows());
@@ -3030,12 +3047,10 @@ class MainWorkspaceViewTest {
         var sample = navigationBank(false);
         var archived = archiveSourceHistory(sample);
         var original = sample.bank().questions().getFirst();
-        var replacement = new QuestionBankFile.Entry("q_replacement", original.type(), "New question", "New analysis",
-                List.of(QuestionBankFile.SourceRef.anchor(original.sourceRefs().getFirst().documentAssetId(),
+        var replacement = Question.choice("q_replacement", original.type(), new TextContent("New question"), new TextContent("New analysis"), List.of(SourceRef.anchor(original.sourceRefs().getFirst().documentAssetId(),
                         original.sourceRefs().getFirst().documentContentId(), "Different current source", 1,
-                        "Current document", "Current source")), original.data());
-        fixture.write(sample.bankPath(), new QuestionBankV1Codec().write(new QuestionBankFile(sample.bank().format(),
-                sample.bank().schemaVersion(), sample.bank().id(), sample.bank().title(), sample.bank().sourceDocuments(), List.of(replacement))));
+                        "Current document", "Current source")), original.choicePayload(), original.choiceAnswerSpec());
+        fixture.write(sample.bankPath(), new QuestionBankV2Codec().write(new QuestionBank(sample.bank().assetId(), sample.bank().title(), "2.0", List.of(), List.of(replacement), List.of())));
         fx(() -> {
             openSourceHistory(sample, archived);
             assertTrue(text(shell.lookup("#history-detail-question")).contains("Test question"));
@@ -3072,6 +3087,18 @@ class MainWorkspaceViewTest {
         fx(() -> {
             open("题库/Java集合.qbank");
             var archived = practiceDbSession().id();
+            // Frozen archived payload predates named anchors; current QBank writers never emit it.
+            var ref = shell.filePane().currentFile().file().questionBank().questions().getFirst().sourceRefs().getFirst();
+            String frozenRefs = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(List.of(
+                    java.util.Map.of("documentAssetId", ref.documentAssetId(),
+                            "documentContentId", ref.documentContentId(), "sectionId", "section_list",
+                            "documentTitle", "Java 集合", "sectionTitle", "ArrayList")));
+            try (var connection = practiceDb().openConnection(); var statement = connection.prepareStatement(
+                    "UPDATE practice_session_question SET source_refs_snapshot_json = ? WHERE session_id = ?")) {
+                statement.setString(1, frozenRefs);
+                statement.setString(2, archived);
+                statement.executeUpdate();
+            }
             new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
                     .archive(archived, java.time.Instant.now());
             button("qbank-history-entry").fire(); shell.applyCss(); shell.layout();
@@ -3087,13 +3114,11 @@ class MainWorkspaceViewTest {
 
     private String archiveSourceHistory(NavigationBank sample) throws Exception {
         var first = sample.bank().questions().getFirst();
-        var second = new QuestionBankFile.Entry("q_history_second", first.type(), "Archived second question",
-                first.analysis(), first.sourceRefs(), new QuestionBankFile.Data(List.of(
-                        new QuestionBankFile.Option("opt_second_a", "Correct"),
-                        new QuestionBankFile.Option("opt_second_b", "Incorrect")), List.of("opt_second_a")));
-        var bank = new QuestionBankFile(sample.bank().format(), sample.bank().schemaVersion(), sample.bank().id(),
-                sample.bank().title(), sample.bank().sourceDocuments(), List.of(first, second));
-        fixture.write(sample.bankPath(), new QuestionBankV1Codec().write(bank));
+        var second = Question.choice("q_history_second", first.type(), new TextContent("Archived second question"), first.analysis(), first.sourceRefs(), new ChoicePayload(List.of(
+                        new ChoiceOption("opt_second_a", new TextContent("Correct")),
+                        new ChoiceOption("opt_second_b", new TextContent("Incorrect")))), new ChoiceAnswerSpec(List.of("opt_second_a")));
+        var bank = new QuestionBank(sample.bank().assetId(), sample.bank().title(), "2.0", List.of(), List.of(first, second), List.of());
+        fixture.write(sample.bankPath(), new QuestionBankV2Codec().write(bank));
         var runtime = fixture.context.getBean(io.quizforge.core.port.PracticeRuntimeProvider.class).open(fixture.alpha.id(), bank);
         for (int i = 0; i < 2; i++) {
             String prefix = i == 0 ? "opt_nav_" : "opt_second_";

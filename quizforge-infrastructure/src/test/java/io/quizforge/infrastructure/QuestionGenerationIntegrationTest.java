@@ -14,8 +14,8 @@ import io.quizforge.core.document.StandardDocumentId;
 import io.quizforge.core.document.StandardDocumentStatus;
 import io.quizforge.core.port.StandardDocumentFileStorage;
 import io.quizforge.core.question.GenerationScopeType;
-import io.quizforge.core.question.Question;
-import io.quizforge.core.question.QuestionBank;
+import io.quizforge.core.question.StoredQuestion;
+import io.quizforge.core.question.StoredQuestionBank;
 import io.quizforge.core.question.QuestionGenerationCommand;
 import io.quizforge.core.question.QuestionGenerationService;
 import io.quizforge.core.question.QuestionType;
@@ -175,7 +175,7 @@ class QuestionGenerationIntegrationTest {
         assertEquals(10, outcome.generated());
         assertEquals(8, outcome.accepted());
         assertEquals(2, outcome.rejected());
-        QuestionBank old = bankRepository.findByWorkspace(workspace.id()).orElseThrow();
+        StoredQuestionBank old = bankRepository.findByWorkspace(workspace.id()).orElseThrow();
         var restarted = new SqliteQuestionBankRepository(new SqliteDatabase(directory));
         assertEquals(old, restarted.findByWorkspace(workspace.id()).orElseThrow());
         response.set(new QuestionGenerationResult(List.of(candidates.get(8))));
@@ -190,7 +190,7 @@ class QuestionGenerationIntegrationTest {
         assertEquals(old, restarted.findByWorkspace(workspace.id()).orElseThrow());
         generatorFails = false;
         response.set(new QuestionGenerationResult(List.of(single("New"))));
-        QuestionBank replacement = service.generate(workspace.id(), command(GenerationScopeType.DOCUMENT,
+        StoredQuestionBank replacement = service.generate(workspace.id(), command(GenerationScopeType.DOCUMENT,
                 Set.of(QuestionType.SINGLE_CHOICE), 10), ignored -> {}).bank();
         assertNotEquals(old.id(), replacement.id());
         assertEquals("New", restarted.findByWorkspace(workspace.id()).orElseThrow().questions().getFirst().stem());
@@ -220,7 +220,7 @@ class QuestionGenerationIntegrationTest {
     }
 
     @Test void outdatedAndTransactionRollback() {
-        QuestionBank old = service.generate(workspace.id(), command(GenerationScopeType.DOCUMENT,
+        StoredQuestionBank old = service.generate(workspace.id(), command(GenerationScopeType.DOCUMENT,
                 Set.of(QuestionType.SINGLE_CHOICE), 10), ignored -> {}).bank();
         assertFalse(service.findByWorkspace(workspace.id()).orElseThrow().outdated());
         StandardDocument updated = new StandardDocument(document.id(), workspace.id(), "Java",
@@ -228,8 +228,8 @@ class QuestionGenerationIntegrationTest {
                 TIME, TIME.plusSeconds(10), List.of());
         documentRepository.save(updated);
         assertTrue(service.findByWorkspace(workspace.id()).orElseThrow().outdated());
-        Question duplicated = old.questions().getFirst();
-        QuestionBank invalid = new QuestionBank(old.id(), old.workspaceId(), old.sourceDocumentId(),
+        StoredQuestion duplicated = old.questions().getFirst();
+        StoredQuestionBank invalid = new StoredQuestionBank(old.id(), old.workspaceId(), old.sourceDocumentId(),
                 old.name(), old.generationScopeType(), old.sourceChapter(), old.sourceSection(),
                 old.requestedQuestionCount(), old.createdAt(), old.updatedAt(), old.generatedAt(),
                 List.of(duplicated, duplicated));

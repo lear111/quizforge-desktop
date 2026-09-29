@@ -1,10 +1,25 @@
 package io.quizforge.core.question;
 
-import java.time.Instant;
 import java.util.List;
 
-public record Question(QuestionId id, QuestionBankId questionBankId, QuestionType type,
-        String stem, String analysis, String sourceChapter, String sourceSection,
-        int sortOrder, Instant createdAt, List<QuestionOption> options) {
-    public Question { options = List.copyOf(options); }
+public record Question(String id, String type, List<String> stimulusRefs, QuestionContent prompt,
+        QuestionPayload payload, QuestionAnswerSpec answerSpec, ScoreSpec scoreSpec,
+        EvaluationSpec evaluationSpec, QuestionContent analysis, List<SourceRef> sourceRefs) {
+    public Question {
+        stimulusRefs = List.copyOf(stimulusRefs);
+        sourceRefs = List.copyOf(sourceRefs);
+    }
+    public static Question choice(String id, String type, QuestionContent prompt, QuestionContent analysis,
+            List<SourceRef> sourceRefs, ChoicePayload payload, ChoiceAnswerSpec answerSpec) {
+        return new Question(id, type, List.of(), prompt, payload, answerSpec, ScoreSpec.defaultScore(),
+                null, analysis, sourceRefs);
+    }
+    public ChoicePayload choicePayload() {
+        if (payload instanceof ChoicePayload choice) return choice;
+        throw new UnsupportedOperationException("Unsupported question payload");
+    }
+    public ChoiceAnswerSpec choiceAnswerSpec() {
+        if (answerSpec instanceof ChoiceAnswerSpec choice) return choice;
+        throw new UnsupportedOperationException("Unsupported question answer specification");
+    }
 }

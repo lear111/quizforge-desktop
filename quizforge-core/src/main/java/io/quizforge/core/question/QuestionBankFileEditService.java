@@ -14,7 +14,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.ArrayList;
 
 /** Edits a portable bank in place; new references must resolve to current valid Markdown documents. */
 public final class QuestionBankFileEditService {
@@ -59,24 +58,23 @@ public final class QuestionBankFileEditService {
         return snapshot;
     }
 
-    public Asset save(WorkspaceId workspace, String path, String expectedContentId, QuestionBankFile edited) {
+    public Asset save(WorkspaceId workspace, String path, String expectedContentId, QuestionBank edited) {
         return save(workspace, path, expectedContentId, null, edited);
     }
 
     public Asset save(WorkspaceId workspace, String path, String expectedContentId,
-            String expectedSourceText, QuestionBankFile edited) {
+            String expectedSourceText, QuestionBank edited) {
         workspaces.getWorkspace(workspace);
         if (path == null || !path.toLowerCase(java.util.Locale.ROOT).endsWith(".qbank"))
             throw new IllegalArgumentException("Only .qbank files can be edited here");
-        QuestionBankFile saved = new QuestionBankFile(edited.format(), "1.2", edited.id(),
-                edited.title(), edited.sourceDocuments(), anchorEntries(workspace, edited.questions()));
+        QuestionBank saved = edited;
         codec.validate(saved);
         String content = codec.write(saved);
         String revision = codec.contentId(saved);
         String currentText = files.read(workspace, path);
-        QuestionBankFile current = expectedContentId == null ? codec.parseEmptyDraft(currentText)
+        QuestionBank current = expectedContentId == null ? codec.parseEmptyDraft(currentText)
                 : codec.parse(currentText);
-        if (!current.id().equals(edited.id())) throw new IllegalArgumentException("QuestionBank assetId cannot change");
+        if (!current.assetId().equals(edited.assetId())) throw new IllegalArgumentException("QuestionBank assetId cannot change");
         if (expectedContentId == null ? expectedSourceText == null || !currentText.equals(expectedSourceText)
                 : !codec.contentId(current).equals(expectedContentId))
             throw new IllegalStateException("QuestionBank changed externally. Please reload before saving.");
@@ -86,11 +84,11 @@ public final class QuestionBankFileEditService {
             try {
                 Asset registered = scanner.scan(workspace).stream()
                         .filter(asset -> asset.assetType() == AssetType.QUESTION_BANK
-                                && asset.assetId().equals(edited.id()))
+                                && asset.assetId().equals(edited.assetId()))
                         .findFirst().orElseThrow(() -> new IllegalStateException("Saved QuestionBank was not indexed"));
                 if (!path.equals(registered.currentPath()) || !revision.equals(registered.contentId()))
                     throw new IllegalStateException("Asset Registry does not match the saved QuestionBank");
-                QuestionBankFile reread = codec.parse(files.read(workspace, path));
+                QuestionBank reread = codec.parse(files.read(workspace, path));
                 if (!revision.equals(codec.contentId(reread)))
                     throw new IllegalStateException("Saved QuestionBank revision changed unexpectedly");
                 staged.complete();
@@ -103,58 +101,21 @@ public final class QuestionBankFileEditService {
         }
     }
 
-    private void validateNewRefs(WorkspaceId workspace, QuestionBankFile current, QuestionBankFile edited) {
-        Set<QuestionBankFile.SourceRef> existing = new HashSet<>();
+    private void validateNewRefs(WorkspaceId workspace, QuestionBank current, QuestionBank edited) {
+        Set<SourceRef> existing = new HashSet<>();
         current.questions().forEach(question -> existing.addAll(question.sourceRefs()));
-        Map<String, SourceDocumentSnapshot> snapshots = new HashMap<>();
         Map<String, Asset> registered = new HashMap<>();
         scanner.scan(workspace).stream().filter(asset -> asset.assetType() == AssetType.STANDARD_DOCUMENT)
                 .forEach(asset -> registered.put(asset.assetId(), asset));
         for (var question : edited.questions()) for (var ref : question.sourceRefs()) {
             if (existing.contains(ref)) continue;
-            if (ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR) {
-                Asset asset = registered.get(ref.documentAssetId());
-                if (nodes == null || asset == null || !asset.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".md"))
-                    throw new IllegalArgumentException("Source Markdown is unavailable");
-                var found = nodes.lookupNamedAnchor(workspace, asset, ref.anchorName(), ref.occurrence());
-                if (!found.containsAnchor() || found.orphan()
-                        || !ref.documentContentId().equals(found.contentId()))
-                    throw new IllegalArgumentException("Source Anchor is not in the current Markdown revision");
-                continue;
-            }
-            SourceDocumentSnapshot source = snapshots.computeIfAbsent(ref.documentAssetId(),
-                    id -> source(workspace, id));
-            if (!source.contentId().equals(ref.documentContentId()) || source.chapters().stream()
-                    .flatMap(chapter -> chapter.sections().stream())
-                    .noneMatch(section -> section.id().equals(ref.address().value()))) {
-                throw new IllegalArgumentException("Source reference is not in the selected Markdown revision");
-            }
+            Asset asset = registered.get(ref.documentAssetId());
+            if (nodes == null || asset == null || !asset.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".md"))
+                throw new IllegalArgumentException("Source Markdown is unavailable");
+            var found = nodes.lookupNamedAnchor(workspace, asset, ref.anchorName(), ref.occurrence());
+            if (!found.containsAnchor() || found.orphan()
+                    || !ref.documentContentId().equals(found.contentId()))
+                throw new IllegalArgumentException("Source Anchor is not in the current Markdown revision");
         }
-    }
-
-    private List<QuestionBankFile.Entry> anchorEntries(WorkspaceId workspace,
-            List<QuestionBankFile.Entry> questions) {
-        Map<String, Asset> sources = new HashMap<>();
-        scanner.scan(workspace).stream().filter(asset -> asset.assetType() == AssetType.STANDARD_DOCUMENT)
-                .forEach(asset -> sources.put(asset.assetId(), asset));
-        List<QuestionBankFile.Entry> result = new ArrayList<>();
-        for (var question : questions) {
-            List<QuestionBankFile.SourceRef> refs = new ArrayList<>();
-            for (var ref : question.sourceRefs()) {
-                if (ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR) refs.add(ref);
-                else {
-                    Asset source = sources.get(ref.documentAssetId());
-                    if (source == null || !(source.currentPath().toLowerCase(java.util.Locale.ROOT).endsWith(".md")
-                            && ref.documentContentId().startsWith("qfd:v1:")))
-                        throw new IllegalArgumentException("Legacy node references need explicit migration");
-                    refs.add(QuestionBankFile.SourceRef.anchor(ref.documentAssetId(),
-                            ref.documentContentId(), ref.address().value(), 1,
-                            ref.documentTitle(), ref.sectionTitle()));
-                }
-            }
-            result.add(new QuestionBankFile.Entry(question.id(), question.type(), question.stem(),
-                    question.analysis(), refs, question.data()));
-        }
-        return result;
     }
 }

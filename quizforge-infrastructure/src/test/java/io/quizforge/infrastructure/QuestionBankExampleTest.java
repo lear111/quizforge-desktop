@@ -17,6 +17,17 @@ import org.junit.jupiter.api.io.TempDir;
 class QuestionBankExampleTest {
     @TempDir Path temp;
 
+    @Test void richFoundationExampleRoundTripsWithoutResourceFiles() throws Exception {
+        Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+        if (!Files.isDirectory(root.resolve("examples"))) root = root.getParent();
+        var codec = new QuestionBankV2Codec();
+        var bank = codec.parse(Files.readString(root.resolve("examples/qbank-v2/rich-foundation.qbank")));
+        assertEquals(bank, codec.parse(codec.write(bank)));
+        assertEquals(2, bank.resources().size());
+        assertEquals(1, bank.stimuli().size());
+        assertEquals(new java.math.BigDecimal("1.5"), bank.questions().getFirst().scoreSpec().defaultMaxScore());
+    }
+
     @Test void longMarkdownExampleIsAValidFileAssetForScrolling() throws Exception {
         Path examples = Path.of(System.getProperty("user.dir")).toAbsolutePath().resolve("examples/step7-practice");
         if (!Files.isDirectory(examples)) examples = Path.of(System.getProperty("user.dir"))
@@ -35,7 +46,7 @@ class QuestionBankExampleTest {
         Path documentFile = examples.resolve("Java集合示例.md");
         Path bankFile = examples.resolve("Java集合练习.qbank");
         var documentCodec = new StandardKnowledgeDocumentV1();
-        var bankCodec = new QuestionBankV1Codec();
+        var bankCodec = new QuestionBankV2Codec();
         var document = documentCodec.parseIfStandard(Files.readString(documentFile)).orElseThrow();
         var bank = bankCodec.parse(Files.readString(bankFile));
         assertEquals(4, bank.questions().size());
@@ -47,7 +58,7 @@ class QuestionBankExampleTest {
         for (var question : bank.questions()) for (var ref : question.sourceRefs()) {
             assertEquals(document.assetId(), ref.documentAssetId());
             assertEquals(document.contentId(), ref.documentContentId());
-            assertTrue(sections.contains(ref.nodeId()));
+            assertTrue(sections.contains(ref.anchorName()));
         }
 
         var directory = new QuizForgeDataDirectory(temp.resolve("data"));

@@ -1,5 +1,7 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.question.*;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.quizforge.core.asset.Asset;
@@ -10,7 +12,6 @@ import io.quizforge.core.port.AssetIndexRepository;
 import io.quizforge.core.port.DocumentNodeLookup;
 import io.quizforge.core.practice.PracticePayload;
 import io.quizforge.core.practice.PracticeQuestionSnapshotMapper;
-import io.quizforge.core.question.*;
 import io.quizforge.core.workspace.WorkspaceId;
 import java.time.Instant;
 import java.util.List;
@@ -114,7 +115,7 @@ class HistorySourceNavigationAdapterTest {
     }
 
     @Test void multipleSourcesResolveIndependentlyFromTheArchivedPayload() {
-        var absent = QuestionBankFile.SourceRef.anchor("doc_gone", A, "旧来源", 1, "Gone", "Old");
+        var absent = SourceRef.anchor("doc_gone", A, "旧来源", 1, "Gone", "Old");
         var states = adapter.inspect(workspace, snapshot(ref(1), absent, ref(2)));
         assertEquals(List.of(true, false, true), states.stream().map(s -> s.navigable()).toList());
         assertEquals(absent, states.get(1).ref());
@@ -131,16 +132,22 @@ class HistorySourceNavigationAdapterTest {
     }
 
     @Test void legacySectionAndNodeAddressesArePreservedWithoutInventingAnchors() {
-        var section = new QuestionBankFile.SourceRef("doc_history", A,
+        var section = new SourceRef("doc_history", A,
                 QuestionSourceAddress.section("section_old"), "Old", "Section");
-        var node = new QuestionBankFile.SourceRef("doc_history", A, "node_old", "Old", "Node");
-        var states = adapter.inspect(workspace, snapshot(section, node));
+        var node = new SourceRef("doc_history", A, "node_old", "Old", "Node");
+        // This is a frozen historical payload, independent of the current QBank writer.
+        var archived = new PracticePayload(List.of(
+                Map.of("documentAssetId", "doc_history", "documentContentId", A,
+                        "sectionId", "section_old", "documentTitle", "Old", "sectionTitle", "Section"),
+                Map.of("documentAssetId", "doc_history", "documentContentId", A,
+                        "nodeId", "node_old", "documentTitle", "Old", "sectionTitle", "Node")));
+        var states = adapter.inspect(workspace, archived);
         assertEquals(section, states.get(0).ref());
         assertEquals(node, states.get(1).ref());
         assertTrue(states.stream().allMatch(s -> s.status() == QuestionBankReferenceResolver.Status.EXACT_MATCH));
         assertTrue(states.stream().noneMatch(s -> s.navigable()));
         missing = true;
-        assertTrue(adapter.inspect(workspace, snapshot(section, node)).stream()
+        assertTrue(adapter.inspect(workspace, archived).stream()
                 .allMatch(s -> s.status() == QuestionBankReferenceResolver.Status.MISSING_NODE));
     }
 
@@ -172,14 +179,12 @@ class HistorySourceNavigationAdapterTest {
         assertNull(navigation.get());
     }
 
-    private static PracticePayload snapshot(QuestionBankFile.SourceRef... refs) {
-        return new PracticeQuestionSnapshotMapper().map(new QuestionBankFile.Entry("archived_question",
-                "SINGLE_CHOICE", "Historical question", "Analysis", List.of(refs),
-                new QuestionBankFile.Data(List.of(new QuestionBankFile.Option("a", "A"),
-                        new QuestionBankFile.Option("b", "B")), List.of("a")))).sourceRefs();
+    private static PracticePayload snapshot(SourceRef... refs) {
+        return new PracticeQuestionSnapshotMapper().map(Question.choice("archived_question", "SINGLE_CHOICE", new TextContent("Historical question"), new TextContent("Analysis"), List.of(refs), new ChoicePayload(List.of(new ChoiceOption("a", new TextContent("A")),
+                        new ChoiceOption("b", new TextContent("B")))), new ChoiceAnswerSpec(List.of("a")))).sourceRefs();
     }
-    private static QuestionBankFile.SourceRef ref(int occurrence) {
-        return QuestionBankFile.SourceRef.anchor("doc_history", A, "定义", occurrence, "Snapshot title", "Old");
+    private static SourceRef ref(int occurrence) {
+        return SourceRef.anchor("doc_history", A, "定义", occurrence, "Snapshot title", "Old");
     }
     private static Asset asset(String id, String path, String revision) {
         return new Asset(id, AssetType.STANDARD_DOCUMENT, path, "Current title", revision, "1");

@@ -20,7 +20,7 @@ public final class QuestionSourceLinkService {
         this.nodes = nodes;
     }
 
-    public QuestionBankFile.SourceRef resolve(WorkspaceId workspace, String input) {
+    public SourceRef resolve(WorkspaceId workspace, String input) {
         QuizForgeNavigationLink link = links.parse(input).link();
         if (!(link.target() instanceof QuizForgeNavigationLink.AnchorTarget anchor))
             throw new IllegalArgumentException("题目来源目前需要使用 Source Anchor。");
@@ -37,11 +37,11 @@ public final class QuestionSourceLinkService {
                     : "Source Anchor is missing");
         if (found.contentId() == null || !found.contentId().matches("qfd:v[12]:[0-9a-f]{64}"))
             throw new IllegalArgumentException("Source document revision is unavailable");
-        return QuestionBankFile.SourceRef.anchor(asset.assetId(), found.contentId(),
+        return SourceRef.anchor(asset.assetId(), found.contentId(),
                 anchor.anchorName(), anchor.occurrence(), filename(asset.currentPath()), anchor.anchorName());
     }
 
-    public String displayName(WorkspaceId workspace, QuestionBankFile.SourceRef ref) {
+    public String displayName(WorkspaceId workspace, SourceRef ref) {
         String name = index.findById(workspace, ref.documentAssetId())
                 .map(asset -> filename(asset.currentPath())).orElse("缺失文档");
         String target = ref.anchorName() == null ? ref.sectionTitle() : ref.anchorName();

@@ -24,7 +24,7 @@ import java.util.stream.Stream;
 /** Workspace-relative filesystem actions; no operation follows links or touches .quizforge. */
 public final class LocalWorkspaceFileOperations implements WorkspaceFileOperations {
     private final WorkspacePathResolver paths;
-    private final QuestionBankV1Codec banks = new QuestionBankV1Codec();
+    private final QuestionBankV2Codec banks = new QuestionBankV2Codec();
     private final ObjectMapper json = new ObjectMapper();
 
     public LocalWorkspaceFileOperations(WorkspacePathResolver paths) { this.paths = paths; }
@@ -155,11 +155,11 @@ public final class LocalWorkspaceFileOperations implements WorkspaceFileOperatio
 
     private String emptyQuestionBank(String title) {
         var root = json.createObjectNode();
-        root.put("format", "quizforge-question-bank");
-        root.put("schemaVersion", "1.2");
-        root.put("id", "qb_" + UUID.randomUUID().toString().replace("-", ""));
+        root.put("schemaVersion", "2.0");
+        root.put("assetId", "qb_" + UUID.randomUUID().toString().replace("-", ""));
         root.put("title", title);
-        root.putArray("sourceDocuments");
+        root.putArray("stimuli");
+        root.putArray("resources");
         root.putArray("questions");
         try {
             String content = json.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n";

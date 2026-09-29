@@ -1,5 +1,7 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.question.QuestionText;
+
 import io.quizforge.core.practice.PracticeHistoryDetail;
 import io.quizforge.core.practice.PracticePayload;
 import io.quizforge.core.question.QuestionBankPracticeSession;
@@ -13,9 +15,9 @@ final class QuestionPresentationMapper {
 
     static QuestionPresentation practice(QuestionBankPracticeSession session) {
         var question = session.current();
-        return new QuestionPresentation(question.type(), question.stem(), question.data().options().stream()
-                .map(option -> new QuestionPresentation.Option(option.id(), option.content())).toList(),
-                Set.copyOf(question.data().correctOptionIds()), question.analysis());
+        return new QuestionPresentation(question.type(), QuestionText.prompt(question), question.choicePayload().options().stream()
+                .map(option -> new QuestionPresentation.Option(option.id(), QuestionText.option(option))).toList(),
+                Set.copyOf(question.choiceAnswerSpec().correctOptionIds()), QuestionText.analysis(question));
     }
 
     static QuestionResultPresentation practiceResult(QuestionBankPracticeSession session) {

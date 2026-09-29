@@ -1,7 +1,6 @@
 package io.quizforge.core.practice;
 
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankPracticeSession;
+import io.quizforge.core.question.*;
 
 /** Persist first, then hydrate the same runtime object used by the view and its read-only Outline. */
 public final class PersistentPracticeRuntime {
@@ -12,7 +11,7 @@ public final class PersistentPracticeRuntime {
     private final PracticeRuntimeMapper mapper = new PracticeRuntimeMapper();
     private ActivePracticeSnapshot snapshot;
 
-    public PersistentPracticeRuntime(PracticeSessionService service, QuestionBankFile bank, String contentId) {
+    public PersistentPracticeRuntime(PracticeSessionService service, QuestionBank bank, String contentId) {
         this.service = service;
         this.contentId = contentId;
         session = new QuestionBankPracticeSession(bank);

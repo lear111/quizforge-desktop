@@ -1,11 +1,12 @@
 package io.quizforge.infrastructure.persistence;
 
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.port.PracticeRuntimeProvider;
 import io.quizforge.core.port.QuestionBankFileCodec;
 import io.quizforge.core.practice.PersistentPracticeRuntime;
 import io.quizforge.core.practice.PracticeSessionService;
 import io.quizforge.core.practice.PracticeHistoryService;
-import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import java.nio.file.Files;
@@ -28,7 +29,7 @@ public final class SqliteWorkspacePracticeRuntimeProvider implements PracticeRun
         this.clock = clock;
     }
 
-    @Override public PersistentPracticeRuntime open(WorkspaceId workspace, QuestionBankFile bank) {
+    @Override public PersistentPracticeRuntime open(WorkspaceId workspace, QuestionBank bank) {
         var service = new PracticeSessionService(new SqlitePracticeTransaction(database(workspace)), clock);
         return new PersistentPracticeRuntime(service, bank, codec.contentId(bank));
     }

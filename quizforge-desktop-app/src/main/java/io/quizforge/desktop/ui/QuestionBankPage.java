@@ -3,8 +3,8 @@ package io.quizforge.desktop.ui;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.ai.AiSettingsService;
 import io.quizforge.core.question.GenerationScopeType;
-import io.quizforge.core.question.Question;
-import io.quizforge.core.question.QuestionBank;
+import io.quizforge.core.question.StoredQuestion;
+import io.quizforge.core.question.StoredQuestionBank;
 import io.quizforge.core.question.QuestionBankView;
 import io.quizforge.core.question.QuestionGenerationCommand;
 import io.quizforge.core.question.QuestionGenerationOutcome;
@@ -78,7 +78,7 @@ final class QuestionBankPage {
     }
 
     private void renderBank(VBox body, QuestionBankView view) {
-        QuestionBank bank = view.bank();
+        StoredQuestionBank bank = view.bank();
         Label name = UiTheme.label(bank.name(), "section-title");
         long single = bank.questions().stream().filter(q -> q.type() == QuestionType.SINGLE_CHOICE).count();
         long multiple = bank.questions().size() - single;
@@ -93,7 +93,7 @@ final class QuestionBankPage {
             warning.getStyleClass().add("warning");
             body.getChildren().add(warning);
         }
-        for (Question question : bank.questions()) {
+        for (StoredQuestion question : bank.questions()) {
             VBox card = new VBox(12);
             card.getStyleClass().add("question-card");
             card.getChildren().addAll(UiTheme.label(String.format("%02d", question.sortOrder()) + "  /  "
@@ -121,7 +121,7 @@ final class QuestionBankPage {
         return label;
     }
 
-    private String scopeLabel(QuestionBank bank) {
+    private String scopeLabel(StoredQuestionBank bank) {
         return switch (bank.generationScopeType()) {
             case DOCUMENT -> "Entire Document";
             case CHAPTER -> bank.sourceChapter();

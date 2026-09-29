@@ -1,5 +1,7 @@
 package io.quizforge.infrastructure;
 
+import io.quizforge.core.question.*;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.quizforge.core.ErrorCode;
@@ -7,13 +9,6 @@ import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.asset.Asset;
 import io.quizforge.core.asset.AssetType;
 import io.quizforge.core.port.WorkspaceAssetScanner;
-import io.quizforge.core.question.FileQuestionBankGenerationService;
-import io.quizforge.core.question.GenerationScopeType;
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankReferenceResolver;
-import io.quizforge.core.question.QuestionBankV1Assembler;
-import io.quizforge.core.question.QuestionType;
-import io.quizforge.core.question.StandardDocumentSelection;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceService;
 import io.quizforge.extension.question.SourceAwareQuestionGenerator;
@@ -22,7 +17,7 @@ import io.quizforge.infrastructure.filesystem.FormalMarkdownDocumentReader;
 import io.quizforge.infrastructure.filesystem.LocalQuestionBankFileStorage;
 import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
-import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
+import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
@@ -53,7 +48,7 @@ class FileQuestionBankGenerationIntegrationTest {
     private SqliteAssetIndexRepository index;
     private Workspace workspace;
     private Path root;
-    private final QuestionBankV1Codec codec = new QuestionBankV1Codec();
+    private final QuestionBankV2Codec codec = new QuestionBankV2Codec();
 
     @BeforeEach void setup() throws Exception {
         directory = new QuizForgeDataDirectory(temporaryDirectory.resolve("data"));
@@ -76,31 +71,31 @@ class FileQuestionBankGenerationIntegrationTest {
         assertEquals(AssetType.QUESTION_BANK, outcome.asset().assetType());
         assertEquals("question-banks/Java Bank.qbank", outcome.asset().currentPath());
         assertEquals(codec.contentId(outcome.bank()), outcome.asset().contentId());
-        QuestionBankFile bank = codec.parse(Files.readString(root.resolve(outcome.asset().currentPath())));
+        QuestionBank bank = codec.parse(Files.readString(root.resolve(outcome.asset().currentPath())));
         assertEquals(2, bank.sourceDocuments().size());
         assertEquals(2, bank.questions().size());
         assertTrue(bank.questions().getFirst().id().startsWith("q_"));
-        assertTrue(bank.questions().getFirst().data().options().getFirst().id().startsWith("opt_"));
+        assertTrue(bank.questions().getFirst().choicePayload().options().getFirst().id().startsWith("opt_"));
         assertNotEquals("q_forged", bank.questions().getFirst().id());
-        assertNotEquals("opt_forged", bank.questions().getFirst().data().options().getFirst().id());
+        assertNotEquals("opt_forged", bank.questions().getFirst().choicePayload().options().getFirst().id());
         assertEquals("doc_a", bank.questions().getFirst().sourceRefs().getFirst().documentAssetId());
         assertEquals("section_a", bank.questions().getFirst().sourceRefs().getFirst().anchorName());
         assertEquals(1, bank.questions().getFirst().sourceRefs().getFirst().occurrence());
         assertEquals(bank.sourceDocuments().getFirst().contentId(),
                 bank.questions().getFirst().sourceRefs().getFirst().documentContentId());
         assertFalse(Files.readString(root.resolve(outcome.asset().currentPath())).contains("sourcePath"));
-        assertEquals(outcome.asset(), index.findById(workspace.id(), bank.id()).orElseThrow());
-        assertEquals(bank, service(request -> List.of()).read(workspace.id(), bank.id()));
+        assertEquals(outcome.asset(), index.findById(workspace.id(), bank.assetId()).orElseThrow());
+        assertEquals(bank, service(request -> List.of()).read(workspace.id(), bank.assetId()));
         try (Connection connection = new SqliteDatabase(directory).openConnection();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate("DELETE FROM question_bank");
         }
-        assertEquals(bank, service(request -> List.of()).read(workspace.id(), bank.id()));
+        assertEquals(bank, service(request -> List.of()).read(workspace.id(), bank.assetId()));
         Path moved = Files.createDirectories(root.resolve("Custom/Nested")).resolve("Moved.qbank");
         Files.move(root.resolve(outcome.asset().currentPath()), moved);
         assertEquals("Custom/Nested/Moved.qbank", scanner.scan(workspace.id()).stream()
-                .filter(a -> a.assetId().equals(bank.id())).findFirst().orElseThrow().currentPath());
-        assertEquals(bank, service(request -> List.of()).read(workspace.id(), bank.id()));
+                .filter(a -> a.assetId().equals(bank.assetId())).findFirst().orElseThrow().currentPath());
+        assertEquals(bank, service(request -> List.of()).read(workspace.id(), bank.assetId()));
     }
 
     @Test void selectedScopeAndSourceIdsRejectInvalidCandidatesButKeepValidOnes() {
@@ -127,7 +122,7 @@ class FileQuestionBankGenerationIntegrationTest {
                         StandardDocumentSelection.whole("doc_b")),
                 EnumSet.of(QuestionType.MULTIPLE_CHOICE), 1, ignored -> { });
         assertEquals(2, outcome.bank().questions().getFirst().sourceRefs().size());
-        assertEquals(2, outcome.bank().questions().getFirst().data().correctOptionIds().size());
+        assertEquals(2, outcome.bank().questions().getFirst().choiceAnswerSpec().correctOptionIds().size());
     }
 
     @Test void sameDocumentCanSelectTwoSectionsAndRejectOneOutsideSelection() throws Exception {
@@ -166,7 +161,7 @@ class FileQuestionBankGenerationIntegrationTest {
         String previous = Files.readString(root.resolve(outcome.asset().currentPath()));
         assertEquals(ErrorCode.NO_VALID_QUESTION_GENERATED,
                 assertThrows(QuizForgeException.class, () -> service(request -> List.of(candidateWithoutRefs()))
-                        .regenerate(workspace.id(), outcome.bank().id(), "Partial",
+                        .regenerate(workspace.id(), outcome.bank().assetId(), "Partial",
                                 List.of(StandardDocumentSelection.whole("doc_a")),
                                 EnumSet.of(QuestionType.SINGLE_CHOICE), 1, ignored -> { })).code());
         assertEquals(previous, Files.readString(root.resolve(outcome.asset().currentPath())));
@@ -175,14 +170,14 @@ class FileQuestionBankGenerationIntegrationTest {
     @Test void createCollisionAndRegeneratePreserveBankIdentity() throws Exception {
         var first = createOne("Same", candidate("doc_a", "section_a"));
         var second = createOne("Same", candidate("doc_a", "section_a"));
-        assertNotEquals(first.bank().id(), second.bank().id());
+        assertNotEquals(first.bank().assetId(), second.bank().assetId());
         assertEquals("question-banks/Same (2).qbank", second.asset().currentPath());
         String secondFile = Files.readString(root.resolve(second.asset().currentPath()));
         var changed = service(request -> List.of(candidate("doc_b", "section_b")))
-                .regenerate(workspace.id(), first.bank().id(), "Changed",
+                .regenerate(workspace.id(), first.bank().assetId(), "Changed",
                         List.of(StandardDocumentSelection.whole("doc_b")),
                         EnumSet.of(QuestionType.SINGLE_CHOICE), 1, ignored -> { });
-        assertEquals(first.bank().id(), changed.bank().id());
+        assertEquals(first.bank().assetId(), changed.bank().assetId());
         assertEquals(first.asset().currentPath(), changed.asset().currentPath());
         assertEquals(secondFile, Files.readString(root.resolve(second.asset().currentPath())));
     }
@@ -197,7 +192,7 @@ class FileQuestionBankGenerationIntegrationTest {
             return List.of(candidate("doc_a", "section_a"));
         });
         assertEquals(ErrorCode.SOURCE_DOCUMENT_CHANGED_DURING_GENERATION,
-                assertThrows(QuizForgeException.class, () -> changing.regenerate(workspace.id(), first.bank().id(),
+                assertThrows(QuizForgeException.class, () -> changing.regenerate(workspace.id(), first.bank().assetId(),
                         "Existing", List.of(StandardDocumentSelection.whole("doc_a")),
                         EnumSet.of(QuestionType.SINGLE_CHOICE), 1, ignored -> { })).code());
         assertEquals(previous, Files.readString(root.resolve(first.asset().currentPath())));
@@ -208,7 +203,7 @@ class FileQuestionBankGenerationIntegrationTest {
         Path external = Files.createDirectories(root.resolve("Import")).resolve("Imported.qbank");
         Files.move(root.resolve(generated.asset().currentPath()), external);
         assertEquals("Import/Imported.qbank", scanner.scan(workspace.id()).stream()
-                .filter(a -> a.assetId().equals(generated.bank().id())).findFirst().orElseThrow().currentPath());
+                .filter(a -> a.assetId().equals(generated.bank().assetId())).findFirst().orElseThrow().currentPath());
         var resolver = new QuestionBankReferenceResolver(scanner);
         assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
                 resolver.resolve(workspace.id(), generated.bank()).getFirst().status());
@@ -242,8 +237,7 @@ class FileQuestionBankGenerationIntegrationTest {
     @Test void formalParserAndSchemaValidatorRejectInvalidContentWithoutRequiringResolvedSources() {
         var generated = createOne("Validate", candidate("doc_a", "section_a"));
         var bank = generated.bank();
-        var invalid = new QuestionBankFile(bank.format(), bank.schemaVersion(), bank.id(), bank.title(),
-                bank.sourceDocuments(), List.of(bank.questions().getFirst(), bank.questions().getFirst()));
+        var invalid = new QuestionBank(bank.assetId(), bank.title(), "2.0", List.of(), List.of(bank.questions().getFirst(), bank.questions().getFirst()), List.of());
         assertEquals(ErrorCode.QUESTION_BANK_FILE_INVALID,
                 assertThrows(QuizForgeException.class, () -> codec.validate(invalid)).code());
         assertEquals(bank, codec.parse(codec.write(bank)));
@@ -284,9 +278,9 @@ class FileQuestionBankGenerationIntegrationTest {
         };
         var failing = new FileQuestionBankGenerationService(workspaces, failAfterLookup,
                 new FormalMarkdownDocumentReader(new LocalStandardDocumentFileStorage(directory)),
-                request -> List.of(candidate("doc_a", "section_a")), new QuestionBankV1Assembler(),
+                request -> List.of(candidate("doc_a", "section_a")), new QuestionBankV2Assembler(),
                 codec, new LocalQuestionBankFileStorage(directory));
-        assertThrows(RuntimeException.class, () -> failing.regenerate(workspace.id(), original.bank().id(),
+        assertThrows(RuntimeException.class, () -> failing.regenerate(workspace.id(), original.bank().assetId(),
                 "Keep", List.of(StandardDocumentSelection.whole("doc_a")),
                 EnumSet.of(QuestionType.SINGLE_CHOICE), 1, ignored -> { }));
         assertEquals(before, Files.readString(file));
@@ -309,7 +303,7 @@ class FileQuestionBankGenerationIntegrationTest {
         assertEquals(ErrorCode.QUESTION_GENERATION_FAILED,
                 assertThrows(QuizForgeException.class, () -> service(request -> {
                     throw new IllegalStateException("fake failure");
-                }).regenerate(workspace.id(), original.bank().id(), "AI failure",
+                }).regenerate(workspace.id(), original.bank().assetId(), "AI failure",
                         List.of(StandardDocumentSelection.whole("doc_a")),
                         EnumSet.of(QuestionType.SINGLE_CHOICE), 1, ignored -> { })).code());
         assertEquals(before, Files.readString(path));
@@ -326,7 +320,7 @@ class FileQuestionBankGenerationIntegrationTest {
             Function<SourceAwareQuestionGenerator.Request, List<SourceAwareQuestionGenerator.Candidate>> response) {
         return new FileQuestionBankGenerationService(workspaces, scanner,
                 new FormalMarkdownDocumentReader(new LocalStandardDocumentFileStorage(directory)), response::apply,
-                new QuestionBankV1Assembler(), codec, new LocalQuestionBankFileStorage(directory));
+                new QuestionBankV2Assembler(), codec, new LocalQuestionBankFileStorage(directory));
     }
 
     private void document(String relative, String assetId, String title, String sectionId, String body) throws Exception {

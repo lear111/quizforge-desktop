@@ -1,5 +1,7 @@
 package io.quizforge.infrastructure;
 
+import io.quizforge.core.question.*;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -16,8 +18,7 @@ import io.quizforge.core.practice.PracticeSession;
 import io.quizforge.core.practice.PracticeSessionQuestion;
 import io.quizforge.core.practice.PracticeSessionService;
 import io.quizforge.core.practice.QuestionAttempt;
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
+import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqlitePracticeSessionQuestionRepository;
@@ -55,7 +56,7 @@ class ActivePracticeSessionIntegrationTest {
     private SqlitePracticeSessionQuestionRepository questions;
     private SqliteQuestionAttemptRepository attempts;
     private PracticeSessionService service;
-    private final QuestionBankV1Codec codec = new QuestionBankV1Codec();
+    private final QuestionBankV2Codec codec = new QuestionBankV2Codec();
     private final PracticeQuestionSnapshotMapper mapper = new PracticeQuestionSnapshotMapper();
 
     @BeforeEach void setUp() {
@@ -70,7 +71,7 @@ class ActivePracticeSessionIntegrationTest {
     @Test void firstOpenCreatesEntireRoundWithOrderedCompleteSnapshotsAndNoAttempts() throws Exception {
         var bank = bank(3);
         var opened = open(bank);
-        assertEquals(bank.id(), opened.session().questionBankAssetId());
+        assertEquals(bank.assetId(), opened.session().questionBankAssetId());
         assertEquals(codec.contentId(bank), opened.session().questionBankContentId());
         assertEquals(bank.title(), opened.session().bankTitleSnapshot());
         assertEquals(PracticeSession.Status.ACTIVE, opened.session().status());
@@ -233,8 +234,7 @@ class ActivePracticeSessionIntegrationTest {
         var first = open(bank);
         seedAnswer(first, "q_1");
         var before = persisted(first.session().id());
-        var renamed = new QuestionBankFile(bank.format(), bank.schemaVersion(), bank.id(), "新题库标题",
-                bank.sourceDocuments(), bank.questions());
+        var renamed = new QuestionBank(bank.assetId(), "新题库标题", "2.0", List.of(), bank.questions(), List.of());
         var changed = service(database, REOPEN).openOrCreateActiveSession(renamed, codec.contentId(renamed));
         assertEquals(before.questions(), changed.questions());
         assertEquals("新题库标题", changed.session().bankTitleSnapshot());
@@ -331,8 +331,7 @@ class ActivePracticeSessionIntegrationTest {
         var frozen = persisted(archived.session().id());
         var active = open(bank);
         seedAnswer(active, "q_1");
-        var changedBank = new QuestionBankFile(bank.format(), bank.schemaVersion(), bank.id(), "修改后的题库",
-                bank.sourceDocuments(), List.of(semanticChange(bank.questions().getFirst(), "stem"), entry(4)));
+        var changedBank = new QuestionBank(bank.assetId(), "修改后的题库", "2.0", List.of(), List.of(semanticChange(bank.questions().getFirst(), "stem"), entry(4)), List.of());
         var changed = open(changedBank);
         assertEquals(active.session().id(), changed.session().id());
         assertNotEquals(archived.session().id(), changed.session().id());
@@ -421,34 +420,25 @@ class ActivePracticeSessionIntegrationTest {
         var before = persisted(first.session().id());
         var empty = copy(bank, List.of());
         var failure = assertThrows(QuizForgeException.class,
-                () -> service.openOrCreateActiveSession(empty, "qfb:v1:" + "0".repeat(64)));
+                () -> service.openOrCreateActiveSession(empty, "qfb:v2:" + "0".repeat(64)));
         assertEquals(ErrorCode.QUESTION_BANK_FILE_INVALID, failure.code());
         assertEquals(before, persisted(first.session().id()));
     }
 
-    @ParameterizedTest(name = "legacy QBank schema: {0}")
-    @ValueSource(strings = {"1.0", "1.1"})
-    void legacyBankVersionsCanCreateAndRestoreSnapshots(String version) {
+    @Test void v2BankCanCreateAndRestoreSnapshots() {
         var bank = bank(1);
-        var current = bank.questions().getFirst();
-        var address = version.equals("1.0") ? io.quizforge.core.question.QuestionSourceAddress.section("section_1")
-                : io.quizforge.core.question.QuestionSourceAddress.node("node_1");
-        var legacyEntry = new QuestionBankFile.Entry(current.id(), current.type(), current.stem(), current.analysis(),
-                List.of(new QuestionBankFile.SourceRef("doc_java", DOC_REVISION, address, "Java", "来源")), current.data());
-        var legacy = new QuestionBankFile(bank.format(), version, bank.id(), bank.title(), bank.sourceDocuments(), List.of(legacyEntry));
-        legacy = codec.parse(codec.write(legacy));
-        var first = open(legacy);
+        var reread = codec.parse(codec.write(bank));
+        var first = open(reread);
         seedAnswer(first, "q_1");
         var before = persisted(first.session().id());
-        var restored = service(new SqliteDatabase(directory), REOPEN).openOrCreateActiveSession(legacy, codec.contentId(legacy));
+        var restored = service(new SqliteDatabase(directory), REOPEN).openOrCreateActiveSession(reread, codec.contentId(reread));
         assertEquals(before.questions(), restored.questions());
-        assertEquals(mapper.map(legacyEntry), restored.questions().getFirst().sessionQuestion().snapshot());
+        assertEquals(mapper.map(reread.questions().getFirst()), restored.questions().getFirst().sessionQuestion().snapshot());
     }
 
     @Test void independentBanksCreateIndependentActiveSessions() throws Exception {
         var bank = bank(1);
-        var other = new QuestionBankFile(bank.format(), bank.schemaVersion(), "qb_other", "另一个题库",
-                bank.sourceDocuments(), bank.questions());
+        var other = new QuestionBank("qb_other", "另一个题库", "2.0", List.of(), bank.questions(), List.of());
         var first = open(bank);
         var second = open(other);
         assertNotEquals(first.session().id(), second.session().id());
@@ -464,8 +454,7 @@ class ActivePracticeSessionIntegrationTest {
         var first = open(initialBank);
         seedAnswer(first, "q_1");
         var before = persisted(first.session().id());
-        var reorderedAnswers = new QuestionBankFile.Entry(multiple.id(), multiple.type(), multiple.stem(), multiple.analysis(),
-                multiple.sourceRefs(), new QuestionBankFile.Data(multiple.data().options(), multiple.data().correctOptionIds().reversed()));
+        var reorderedAnswers = Question.choice(multiple.id(), multiple.type(), multiple.prompt(), multiple.analysis(), multiple.sourceRefs(), new ChoicePayload(multiple.choicePayload().options()), new ChoiceAnswerSpec(multiple.choiceAnswerSpec().correctOptionIds().reversed()));
         var changedBank = copy(initialBank, List.of(reorderedAnswers, bank.questions().get(1)));
         assertNotEquals(codec.contentId(initialBank), codec.contentId(changedBank));
         var changed = open(changedBank);
@@ -482,7 +471,7 @@ class ActivePracticeSessionIntegrationTest {
         return new PracticeSessionService(new SqlitePracticeTransaction(database), Clock.fixed(instant, ZoneOffset.UTC));
     }
 
-    private ActivePracticeSnapshot open(QuestionBankFile bank) {
+    private ActivePracticeSnapshot open(QuestionBank bank) {
         return service.openOrCreateActiveSession(bank, codec.contentId(bank));
     }
 
@@ -512,50 +501,45 @@ class ActivePracticeSessionIntegrationTest {
         return new PracticePayload(Map.of("selectedOptionIds", List.of("opt_" + number + "_a")));
     }
 
-    private QuestionBankFile bank(int count) {
-        return new QuestionBankFile("quizforge-question-bank", "1.2", "qb_practice", "Java练习",
-                List.of(new QuestionBankFile.SourceDocument("doc_java", DOC_REVISION, "Java")),
-                IntStream.rangeClosed(1, count).mapToObj(this::entry).toList());
+    private QuestionBank bank(int count) {
+        return new QuestionBank("qb_practice", "Java练习", "2.0", List.of(), IntStream.rangeClosed(1, count).mapToObj(this::entry).toList(), List.of());
     }
 
-    private QuestionBankFile.Entry entry(int index) {
-        return new QuestionBankFile.Entry("q_" + index, "SINGLE_CHOICE", "问题 " + index, "解析 " + index,
-                List.of(QuestionBankFile.SourceRef.anchor("doc_java", DOC_REVISION, "来源 " + index, 1, "Java", "来源 " + index)),
-                new QuestionBankFile.Data(List.of(new QuestionBankFile.Option("opt_" + index + "_a", "数组"),
-                        new QuestionBankFile.Option("opt_" + index + "_b", "链表"),
-                        new QuestionBankFile.Option("opt_" + index + "_c", "树")), List.of("opt_" + index + "_a")));
+    private Question entry(int index) {
+        return Question.choice("q_" + index, "SINGLE_CHOICE", new TextContent("问题 " + index), new TextContent("解析 " + index), List.of(SourceRef.anchor("doc_java", DOC_REVISION, "来源 " + index, 1, "Java", "来源 " + index)), new ChoicePayload(List.of(new ChoiceOption("opt_" + index + "_a", new TextContent("数组")),
+                        new ChoiceOption("opt_" + index + "_b", new TextContent("链表")),
+                        new ChoiceOption("opt_" + index + "_c", new TextContent("树")))), new ChoiceAnswerSpec(List.of("opt_" + index + "_a")));
     }
 
-    private QuestionBankFile copy(QuestionBankFile bank, List<QuestionBankFile.Entry> entries) {
-        return new QuestionBankFile(bank.format(), bank.schemaVersion(), bank.id(), bank.title(), bank.sourceDocuments(), entries);
+    private QuestionBank copy(QuestionBank bank, List<Question> entries) {
+        return new QuestionBank(bank.assetId(), bank.title(), "2.0", List.of(), entries, List.of());
     }
 
-    private QuestionBankFile.Entry semanticChange(QuestionBankFile.Entry entry, String change) {
+    private Question semanticChange(Question entry, String change) {
         String type = entry.type();
-        String stem = entry.stem();
-        var options = new ArrayList<>(entry.data().options());
-        var correct = entry.data().correctOptionIds();
+        String stem = QuestionText.prompt(entry);
+        var options = new ArrayList<>(entry.choicePayload().options());
+        var correct = entry.choiceAnswerSpec().correctOptionIds();
         switch (change) {
             case "stem" -> stem += "（已修改）";
-            case "option_add" -> options.add(new QuestionBankFile.Option("opt_extra", "新增选项"));
+            case "option_add" -> options.add(new ChoiceOption("opt_extra", new TextContent("新增选项")));
             case "option_remove" -> options.removeLast();
-            case "option_id" -> options.set(1, new QuestionBankFile.Option("opt_changed", options.get(1).content()));
-            case "option_text" -> options.set(1, new QuestionBankFile.Option(options.get(1).id(), "新选项文本"));
+            case "option_id" -> options.set(1, new ChoiceOption("opt_changed", options.get(1).content()));
+            case "option_text" -> options.set(1, new ChoiceOption(options.get(1).id(), new TextContent("新选项文本")));
             case "option_order" -> options = new ArrayList<>(options.reversed());
             case "correct" -> correct = List.of(options.get(1).id());
             case "type" -> { type = "MULTIPLE_CHOICE"; correct = List.of(options.get(0).id(), options.get(1).id()); }
             default -> throw new IllegalArgumentException(change);
         }
-        return new QuestionBankFile.Entry(entry.id(), type, stem, entry.analysis(), entry.sourceRefs(),
-                new QuestionBankFile.Data(options, correct));
+        return Question.choice(entry.id(), type, new TextContent(stem), entry.analysis(), entry.sourceRefs(), new ChoicePayload(options), new ChoiceAnswerSpec(correct));
     }
 
-    private QuestionBankFile.Entry nonSemanticChange(QuestionBankFile.Entry entry, String change) {
-        String analysis = change.equals("analysis") ? "新解析" : entry.analysis();
+    private Question nonSemanticChange(Question entry, String change) {
+        String analysis = change.equals("analysis") ? "新解析" : QuestionText.analysis(entry);
         var refs = change.equals("sourceRefs")
-                ? List.of(QuestionBankFile.SourceRef.anchor("doc_java", DOC_REVISION, "新来源", 2, "Java", "新来源"))
+                ? List.of(SourceRef.anchor("doc_java", DOC_REVISION, "新来源", 2, "Java", "新来源"))
                 : entry.sourceRefs();
-        return new QuestionBankFile.Entry(entry.id(), entry.type(), entry.stem(), analysis, refs, entry.data());
+        return Question.choice(entry.id(), entry.type(), entry.prompt(), new TextContent(analysis), refs, entry.choicePayload(), entry.choiceAnswerSpec());
     }
 
     private void sql(String sql) throws Exception {

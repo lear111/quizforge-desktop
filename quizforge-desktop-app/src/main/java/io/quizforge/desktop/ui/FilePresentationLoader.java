@@ -1,12 +1,13 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.question.*;
+
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
 import io.quizforge.core.port.WorkspaceFileCatalog;
-import io.quizforge.core.question.QuestionBankFile;
 import io.quizforge.core.workspace.*;
 import java.util.HashSet;
 import java.util.Set;
@@ -63,23 +64,12 @@ final class FilePresentationLoader {
     }
 
     private FilePresentation bankDraft(OpenedWorkspaceFile original, String source) throws Exception {
-        QuestionBankFile bank = JSON.readValue(source, QuestionBankFile.class);
-        if (!"quizforge-question-bank".equals(bank.format())
-                || !("1.0".equals(bank.schemaVersion()) || "1.1".equals(bank.schemaVersion())
-                        || "1.2".equals(bank.schemaVersion()))
-                || bank.id() == null || !bank.id().matches("qb_[A-Za-z0-9_-]+")
-                || bank.title() == null || bank.title().isBlank() || !bank.questions().isEmpty()) return null;
-        Set<String> sources = new HashSet<>();
-        for (var ref : bank.sourceDocuments()) {
-            if (ref == null || ref.assetId() == null || !ref.assetId().matches("doc_[A-Za-z0-9_-]+")
-                    || ref.contentId() == null || !ref.contentId().matches("qfd:v[12]:[0-9a-f]{64}")
-                    || ref.title() == null || ref.title().isBlank() || !sources.add(ref.assetId())) return null;
-        }
-        return draft(original, source, WorkspaceFileKind.QUESTION_BANK, bank.id(), bank.title(), bank);
+        QuestionBank bank = new io.quizforge.infrastructure.filesystem.QuestionBankV2Codec().parseEmptyDraft(source);
+        return draft(original, source, WorkspaceFileKind.QUESTION_BANK, bank.assetId(), bank.title(), bank);
     }
 
     private FilePresentation draft(OpenedWorkspaceFile original, String source, WorkspaceFileKind kind,
-            String id, String title, QuestionBankFile bank) {
+            String id, String title, QuestionBank bank) {
         var old = original.entry();
         var entry = new WorkspaceFileEntry(old.relativePath(), old.name(), kind, id, null, title, old.issue());
         return new FilePresentation(new OpenedWorkspaceFile(entry, source, bank), true, true);

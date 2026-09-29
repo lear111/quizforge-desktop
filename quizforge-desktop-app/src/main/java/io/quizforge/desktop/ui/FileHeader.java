@@ -29,6 +29,8 @@ final class FileHeader extends HBox {
         }
         mode = UiTheme.iconButton("book", "切换到编辑模式", toggle);
         mode.setId("file-mode-toggle");
+        mode.setDisable(file.file().questionBank() != null
+                && !io.quizforge.core.question.QuestionText.supports(file.file().questionBank()));
         if (file.supportsMode()) getChildren().add(mode);
         if (file.offersAi()) {
             Button spark = UiTheme.iconButton("spark", "使用 AI 生成内容", ai);
@@ -42,6 +44,7 @@ final class FileHeader extends HBox {
         showHistory(historyButton != null || current == FileMode.BROWSE);
         mode.setGraphic(UiTheme.icon(current == FileMode.BROWSE ? "book" : "book-pen"));
         String action = current == FileMode.BROWSE ? "切换到编辑模式" : "切换到浏览模式";
+        if (mode.isDisabled()) action = "当前编辑器暂不支持富内容和共享材料";
         mode.setTooltip(new Tooltip(action));
         mode.setAccessibleText(action);
     }

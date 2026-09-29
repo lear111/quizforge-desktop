@@ -11,12 +11,12 @@ import java.util.List;
 public final class QuestionBankReferenceResolver {
     public enum Status { EXACT_MATCH, DIFFERENT_REVISION, EXACT_CONTENT_MATCH,
         MISSING_DOCUMENT, MISSING_NODE, MISSING_ANCHOR, ORPHAN_ANCHOR, UNAVAILABLE_DOCUMENT, MISSING }
-    public record Resolution(QuestionBankFile.SourceDocument source, Status status,
+    public record Resolution(QuestionSourceDocument source, Status status,
             List<Asset> candidates) {
         public Resolution { candidates = List.copyOf(candidates); }
         public boolean ambiguous() { return candidates.size() > 1; }
     }
-    public record NodeResolution(QuestionBankFile.SourceRef sourceRef, Status status,
+    public record NodeResolution(SourceRef sourceRef, Status status,
             List<Asset> candidates) {
         public NodeResolution { candidates = List.copyOf(candidates); }
         public boolean ambiguous() { return candidates.size() > 1; }
@@ -32,7 +32,7 @@ public final class QuestionBankReferenceResolver {
     }
 
     /** Resolves every question reference against the current document file and its node IDs. */
-    public List<NodeResolution> resolveRefs(WorkspaceId workspaceId, QuestionBankFile bank) {
+    public List<NodeResolution> resolveRefs(WorkspaceId workspaceId, QuestionBank bank) {
         if (nodes == null) throw new IllegalStateException("Document node lookup is not configured");
         List<Asset> documents = scanner.scan(workspaceId).stream()
                 .filter(asset -> asset.assetType() == AssetType.STANDARD_DOCUMENT).toList();
@@ -42,7 +42,7 @@ public final class QuestionBankReferenceResolver {
 
     /** Current-view resolution uses the recorded identity only; it never rebinds by content. */
     public List<NodeResolution> resolveCurrentRefs(WorkspaceId workspaceId,
-            List<QuestionBankFile.SourceRef> refs) {
+            List<SourceRef> refs) {
         if (nodes == null) throw new IllegalStateException("Document node lookup is not configured");
         List<Asset> documents = scanner.scan(workspaceId).stream()
                 .filter(asset -> asset.assetType() == AssetType.STANDARD_DOCUMENT).toList();
@@ -59,7 +59,7 @@ public final class QuestionBankReferenceResolver {
     }
 
     private Status resolveDocumentRef(WorkspaceId workspaceId, Asset document,
-            QuestionBankFile.SourceRef ref, boolean namedOnly) {
+            SourceRef ref, boolean namedOnly) {
         if (ref.address().kind() == QuestionSourceAddress.Kind.ANCHOR) {
             DocumentNodeLookup.AnchorResult found = namedOnly
                     ? nodes.lookupNamedAnchor(workspaceId, document, ref.anchorName(), ref.occurrence())
@@ -77,7 +77,7 @@ public final class QuestionBankReferenceResolver {
     }
 
     private NodeResolution resolveRef(WorkspaceId workspaceId, List<Asset> documents,
-            QuestionBankFile.SourceRef ref) {
+            SourceRef ref) {
         List<Asset> byId = documents.stream()
                 .filter(asset -> asset.assetId().equals(ref.documentAssetId())).toList();
         if (!byId.isEmpty()) {
@@ -102,7 +102,7 @@ public final class QuestionBankReferenceResolver {
                 matching.isEmpty() ? byContent : matching);
     }
 
-    public List<Resolution> resolve(WorkspaceId workspaceId, QuestionBankFile bank) {
+    public List<Resolution> resolve(WorkspaceId workspaceId, QuestionBank bank) {
         List<Asset> documents = scanner.scan(workspaceId).stream()
                 .filter(asset -> asset.assetType() == AssetType.STANDARD_DOCUMENT).toList();
         return bank.sourceDocuments().stream().map(source -> {

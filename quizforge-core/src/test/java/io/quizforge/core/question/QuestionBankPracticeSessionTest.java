@@ -8,21 +8,17 @@ import org.junit.jupiter.api.Test;
 class QuestionBankPracticeSessionTest {
     private static final String REVISION = "qfd:v1:" + "a".repeat(64);
 
-    static QuestionBankFile bank() {
-        var source = new QuestionBankFile.SourceDocument("doc_source", REVISION, "Source");
-        var ref = new QuestionBankFile.SourceRef("doc_source", REVISION, "section_one", "Source", "One");
-        var single = new QuestionBankFile.Entry("q_single", "SINGLE_CHOICE", "Single?", "Because",
-                List.of(ref), new QuestionBankFile.Data(List.of(
-                        new QuestionBankFile.Option("opt_one", "One"),
-                        new QuestionBankFile.Option("opt_two", "Two")), List.of("opt_one")));
-        var multiple = new QuestionBankFile.Entry("q_multiple", "MULTIPLE_CHOICE", "Multiple?", "Because",
-                List.of(ref), new QuestionBankFile.Data(List.of(
-                        new QuestionBankFile.Option("opt_three", "Three"),
-                        new QuestionBankFile.Option("opt_four", "Four"),
-                        new QuestionBankFile.Option("opt_five", "Five")),
-                        List.of("opt_three", "opt_four")));
-        return new QuestionBankFile("quizforge-question-bank", "1.0", "qb_practice", "Practice",
-                List.of(source), List.of(single, multiple));
+    static QuestionBank bank() {
+        var source = new QuestionSourceDocument("doc_source", REVISION, "Source");
+        var ref = SourceRef.anchor("doc_source", REVISION, "section_one", 1, "Source", "One");
+        var single = Question.choice("q_single", "SINGLE_CHOICE", new TextContent("Single?"), new TextContent("Because"), List.of(ref), new ChoicePayload(List.of(
+                        new ChoiceOption("opt_one", new TextContent("One")),
+                        new ChoiceOption("opt_two", new TextContent("Two")))), new ChoiceAnswerSpec(List.of("opt_one")));
+        var multiple = Question.choice("q_multiple", "MULTIPLE_CHOICE", new TextContent("Multiple?"), new TextContent("Because"), List.of(ref), new ChoicePayload(List.of(
+                        new ChoiceOption("opt_three", new TextContent("Three")),
+                        new ChoiceOption("opt_four", new TextContent("Four")),
+                        new ChoiceOption("opt_five", new TextContent("Five")))), new ChoiceAnswerSpec(List.of("opt_three", "opt_four")));
+        return new QuestionBank("qb_practice", "Practice", "2.0", List.of(), List.of(single, multiple), List.of());
     }
 
     @Test void stateTransitionsAndSingleChoiceAreLocal() {

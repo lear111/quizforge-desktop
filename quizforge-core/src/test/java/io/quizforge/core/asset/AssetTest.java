@@ -20,8 +20,8 @@ class AssetTest {
 
     @Test void revisionPrefixMatchesAssetType() {
         String hash = "a".repeat(64);
-        assertEquals("qfb:v1:" + hash, new Asset("qb_one", AssetType.QUESTION_BANK,
-                "banks/one.qbank", "One", "qfb:v1:" + hash, "1.0").contentId());
+        assertEquals("qfb:v2:" + hash, new Asset("qb_one", AssetType.QUESTION_BANK,
+                "banks/one.qbank", "One", "qfb:v2:" + hash, "1.0").contentId());
         assertThrows(IllegalArgumentException.class, () -> new Asset("qb_one", AssetType.QUESTION_BANK,
                 "banks/one.qbank", "One", "qfd:v1:" + hash, "1.0"));
     }

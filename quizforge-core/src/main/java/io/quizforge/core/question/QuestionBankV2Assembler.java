@@ -10,30 +10,26 @@ import java.util.Set;
 import java.util.UUID;
 
 /** Validates untrusted AI candidates, then assigns every durable question and option ID locally. */
-public final class QuestionBankV1Assembler {
-    public record Result(QuestionBankFile bank, int rejected) { }
+public final class QuestionBankV2Assembler {
+    public record Result(QuestionBank bank, int rejected) { }
 
     public Result assemble(String title, String existingId, List<SourceDocumentSnapshot> snapshots,
             Map<String, Set<String>> selectedSectionIds, List<SourceAwareQuestionGenerator.Candidate> candidates,
             Set<QuestionType> allowedTypes, int requested) {
-        List<QuestionBankFile.SourceDocument> sources = snapshots.stream()
-                .map(s -> new QuestionBankFile.SourceDocument(s.assetId(), s.contentId(), s.title())).toList();
         Map<String, SourceDocumentSnapshot> byId = new HashMap<>();
         snapshots.forEach(s -> byId.put(s.assetId(), s));
-        List<QuestionBankFile.Entry> accepted = new ArrayList<>();
+        List<Question> accepted = new ArrayList<>();
         int rejected = 0;
         for (SourceAwareQuestionGenerator.Candidate candidate : candidates) {
             if (accepted.size() >= requested) { rejected++; continue; }
-            QuestionBankFile.Entry entry = accept(candidate, byId, selectedSectionIds, allowedTypes);
+            Question entry = accept(candidate, byId, selectedSectionIds, allowedTypes);
             if (entry == null) rejected++;
             else accepted.add(entry);
         }
-        return new Result(new QuestionBankFile("quizforge-question-bank", "1.2",
-                existingId == null ? "qb_" + UUID.randomUUID() : existingId,
-                title, sources, accepted), rejected);
+        return new Result(new QuestionBank(existingId == null ? "qb_" + UUID.randomUUID() : existingId, title, "2.0", List.of(), accepted, List.of()), rejected);
     }
 
-    private QuestionBankFile.Entry accept(SourceAwareQuestionGenerator.Candidate candidate,
+    private Question accept(SourceAwareQuestionGenerator.Candidate candidate,
             Map<String, SourceDocumentSnapshot> sources, Map<String, Set<String>> selected,
             Set<QuestionType> allowed) {
         if (candidate == null || blank(candidate.stem()) || blank(candidate.analysis())
@@ -43,18 +39,18 @@ public final class QuestionBankV1Assembler {
         catch (RuntimeException error) { return null; }
         if (!allowed.contains(type)) return null;
         Map<String, String> optionIds = new HashMap<>();
-        List<QuestionBankFile.Option> options = new ArrayList<>();
+        List<ChoiceOption> options = new ArrayList<>();
         for (SourceAwareQuestionGenerator.Option option : candidate.options()) {
             if (option == null || blank(option.key()) || blank(option.content())
                     || optionIds.putIfAbsent(option.key(), "opt_" + UUID.randomUUID()) != null) return null;
-            options.add(new QuestionBankFile.Option(optionIds.get(option.key()), option.content().trim()));
+            options.add(new ChoiceOption(optionIds.get(option.key()), new TextContent(option.content().trim())));
         }
         Set<String> correct = new HashSet<>(candidate.correctOptionKeys());
         if (correct.size() != candidate.correctOptionKeys().size() || !optionIds.keySet().containsAll(correct)
                 || (type == QuestionType.SINGLE_CHOICE && correct.size() != 1)
                 || (type == QuestionType.MULTIPLE_CHOICE
                     && (correct.size() < 2 || correct.size() >= options.size()))) return null;
-        List<QuestionBankFile.SourceRef> refs = new ArrayList<>();
+        List<SourceRef> refs = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (SourceAwareQuestionGenerator.SourceRef ref : candidate.sourceRefs()) {
             if (ref == null || !seen.add(ref.documentAssetId() + "\0" + ref.sectionId())) return null;
@@ -64,13 +60,12 @@ public final class QuestionBankV1Assembler {
                     .flatMap(chapter -> chapter.sections().stream())
                     .filter(item -> item.id().equals(ref.sectionId())).findFirst().orElse(null);
             if (section == null) return null;
-            refs.add(QuestionBankFile.SourceRef.anchor(document.assetId(), document.contentId(), section.id(),
+            refs.add(SourceRef.anchor(document.assetId(), document.contentId(), section.id(),
                     1, document.title(), section.title()));
         }
         List<String> correctIds = candidate.options().stream()
                 .filter(option -> correct.contains(option.key())).map(option -> optionIds.get(option.key())).toList();
-        return new QuestionBankFile.Entry("q_" + UUID.randomUUID(), type.name(), candidate.stem().trim(),
-                candidate.analysis().trim(), refs, new QuestionBankFile.Data(options, correctIds));
+        return Question.choice("q_" + UUID.randomUUID(), type.name(), new TextContent(candidate.stem().trim()), new TextContent(candidate.analysis().trim()), refs, new ChoicePayload(options), new ChoiceAnswerSpec(correctIds));
     }
 
     private boolean blank(String value) { return value == null || value.isBlank(); }

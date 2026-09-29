@@ -10,21 +10,21 @@ public final class QuestionBankPracticeSession {
     public enum State { UNANSWERED, SELECTED, SUBMITTED }
     public record Result(int total, int correct, int incorrect, int accuracyPercent) { }
 
-    private final QuestionBankFile bank;
+    private final QuestionBank bank;
     private final Map<Integer, Set<String>> selections = new HashMap<>();
     private final Map<Integer, Boolean> submitted = new HashMap<>();
     private int index;
     private boolean finished;
 
-    public QuestionBankPracticeSession(QuestionBankFile bank) {
+    public QuestionBankPracticeSession(QuestionBank bank) {
         new QuestionBankValidator().validate(bank);
         this.bank = bank;
     }
 
-    public QuestionBankFile bank() { return bank; }
+    public QuestionBank bank() { return bank; }
     public int index() { return index; }
     public boolean finished() { return finished; }
-    public QuestionBankFile.Entry current() { return bank.questions().get(index); }
+    public Question current() { return bank.questions().get(index); }
     public Set<String> selected() { return Set.copyOf(selections.getOrDefault(index, Set.of())); }
     public State state() {
         return state(index);
@@ -50,7 +50,7 @@ public final class QuestionBankPracticeSession {
     /** Compute a selection without changing the visible state before persistence succeeds. */
     public Set<String> selectionAfter(String optionId) {
         if (state() == State.SUBMITTED) throw new IllegalStateException("Answer already submitted");
-        boolean found = current().data().options().stream().anyMatch(option -> option.id().equals(optionId));
+        boolean found = current().choicePayload().options().stream().anyMatch(option -> option.id().equals(optionId));
         if (!found) throw new IllegalArgumentException("Unknown option");
         Set<String> selected = new HashSet<>(selected());
         if ("SINGLE_CHOICE".equals(current().type())) {
@@ -68,7 +68,7 @@ public final class QuestionBankPracticeSession {
         restoredSelections.forEach((questionIndex, values) -> {
             var question = bank.questions().get(questionIndex);
             Set<String> optionIds = new HashSet<>();
-            question.data().options().forEach(option -> optionIds.add(option.id()));
+            question.choicePayload().options().forEach(option -> optionIds.add(option.id()));
             if (!optionIds.containsAll(values) || "SINGLE_CHOICE".equals(question.type()) && values.size() > 1)
                 throw new IllegalStateException("Invalid restored selection");
             validated.put(questionIndex, new HashSet<>(values));
@@ -86,7 +86,7 @@ public final class QuestionBankPracticeSession {
 
     public boolean submit() {
         if (state() != State.SELECTED) throw new IllegalStateException("Select an answer first");
-        boolean correct = selected().equals(Set.copyOf(current().data().correctOptionIds()));
+        boolean correct = selected().equals(Set.copyOf(current().choiceAnswerSpec().correctOptionIds()));
         submitted.put(index, correct);
         return correct;
     }

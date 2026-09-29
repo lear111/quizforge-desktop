@@ -1,8 +1,7 @@
 package io.quizforge.desktop.ui;
 
-import io.quizforge.core.question.QuestionBankEditorModel;
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionSourceLinkService;
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.workspace.WorkspaceId;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -21,15 +20,15 @@ final class QuestionBankEditorView extends VBox {
     private final QuestionSourceLinkService sourceLinks;
     private final QuestionSourceNavigationAdapter sourceNavigation;
     private QuestionSourceListView sourceRows;
-    private final Consumer<QuestionBankFile> save;
+    private final Consumer<QuestionBank> save;
     private final VBox body = new VBox(14);
     private final VBox errors = new VBox(3);
     private int index;
-    private BiConsumer<QuestionBankFile, Integer> onQuestionChange = (bank, selected) -> { };
+    private BiConsumer<QuestionBank, Integer> onQuestionChange = (bank, selected) -> { };
 
-    QuestionBankEditorView(QuestionBankFile bank, WorkspaceId workspace,
+    QuestionBankEditorView(QuestionBank bank, WorkspaceId workspace,
             QuestionSourceLinkService sourceLinks,
-            QuestionSourceNavigationAdapter sourceNavigation, Consumer<QuestionBankFile> save) {
+            QuestionSourceNavigationAdapter sourceNavigation, Consumer<QuestionBank> save) {
         model = new QuestionBankEditorModel(bank);
         this.workspace = workspace;
         this.sourceLinks = sourceLinks;
@@ -54,7 +53,7 @@ final class QuestionBankEditorView extends VBox {
         render();
     }
 
-    void onQuestionChange(BiConsumer<QuestionBankFile, Integer> action) {
+    void onQuestionChange(BiConsumer<QuestionBank, Integer> action) {
         onQuestionChange = action;
         onQuestionChange.accept(model.bank(), index);
     }
@@ -107,7 +106,7 @@ final class QuestionBankEditorView extends VBox {
             body.getChildren().add(UiTheme.quietState("还没有题目", "点击 +，选择单选题或多选题开始编辑。"));
             return;
         }
-        QuestionBankFile.Entry question = model.bank().questions().get(index);
+        Question question = model.bank().questions().get(index);
         MenuButton actions = EditorUi.menu("more", "题目操作");
         actions.setId("qbank-question-actions");
         MenuItem duplicate = new MenuItem("复制题目");
@@ -136,17 +135,17 @@ final class QuestionBankEditorView extends VBox {
         HBox.setHgrow(spacer, Priority.ALWAYS);
         navigation.getChildren().addAll(spacer, type, actions);
 
-        TextArea stem = area(question.stem(), "qbank-question-stem", 3);
+        TextArea stem = area(QuestionText.prompt(question), "qbank-question-stem", 3);
         stem.textProperty().addListener((obs, old, value) -> model.setStem(index, value));
         stem.setPromptText("输入题干…");
         body.getChildren().addAll(UiTheme.label("题干", "editor-caption"), stem,
                 UiTheme.label("选项 · 勾选正确答案", "editor-caption"));
         ToggleGroup correctGroup = new ToggleGroup();
         VBox options = new VBox(8);
-        for (int i = 0; i < question.data().options().size(); i++) {
+        for (int i = 0; i < question.choicePayload().options().size(); i++) {
             final int optionIndex = i;
-            var option = question.data().options().get(i);
-            TextField content = new TextField(option.content());
+            var option = question.choicePayload().options().get(i);
+            TextField content = new TextField(QuestionText.option(option));
             content.setId("qbank-option-" + i);
             content.textProperty().addListener((obs, old, value) -> model.setOptionContent(index, optionIndex, value));
             HBox.setHgrow(content, Priority.ALWAYS);
@@ -154,12 +153,12 @@ final class QuestionBankEditorView extends VBox {
             if ("SINGLE_CHOICE".equals(question.type())) {
                 RadioButton radio = new RadioButton();
                 radio.setToggleGroup(correctGroup);
-                radio.setSelected(question.data().correctOptionIds().contains(option.id()));
+                radio.setSelected(question.choiceAnswerSpec().correctOptionIds().contains(option.id()));
                 radio.setOnAction(event -> model.setCorrect(index, option.id(), true));
                 correct = radio;
             } else {
                 CheckBox check = new CheckBox();
-                check.setSelected(question.data().correctOptionIds().contains(option.id()));
+                check.setSelected(question.choiceAnswerSpec().correctOptionIds().contains(option.id()));
                 check.setOnAction(event -> model.setCorrect(index, option.id(), check.isSelected()));
                 correct = check;
             }
@@ -179,7 +178,7 @@ final class QuestionBankEditorView extends VBox {
         options.getChildren().add(addOption);
         body.getChildren().add(options);
 
-        TextArea analysis = area(question.analysis(), "qbank-analysis", 4);
+        TextArea analysis = area(QuestionText.analysis(question), "qbank-analysis", 4);
         analysis.textProperty().addListener((obs, old, value) -> model.setAnalysis(index, value));
         body.getChildren().addAll(UiTheme.label("解析", "editor-caption"), analysis,
                 UiTheme.label("引用来源", "editor-caption"));

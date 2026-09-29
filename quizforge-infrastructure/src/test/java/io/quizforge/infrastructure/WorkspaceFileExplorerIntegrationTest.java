@@ -1,9 +1,9 @@
 package io.quizforge.infrastructure;
 
+import io.quizforge.core.question.*;
+
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.workspace.Workspace;
 import io.quizforge.core.workspace.WorkspaceFileKind;
 import io.quizforge.core.workspace.WorkspaceFileService;
@@ -14,7 +14,7 @@ import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
 import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileCatalog;
 import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileOperations;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
-import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
+import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
 import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
@@ -36,7 +36,7 @@ class WorkspaceFileExplorerIntegrationTest {
     private Path root;
     private WorkspaceFileService service;
     private FileSystemWorkspaceAssetScanner scanner;
-    private final QuestionBankV1Codec banks = new QuestionBankV1Codec();
+    private final QuestionBankV2Codec banks = new QuestionBankV2Codec();
 
     @BeforeEach void setup() {
         var data = new QuizForgeDataDirectory(temporaryDirectory.resolve("data"));
@@ -195,21 +195,14 @@ class WorkspaceFileExplorerIntegrationTest {
         return "---\nquizforge_format: \"study-document\"\nschema_version: \"1.0\"\n"
                 + "quizforge_id: \"" + id + "\"\ntitle: \"" + title + "\"\nlanguage: \"en-US\"\n---\n"
                 + "# " + title + "\n## Chapter\n<!-- qf:id=chapter_one -->\n"
-                + "### Section\n<!-- qf:id=section_one -->\n" + content + "\n";
+                + "<!-- qf:anchor=section_one -->\n### Section\n<!-- qf:id=section_one -->\n" + content + "\n";
     }
 
-    private QuestionBankFile validBank() {
+    private QuestionBank validBank() {
         String contentId = new io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentV1()
                 .parseIfStandard(formalDocument("doc_alpha", "Java", "Facts stay stable."))
                 .orElseThrow().contentId();
-        return new QuestionBankFile("quizforge-question-bank", "1.0", "qb_alpha", "Java Questions",
-                List.of(new QuestionBankFile.SourceDocument("doc_alpha", contentId, "Java")),
-                List.of(new QuestionBankFile.Entry("q_one", "SINGLE_CHOICE", "What stays stable?",
-                        "The source says facts.", List.of(new QuestionBankFile.SourceRef(
-                                "doc_alpha", contentId,
-                                io.quizforge.core.question.QuestionSourceAddress.section("section_one"),
-                                "Java", "Section")),
-                        new QuestionBankFile.Data(List.of(new QuestionBankFile.Option("opt_a", "Facts"),
-                                new QuestionBankFile.Option("opt_b", "Nothing")), List.of("opt_a")))));
+        return new QuestionBank("qb_alpha", "Java Questions", "2.0", List.of(), List.of(Question.choice("q_one", "SINGLE_CHOICE", new TextContent("What stays stable?"), new TextContent("The source says facts."), List.of(SourceRef.anchor("doc_alpha", contentId, "section_one", 1, "Java", "Section")), new ChoicePayload(List.of(new ChoiceOption("opt_a", new TextContent("Facts")),
+                                new ChoiceOption("opt_b", new TextContent("Nothing")))), new ChoiceAnswerSpec(List.of("opt_a")))), List.of());
     }
 }

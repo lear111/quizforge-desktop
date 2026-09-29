@@ -1,5 +1,7 @@
 package io.quizforge.desktop.config;
 
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.ai.AiConnectionService;
@@ -26,15 +28,9 @@ import io.quizforge.core.port.QuestionBankFileCodec;
 import io.quizforge.core.port.QuestionBankFileStorage;
 import io.quizforge.core.port.WorkspaceFileCatalog;
 import io.quizforge.core.port.WorkspaceFileOperations;
-import io.quizforge.core.question.FileQuestionBankGenerationService;
-import io.quizforge.core.question.QuestionBankFileEditService;
-import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.port.DocumentNodeLookup;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
-import io.quizforge.core.question.QuestionBankV1Assembler;
 import io.quizforge.core.workspace.WorkspaceFileService;
-import io.quizforge.core.question.QuestionGenerationService;
-import io.quizforge.core.question.QuestionValidator;
 import io.quizforge.core.workspace.WorkspaceService;
 import io.quizforge.desktop.ui.DesktopView;
 import io.quizforge.extension.document.DocumentProcessor;
@@ -57,7 +53,7 @@ import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
 import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
 import io.quizforge.infrastructure.filesystem.FormalMarkdownDocumentReader;
 import io.quizforge.infrastructure.filesystem.LocalQuestionBankFileStorage;
-import io.quizforge.infrastructure.filesystem.QuestionBankV1Codec;
+import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
 import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileCatalog;
 import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileOperations;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
@@ -242,7 +238,7 @@ public class DesktopConfiguration {
     }
 
     @Bean
-    public QuestionBankFileCodec questionBankFileCodec() { return new QuestionBankV1Codec(); }
+    public QuestionBankFileCodec questionBankFileCodec() { return new QuestionBankV2Codec(); }
 
     @Bean
     public QuestionBankFileStorage questionBankFileStorage(WorkspacePathResolver paths) {
@@ -303,7 +299,7 @@ public class DesktopConfiguration {
             SourceAwareQuestionGenerator generator, QuestionBankFileCodec codec,
             QuestionBankFileStorage files) {
         return new FileQuestionBankGenerationService(workspaces, scanner, documents, generator,
-                new QuestionBankV1Assembler(), codec, files);
+                new QuestionBankV2Assembler(), codec, files);
     }
 
     @Bean

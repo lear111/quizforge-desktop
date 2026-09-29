@@ -117,7 +117,7 @@ public final class QuestionGenerationService {
         progress.accept("Validating questions");
         Instant now = clock.instant();
         QuestionBankId bankId = QuestionBankId.newId();
-        List<Question> accepted = new ArrayList<>();
+        List<StoredQuestion> accepted = new ArrayList<>();
         for (GeneratedQuestion candidate : candidates) {
             if (accepted.size() >= command.count()) break;
             if (!validator.valid(candidate, types, structure, command.scope(), command.chapterId(), command.sectionId())) continue;
@@ -129,12 +129,12 @@ public final class QuestionGenerationService {
                 options.add(new QuestionOption(UUID.randomUUID(), questionId, option.key().trim(),
                         option.content().trim(), correct.contains(option.key().trim()), position++));
             }
-            accepted.add(new Question(questionId, bankId, QuestionType.valueOf(candidate.type()),
+            accepted.add(new StoredQuestion(questionId, bankId, QuestionType.valueOf(candidate.type()),
                     candidate.stem().trim(), candidate.analysis().trim(), candidate.sourceChapter(),
                     candidate.sourceSection(), accepted.size() + 1, now, options));
         }
         if (accepted.isEmpty()) throw fail(ErrorCode.NO_VALID_QUESTION_GENERATED, "No valid questions were generated.");
-        QuestionBank bank = new QuestionBank(bankId, workspaceId, document.document().id(), name,
+        StoredQuestionBank bank = new StoredQuestionBank(bankId, workspaceId, document.document().id(), name,
                 command.scope(), sourceChapter, sourceSection, command.count(), now, now, now, accepted);
         progress.accept("Saving question bank");
         banks.replace(bank);

@@ -5,8 +5,8 @@ import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.document.StandardDocumentId;
 import io.quizforge.core.port.QuestionBankRepository;
 import io.quizforge.core.question.GenerationScopeType;
-import io.quizforge.core.question.Question;
-import io.quizforge.core.question.QuestionBank;
+import io.quizforge.core.question.StoredQuestion;
+import io.quizforge.core.question.StoredQuestionBank;
 import io.quizforge.core.question.QuestionBankId;
 import io.quizforge.core.question.QuestionId;
 import io.quizforge.core.question.QuestionOption;
@@ -28,15 +28,15 @@ public final class SqliteQuestionBankRepository implements QuestionBankRepositor
     public SqliteQuestionBankRepository(SqliteDatabase database) { this.database = database; }
 
     @Override
-    public Optional<QuestionBank> findByWorkspace(WorkspaceId workspaceId) {
+    public Optional<StoredQuestionBank> findByWorkspace(WorkspaceId workspaceId) {
         try (Connection connection = database.openConnection();
                 PreparedStatement select = connection.prepareStatement("SELECT * FROM question_bank WHERE workspace_id = ?")) {
             select.setString(1, workspaceId.toString());
             try (ResultSet row = select.executeQuery()) {
                 if (!row.next()) return Optional.empty();
                 QuestionBankId bankId = QuestionBankId.parse(row.getString("id"));
-                List<Question> questions = readQuestions(connection, bankId);
-                return Optional.of(new QuestionBank(bankId, workspaceId,
+                List<StoredQuestion> questions = readQuestions(connection, bankId);
+                return Optional.of(new StoredQuestionBank(bankId, workspaceId,
                         StandardDocumentId.parse(row.getString("source_document_id")), row.getString("name"),
                         GenerationScopeType.valueOf(row.getString("generation_scope_type")),
                         row.getString("source_chapter"), row.getString("source_section"),
@@ -46,15 +46,15 @@ public final class SqliteQuestionBankRepository implements QuestionBankRepositor
         } catch (SQLException error) { throw failure("read", error); }
     }
 
-    private List<Question> readQuestions(Connection connection, QuestionBankId bankId) throws SQLException {
-        List<Question> questions = new ArrayList<>();
+    private List<StoredQuestion> readQuestions(Connection connection, QuestionBankId bankId) throws SQLException {
+        List<StoredQuestion> questions = new ArrayList<>();
         try (PreparedStatement select = connection.prepareStatement(
                 "SELECT * FROM question WHERE question_bank_id = ? ORDER BY sort_order")) {
             select.setString(1, bankId.toString());
             try (ResultSet row = select.executeQuery()) {
                 while (row.next()) {
                     QuestionId questionId = QuestionId.parse(row.getString("id"));
-                    questions.add(new Question(questionId, bankId, QuestionType.valueOf(row.getString("type")),
+                    questions.add(new StoredQuestion(questionId, bankId, QuestionType.valueOf(row.getString("type")),
                             row.getString("stem"), row.getString("analysis"), row.getString("source_chapter"),
                             row.getString("source_section"), row.getInt("sort_order"),
                             Instant.parse(row.getString("created_at")), readOptions(connection, questionId)));
@@ -81,7 +81,7 @@ public final class SqliteQuestionBankRepository implements QuestionBankRepositor
     }
 
     @Override
-    public void replace(QuestionBank bank) {
+    public void replace(StoredQuestionBank bank) {
         try (Connection connection = database.openConnection()) {
             connection.setAutoCommit(false);
             try {
@@ -99,7 +99,7 @@ public final class SqliteQuestionBankRepository implements QuestionBankRepositor
         } catch (SQLException error) { throw failure("replace", error); }
     }
 
-    private void insertBank(Connection connection, QuestionBank bank) throws SQLException {
+    private void insertBank(Connection connection, StoredQuestionBank bank) throws SQLException {
         try (PreparedStatement insert = connection.prepareStatement("INSERT INTO question_bank VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             insert.setString(1, bank.id().toString());
             insert.setString(2, bank.workspaceId().toString());
@@ -116,10 +116,10 @@ public final class SqliteQuestionBankRepository implements QuestionBankRepositor
         }
     }
 
-    private void insertQuestions(Connection connection, List<Question> questions) throws SQLException {
+    private void insertQuestions(Connection connection, List<StoredQuestion> questions) throws SQLException {
         try (PreparedStatement insertQuestion = connection.prepareStatement("INSERT INTO question VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 PreparedStatement insertOption = connection.prepareStatement("INSERT INTO question_option VALUES (?, ?, ?, ?, ?, ?)")) {
-            for (Question question : questions) {
+            for (StoredQuestion question : questions) {
                 insertQuestion.setString(1, question.id().toString());
                 insertQuestion.setString(2, question.questionBankId().toString());
                 insertQuestion.setString(3, question.type().name());

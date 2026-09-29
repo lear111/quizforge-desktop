@@ -1,13 +1,13 @@
 package io.quizforge.desktop.ui;
 
+import io.quizforge.core.question.*;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.quizforge.core.practice.PracticeHistoryDetail;
 import io.quizforge.core.practice.PracticePayload;
 import io.quizforge.core.practice.PracticeSessionQuestion;
 import io.quizforge.core.practice.QuestionAttempt;
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankPracticeSession;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -29,14 +29,10 @@ class QuestionPresentationMapperTest {
     private QuestionBankPracticeSession practice(String type) {
         var question = content(type);
         String revision = "qfd:v1:" + "a".repeat(64);
-        var source = new QuestionBankFile.SourceDocument("doc_source", revision, "来源");
-        var ref = new QuestionBankFile.SourceRef("doc_source", revision, "section_one", "来源", "小节");
-        var entry = new QuestionBankFile.Entry("q_one", type, question.stem(), question.analysis(), List.of(ref),
-                new QuestionBankFile.Data(question.options().stream()
-                        .map(option -> new QuestionBankFile.Option(option.id(), option.content())).toList(),
-                        question.correctAnswer().stream().sorted().toList()));
-        return new QuestionBankPracticeSession(new QuestionBankFile("quizforge-question-bank", "1.0",
-                "qb_test", "题库", List.of(source), List.of(entry)));
+        var ref = SourceRef.anchor("doc_source", revision, "section_one", 1, "来源", "小节");
+        var entry = Question.choice("q_one", type, new TextContent(question.stem()), new TextContent(question.analysis()), List.of(ref), new ChoicePayload(question.options().stream()
+                        .map(option -> new ChoiceOption(option.id(), new TextContent(option.content()))).toList()), new ChoiceAnswerSpec(question.correctAnswer().stream().sorted().toList()));
+        return new QuestionBankPracticeSession(new QuestionBank("qb_test", "题库", "2.0", List.of(), List.of(entry), List.of()));
     }
 
     static PracticeHistoryDetail.Question archived(String type, PracticeSessionQuestion.State state,

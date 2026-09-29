@@ -1,7 +1,7 @@
 package io.quizforge.desktop.ui;
 
-import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankPracticeSession;
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.practice.PersistentPracticeRuntime;
 import io.quizforge.core.practice.PracticeSummary;
 import java.util.List;
@@ -32,13 +32,13 @@ import javafx.scene.shape.StrokeLineCap;
 final class QuestionBankPracticeView extends VBox {
     private final PersistentPracticeRuntime runtime;
     private final QuestionBankPracticeSession session;
-    private final Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources;
+    private final Function<List<SourceRef>, QuestionSourceListView> sources;
     private final QuestionOutlineView outline;
     private QuestionSourceListView sourceRows;
     private BooleanSupplier restartConfirmation = this::confirmRestart;
 
     QuestionBankPracticeView(PersistentPracticeRuntime runtime,
-            Function<List<QuestionBankFile.SourceRef>, QuestionSourceListView> sources) {
+            Function<List<SourceRef>, QuestionSourceListView> sources) {
         this.runtime = runtime;
         session = runtime.session();
         this.sources = sources;
@@ -54,7 +54,7 @@ final class QuestionBankPracticeView extends VBox {
         sourceRows = null;
         getChildren().clear();
         if (session.finished()) { summary(); return; }
-        QuestionBankFile.Entry question = session.current();
+        Question question = session.current();
         var state = session.state();
         QuestionCardView card;
         if (state == QuestionBankPracticeSession.State.SUBMITTED) {

@@ -1,6 +1,7 @@
 package io.quizforge.desktop.ui;
 
-import io.quizforge.core.question.QuestionBankFile;
+import io.quizforge.core.question.*;
+
 import io.quizforge.core.workspace.WorkspaceId;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -9,12 +10,12 @@ import javafx.scene.layout.VBox;
 
 /** Each source has independent availability; refresh never replaces the surrounding editor/session. */
 final class QuestionSourceListView extends VBox {
-    private final List<QuestionBankFile.SourceRef> refs;
+    private final List<SourceRef> refs;
     private final WorkspaceId workspace;
     private final QuestionSourceNavigationAdapter sources;
     private final BiConsumer<Integer, HBox> editActions;
 
-    QuestionSourceListView(List<QuestionBankFile.SourceRef> refs, WorkspaceId workspace,
+    QuestionSourceListView(List<SourceRef> refs, WorkspaceId workspace,
             QuestionSourceNavigationAdapter sources, BiConsumer<Integer, HBox> editActions) {
         this.refs = List.copyOf(refs);
         this.workspace = workspace;

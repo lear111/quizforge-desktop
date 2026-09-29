@@ -42,7 +42,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class PracticePersistenceIntegrationTest {
     private static final Instant START = Instant.parse("2026-09-28T01:02:03.123456789Z");
-    private static final String BANK_REVISION = "qfb:v1:" + "a".repeat(64);
+    private static final String BANK_REVISION = "qfb:v2:" + "a".repeat(64);
     private static final String DOCUMENT_REVISION = "qfd:v2:" + "b".repeat(64);
     @TempDir Path temporaryDirectory;
     private QuizForgeDataDirectory directory;

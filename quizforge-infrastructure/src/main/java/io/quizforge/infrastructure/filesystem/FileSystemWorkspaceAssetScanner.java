@@ -34,7 +34,7 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
     private static final ObjectMapper JSON = new ObjectMapper();
     private final StandardKnowledgeDocumentV1 documents = new StandardKnowledgeDocumentV1();
     private final RegisteredMarkdownCodec registeredMarkdown = new RegisteredMarkdownCodec();
-    private final QuestionBankV1Codec banks = new QuestionBankV1Codec();
+    private final QuestionBankV2Codec banks = new QuestionBankV2Codec();
 
     private final WorkspacePathResolver paths;
     private final AssetIndexRepository index;
@@ -126,7 +126,6 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
     }
 
     private Optional<Asset> questionBank(Path root, Path file) throws IOException {
-        String format = "";
         String id = "";
         String title = "";
         String version = "";
@@ -140,8 +139,7 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
                 if (value == null) return Optional.empty();
                 String text = value == JsonToken.VALUE_STRING ? parser.getText() : "";
                 switch (field) {
-                    case "format" -> format = text;
-                    case "id" -> id = text;
+                    case "assetId" -> id = text;
                     case "title" -> title = text;
                     case "schemaVersion" -> version = text;
                     default -> { }
@@ -150,8 +148,8 @@ public final class FileSystemWorkspaceAssetScanner implements WorkspaceAssetScan
             }
             if (parser.nextToken() != null) throw new IllegalArgumentException("Trailing QuestionBank JSON");
         }
-        if (!"quizforge-question-bank".equals(format)) return Optional.empty();
-        if (!("1.0".equals(version) || "1.1".equals(version) || "1.2".equals(version))
+        if (id.isBlank() && version.isBlank()) return Optional.empty();
+        if (!"2.0".equals(version)
                 || !id.matches("qb_[A-Za-z0-9_-]+") || title.isBlank()) {
             throw new IllegalArgumentException("Invalid QuestionBank metadata");
         }

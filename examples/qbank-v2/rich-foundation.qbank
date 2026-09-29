@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "2.0",
+  "assetId": "qb_rich_example",
+  "title": "Rich Content Foundation",
+  "stimuli": [
+    {
+      "id": "stim_article",
+      "content": {
+        "kind": "TEXT",
+        "text": "共享阅读材料"
+      }
+    }
+  ],
+  "questions": [
+    {
+      "id": "q_rich",
+      "type": "SINGLE_CHOICE",
+      "stimulusRefs": [
+        "stim_article"
+      ],
+      "prompt": {
+        "kind": "RICH",
+        "document": {
+          "blocks": [
+            {
+              "type": "PARAGRAPH",
+              "children": [
+                {
+                  "type": "TEXT",
+                  "text": "已知函数 "
+                },
+                {
+                  "type": "MATH",
+                  "tex": "f(x)=x^2"
+                },
+                {
+                  "type": "TEXT",
+                  "text": "，观察 "
+                },
+                {
+                  "type": "IMAGE",
+                  "resourceId": "res_img_01",
+                  "alt": "函数图像"
+                },
+                {
+                  "type": "TEXT",
+                  "text": "，求 "
+                },
+                {
+                  "type": "MATH",
+                  "tex": "f'(x)"
+                },
+                {
+                  "type": "TEXT",
+                  "text": "。"
+                }
+              ]
+            },
+            {
+              "type": "IMAGE",
+              "resourceId": "res_img_01",
+              "alt": "函数图像",
+              "caption": "Figure 1"
+            },
+            {
+              "type": "MATH",
+              "tex": "\\int_0^1 x^2 dx"
+            }
+          ]
+        }
+      },
+      "payload": {
+        "kind": "CHOICE",
+        "options": [
+          {
+            "id": "opt_a",
+            "content": {
+              "kind": "TEXT",
+              "text": "2x"
+            }
+          },
+          {
+            "id": "opt_b",
+            "content": {
+              "kind": "TEXT",
+              "text": "x"
+            }
+          }
+        ]
+      },
+      "answerSpec": {
+        "kind": "CHOICE",
+        "correctOptionIds": [
+          "opt_a"
+        ]
+      },
+      "scoreSpec": {
+        "defaultMaxScore": 1.5
+      },
+      "sourceRefs": []
+    }
+  ],
+  "resources": [
+    {
+      "id": "res_img_01",
+      "kind": "IMAGE",
+      "mediaType": "image/png",
+      "locator": "resources/res_img_01.png",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "id": "res_audio_01",
+      "kind": "AUDIO",
+      "mediaType": "audio/mpeg",
+      "locator": "resources/res_audio_01.mp3",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}
