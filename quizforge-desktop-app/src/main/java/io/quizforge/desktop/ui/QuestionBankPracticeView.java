@@ -7,17 +7,26 @@ import io.quizforge.core.practice.PracticeSummary;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import javafx.geometry.HPos;
 import javafx.geometry.Pos;
+import javafx.geometry.VPos;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Alert;
-import javafx.scene.control.CheckBox;
-import javafx.scene.control.ProgressBar;
-import javafx.scene.control.RadioButton;
-import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.Label;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Arc;
+import javafx.scene.shape.ArcType;
+import javafx.scene.shape.Circle;
+import javafx.scene.shape.StrokeLineCap;
 
 /** One question at a time; answer state never alters the .qbank file. */
 final class QuestionBankPracticeView extends VBox {
@@ -36,9 +45,7 @@ final class QuestionBankPracticeView extends VBox {
         outline = new QuestionOutlineView(session, this::jumpToQuestion);
         setId("question-practice");
         getStyleClass().add("practice-view");
-        setSpacing(20);
-        setMaxWidth(760);
-        setMinWidth(0);
+        QuestionCardLayout.configure(this);
         render();
     }
 
@@ -46,82 +53,48 @@ final class QuestionBankPracticeView extends VBox {
         outline.refresh();
         sourceRows = null;
         getChildren().clear();
-        getChildren().add(UiTheme.label(session.bank().title(), "section-title"));
         if (session.finished()) { summary(); return; }
         QuestionBankFile.Entry question = session.current();
         var state = session.state();
-        var position = UiTheme.label("Question " + (session.index() + 1) + " / "
-                + session.bank().questions().size(), "muted");
-        position.setId("question-position");
-        ProgressBar progress = new ProgressBar((session.index() + 1.0) / session.bank().questions().size());
-        progress.setMaxWidth(Double.MAX_VALUE);
-        getChildren().addAll(position, progress, UiTheme.label(question.stem(), "question-stem"));
-        Button submit = UiTheme.iconButton("check", "确认答案", () -> { });
+        QuestionCardView card;
+        if (state == QuestionBankPracticeSession.State.SUBMITTED) {
+            if (!question.sourceRefs().isEmpty()) sourceRows = sources.apply(question.sourceRefs());
+            card = QuestionCardView.result(QuestionPresentationMapper.practiceResult(session),
+                    session.index(), session.bank().questions().size(), "", sourceRows);
+        } else {
+            card = QuestionCardView.answering(QuestionPresentationMapper.practice(session), session.index(),
+                    session.bank().questions().size(), session.selected(), id -> command(() -> runtime.select(id)));
+        }
+        card.setId("practice-question-card");
+        Button submit = UiTheme.button("提交答案", "check", "primary", () -> { });
         submit.getStyleClass().add("practice-submit");
         submit.setId("submit-answer");
+        submit.setAccessibleText("提交答案");
         submit.setDisable(state != QuestionBankPracticeSession.State.SELECTED);
-        ToggleGroup group = new ToggleGroup();
-        VBox options = new VBox(8);
-        boolean single = "SINGLE_CHOICE".equals(question.type());
-        for (int i = 0; i < question.data().options().size(); i++) {
-            var option = question.data().options().get(i);
-            String label = (char) ('A' + i) + "   " + option.content();
-            if (single) {
-                RadioButton choice = new RadioButton(label);
-                choice.setToggleGroup(group);
-                choice.setSelected(session.selected().contains(option.id()));
-                choice.setOnAction(event -> command(() -> runtime.select(option.id())));
-                choice.setWrapText(true);
-                choice.setMaxWidth(Double.MAX_VALUE);
-                choice.setDisable(state == QuestionBankPracticeSession.State.SUBMITTED);
-                choice.setId("option-" + i);
-                options.getChildren().add(choice);
-            } else {
-                CheckBox choice = new CheckBox(label);
-                choice.setSelected(session.selected().contains(option.id()));
-                choice.setOnAction(event -> {
-                    command(() -> runtime.select(option.id()));
-                });
-                choice.setWrapText(true);
-                choice.setMaxWidth(Double.MAX_VALUE);
-                choice.setDisable(state == QuestionBankPracticeSession.State.SUBMITTED);
-                choice.setId("option-" + i);
-                options.getChildren().add(choice);
-            }
-        }
-        getChildren().add(options);
+        FlowPane actions = new FlowPane(12, 10, submit);
+        actions.setId("practice-card-actions");
+        actions.getStyleClass().add("practice-card-actions");
+        actions.setAlignment(Pos.CENTER_LEFT);
         submit.setOnAction(event -> {
             submit.setDisable(true);
             command(runtime::submit);
         });
         if (state == QuestionBankPracticeSession.State.SUBMITTED) {
-            VBox feedback = new VBox(12, UiTheme.label(session.correct() ? "回答正确" : "回答错误",
-                    session.correct() ? "answer" : "incorrect"),
-                    UiTheme.label("正确答案：" + answerLabels(question), "field-label"),
-                    UiTheme.label(question.analysis(), "preview-paragraph"));
-            feedback.setId("answer-feedback");
-            feedback.getStyleClass().add("practice-feedback");
-            if (!question.sourceRefs().isEmpty()) {
-                sourceRows = sources.apply(question.sourceRefs());
-                feedback.getChildren().addAll(UiTheme.label("来源", "editor-caption"), sourceRows);
-            }
-            getChildren().add(feedback);
             Button retry = UiTheme.button("重新答题", "refresh", "", () -> command(runtime::retry));
             retry.setId("practice-retry");
-            getChildren().add(retry);
+            actions.getChildren().add(retry);
         }
-        Button previous = UiTheme.iconButton("arrow-left", "上一题", () -> { });
+        card.getChildren().add(actions);
+        Button previous = QuestionCardLayout.navigation("arrow-left", "上一题", () -> { });
         previous.setId("previous-question");
         previous.setDisable(session.index() == 0);
         previous.setOnAction(event -> command(runtime::previous));
         boolean last = session.index() == session.bank().questions().size() - 1;
-        Button next = UiTheme.iconButton("arrow", last ? "查看本次练习" : "下一题", () -> { });
+        Button next = QuestionCardLayout.navigation("arrow", last ? "查看本次练习" : "下一题", () -> { });
         next.setId("next-question");
         next.setOnAction(event -> command(runtime::next));
-        HBox navigation = new HBox(52, previous, submit, next);
+        HBox navigation = QuestionCardLayout.row(previous, card, next);
         navigation.setId("practice-navigation");
-        navigation.getStyleClass().add("practice-navigation");
-        navigation.setAlignment(Pos.CENTER);
         getChildren().add(navigation);
     }
 
@@ -149,22 +122,109 @@ final class QuestionBankPracticeView extends VBox {
 
     private void summary() {
         PracticeSummary summary = runtime.summary();
-        VBox page = new VBox(12, UiTheme.label("本次练习", "section-title"),
-                UiTheme.label("正确率：" + (summary.accuracyPercent().isPresent()
-                        ? summary.accuracyPercent().getAsInt() + "%" : "—"), "practice-result-score"),
-                UiTheme.label("已提交：" + summary.submittedCount() + " / " + summary.totalCount(), "preview-paragraph"),
-                UiTheme.label("正确：" + summary.correctCount(), "preview-paragraph"),
-                UiTheme.label("错误：" + summary.incorrectCount(), "preview-paragraph"),
-                UiTheme.label("未完成：" + summary.unfinishedCount(), "preview-paragraph"));
+        int percent = summary.totalCount() == 0 ? 0
+                : (int) Math.round(100.0 * summary.correctCount() / summary.totalCount());
+        Label percentage = UiTheme.label(summary.totalCount() == 0 ? "—" : percent + "%",
+                "practice-summary-percentage");
+        percentage.setId("summary-percentage");
+
+        VBox legend = new VBox(14,
+                summaryStatus("正确", summary.correctCount(), "correct", "summary-correct-count"),
+                summaryStatus("错误", summary.incorrectCount(), "incorrect", "summary-incorrect-count"),
+                summaryStatus("未作答", summary.unfinishedCount(), "unanswered", "summary-unanswered-count"));
+        legend.getStyleClass().add("practice-summary-status-list");
+        FlowPane results = new FlowPane(28, 20, summaryRing(summary, percentage), legend);
+        results.getStyleClass().add("practice-summary-results");
+        results.setMinWidth(0);
+        results.setAlignment(Pos.CENTER);
+        results.setColumnHalignment(HPos.CENTER);
+        results.setRowValignment(VPos.CENTER);
+
+        var title = UiTheme.label("本次练习", "practice-question-type");
+        title.setWrapText(false);
+        var total = UiTheme.label("共 " + summary.totalCount() + " 题", "muted");
+        total.setId("summary-total-count");
+        total.setWrapText(false);
+        Region titleSpacer = new Region();
+        HBox.setHgrow(titleSpacer, Priority.ALWAYS);
+        HBox heading = new HBox(12, title, titleSpacer, total);
+        heading.setAlignment(Pos.CENTER_LEFT);
+
+        VBox page = new VBox(heading, results);
         page.setId("practice-summary");
-        Button previous = UiTheme.button("上一题", "arrow-left", "", () -> command(runtime::previous));
+        page.getStyleClass().addAll("practice-question-card", "practice-summary-card");
+        page.setMinWidth(0);
+        page.setMaxHeight(Region.USE_PREF_SIZE);
+        Button previous = QuestionCardLayout.navigation("arrow-left", "回到上一题", () -> command(runtime::previous));
         previous.setId("summary-previous");
-        Button restart = UiTheme.button("重新练习", "refresh", "primary-button", () -> {
+        Button restart = UiTheme.button("重新练习", "refresh", "primary", () -> {
             if (restartConfirmation.getAsBoolean()) command(runtime::restart);
         });
         restart.setId("practice-restart");
-        page.getChildren().addAll(previous, restart);
-        getChildren().add(page);
+        restart.getStyleClass().add("practice-restart");
+        restart.setAccessibleText("重新练习");
+        FlowPane actions = new FlowPane(12, 10, restart);
+        actions.setId("practice-summary-actions");
+        actions.getStyleClass().add("practice-card-actions");
+        actions.setAlignment(Pos.CENTER_LEFT);
+        page.getChildren().add(actions);
+        Region nextSpace = new Region();
+        nextSpace.getStyleClass().add("practice-navigation-spacer");
+        nextSpace.setVisible(false);
+        HBox navigation = QuestionCardLayout.row(previous, page, nextSpace);
+        navigation.setId("practice-summary-navigation");
+        getChildren().add(navigation);
+    }
+
+    private StackPane summaryRing(PracticeSummary summary, Label percentage) {
+        double center = 66;
+        double radius = 52;
+        Pane segments = new Pane();
+        segments.setMinSize(132, 132);
+        segments.setPrefSize(132, 132);
+        segments.setMaxSize(132, 132);
+        segments.getStyleClass().add("practice-summary-segments");
+        Circle track = new Circle(center, center, radius);
+        track.getStyleClass().add("practice-summary-track");
+        segments.getChildren().add(track);
+        if (summary.totalCount() > 0) {
+            double start = 90;
+            start = addSummarySegment(segments, start, summary.correctCount(), summary.totalCount(), "correct");
+            start = addSummarySegment(segments, start, summary.incorrectCount(), summary.totalCount(), "incorrect");
+            addSummarySegment(segments, start, summary.unfinishedCount(), summary.totalCount(), "unanswered");
+        }
+        StackPane ring = new StackPane(segments, percentage);
+        ring.setMinSize(132, 132);
+        ring.setPrefSize(132, 132);
+        ring.setMaxSize(132, 132);
+        ring.getStyleClass().add("practice-summary-ring");
+        return ring;
+    }
+
+    private double addSummarySegment(Pane segments, double start, int count, int total, String state) {
+        if (count <= 0) return start;
+        double length = 360.0 * count / total;
+        Arc arc = new Arc(66, 66, 52, 52, start, -length);
+        arc.setType(ArcType.OPEN);
+        arc.setFill(Color.TRANSPARENT);
+        arc.setStrokeLineCap(StrokeLineCap.BUTT);
+        arc.getStyleClass().addAll("practice-summary-segment", state);
+        segments.getChildren().add(arc);
+        return start - length;
+    }
+
+    private HBox summaryStatus(String label, int count, String state, String countId) {
+        Circle dot = new Circle(4);
+        dot.getStyleClass().add("practice-summary-dot");
+        Label name = UiTheme.label(label, "practice-summary-status-name");
+        Label value = UiTheme.label(Integer.toString(count), "practice-summary-status-count");
+        value.setId(countId);
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox row = new HBox(9, dot, name, spacer, value);
+        row.getStyleClass().addAll("practice-summary-status", state);
+        row.setAlignment(Pos.CENTER_LEFT);
+        return row;
     }
 
     private boolean confirmRestart() {
@@ -178,13 +238,4 @@ final class QuestionBankPracticeView extends VBox {
         return confirm.showAndWait().orElse(cancel) == accept;
     }
 
-    private String answerLabels(QuestionBankFile.Entry question) {
-        StringBuilder labels = new StringBuilder();
-        for (int i = 0; i < question.data().options().size(); i++) {
-            if (!question.data().correctOptionIds().contains(question.data().options().get(i).id())) continue;
-            if (!labels.isEmpty()) labels.append(", ");
-            labels.append((char) ('A' + i));
-        }
-        return labels.toString();
-    }
 }

@@ -11,8 +11,7 @@ final class FileHeader extends HBox {
     private final Button mode;
     private Button historyButton;
 
-    FileHeader(FilePresentation file, Runnable toggle, java.util.function.Consumer<Button> details, Runnable ai,
-            Runnable history) {
+    FileHeader(FilePresentation file, Runnable toggle, Runnable ai, Runnable history) {
         setId("file-header");
         getStyleClass().add("file-header");
         setAlignment(Pos.CENTER_LEFT);
@@ -24,19 +23,13 @@ final class FileHeader extends HBox {
         HBox.setHgrow(name, Priority.ALWAYS);
         getChildren().add(name);
         if (file.kind() == io.quizforge.core.workspace.WorkspaceFileKind.QUESTION_BANK) {
-            historyButton = UiTheme.button("历史记录", "clock", "", history);
+            historyButton = UiTheme.iconButton("clock", "历史记录", history);
             historyButton.setId("qbank-history-entry");
             getChildren().add(historyButton);
         }
         mode = UiTheme.iconButton("book", "切换到编辑模式", toggle);
         mode.setId("file-mode-toggle");
         if (file.supportsMode()) getChildren().add(mode);
-        if (file.asset()) {
-            Button info = UiTheme.iconButton("question", "文件详细信息", () -> { });
-            info.setId("asset-info-button");
-            info.setOnAction(event -> details.accept(info));
-            getChildren().add(info);
-        }
         if (file.offersAi()) {
             Button spark = UiTheme.iconButton("spark", "使用 AI 生成内容", ai);
             spark.setId("empty-asset-ai");
@@ -46,7 +39,7 @@ final class FileHeader extends HBox {
     }
 
     void updateMode(FileMode current) {
-        showHistory(current == FileMode.BROWSE);
+        showHistory(historyButton != null || current == FileMode.BROWSE);
         mode.setGraphic(UiTheme.icon(current == FileMode.BROWSE ? "book" : "book-pen"));
         String action = current == FileMode.BROWSE ? "切换到编辑模式" : "切换到浏览模式";
         mode.setTooltip(new Tooltip(action));
@@ -57,5 +50,10 @@ final class FileHeader extends HBox {
         if (historyButton == null) return;
         historyButton.setVisible(show);
         historyButton.setManaged(show);
+    }
+
+    void showMode(boolean show) {
+        mode.setVisible(show);
+        mode.setManaged(show);
     }
 }

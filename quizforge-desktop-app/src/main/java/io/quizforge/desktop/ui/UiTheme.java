@@ -1,5 +1,10 @@
 package io.quizforge.desktop.ui;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
 import java.util.Objects;
 import javafx.scene.Node;
 import javafx.scene.Scene;
@@ -14,14 +19,60 @@ import javafx.scene.shape.SVGPath;
 
 /** Shared visual primitives for the desktop workspace and its dialogs. */
 final class UiTheme {
+    private static final String LIVE_CSS_PROPERTY = "quizforge.ui.liveCssDir";
+    private static final String LIVE_CSS_ENV = "QUIZFORGE_LIVE_CSS_DIR";
+
     private UiTheme() { }
 
     static String stylesheet() {
-        return Objects.requireNonNull(UiTheme.class.getResource("workspace.css")).toExternalForm();
+        return stylesheet("workspace.css");
     }
 
     static String markdownStylesheet() {
-        return Objects.requireNonNull(UiTheme.class.getResource("markdown-preview.css")).toExternalForm();
+        return stylesheet("markdown-preview.css");
+    }
+
+    static boolean liveCssEnabled() {
+        return liveCssDirectory() != null;
+    }
+
+    private static String stylesheet(String name) {
+        Path directory = liveCssDirectory();
+        if (directory == null) {
+            return Objects.requireNonNull(UiTheme.class.getResource(name)).toExternalForm();
+        }
+        try {
+            byte[] css = Files.readAllBytes(directory.resolve(name));
+            return "data:text/css;base64," + Base64.getEncoder().encodeToString(css);
+        } catch (IOException error) {
+            throw new UncheckedIOException("Could not read live CSS: " + name, error);
+        }
+    }
+
+    private static Path liveCssDirectory() {
+        String configured = System.getProperty(LIVE_CSS_PROPERTY);
+        if (configured == null || configured.isBlank()) configured = System.getenv(LIVE_CSS_ENV);
+        if (configured != null && !configured.isBlank()) return Path.of(configured);
+        return developmentCssDirectory(Path.of(System.getProperty("user.dir")),
+                System.getProperty("sun.java.command", ""),
+                System.getProperty("java.class.path", ""));
+    }
+
+    static Path developmentCssDirectory(Path workingDirectory, String command, String classpath) {
+        String application = "io.quizforge.desktop.bootstrap.DesktopApplication";
+        if (!command.equals(application) && !command.startsWith(application + " ")) return null;
+        if (!classpath.contains("target/classes") && !classpath.contains("target\\classes")) return null;
+        Path[] candidates = {
+                workingDirectory.resolve("src/main/resources/io/quizforge/desktop/ui"),
+                workingDirectory.resolve("quizforge-desktop-app/src/main/resources/io/quizforge/desktop/ui")
+        };
+        for (Path candidate : candidates) {
+            if (Files.isRegularFile(candidate.resolve("workspace.css"))
+                    && Files.isRegularFile(candidate.resolve("markdown-preview.css"))) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     static void apply(Scene scene) {
@@ -64,7 +115,6 @@ final class UiTheme {
             case "book-pen" -> "M9 5 Q5 2 1 4 L1 17 Q5 15 9 18 L9 5 Q13 2 18 4 L18 9 M11 17 L12 13 L17 8 L20 11 L15 16 Z M16 9 L19 12";
             case "markdown" -> "M3 2 L13 2 L17 6 L17 18 L3 18 Z M6 14 L6 8 L9 11 L12 8 L12 14";
             case "qbank" -> "M3 2 L17 2 L17 18 L3 18 Z M7 7 Q7 4 10 4 Q14 4 13 7 L10 10 L10 12 M10 15 L10 15.2";
-            case "question" -> "M19 10 A9 9 0 1 1 1 10 A9 9 0 1 1 19 10 M7 7 Q7 4 10 4 Q14 4 13 7 L10 10 L10 12 M10 15 L10 15.2";
             case "chevron" -> "M5 8 L10 13 L15 8";
             case "check" -> "M3 10 L8 15 L17 5";
             case "refresh" -> "M17 7 A7 7 0 1 0 17 13 M17 2 L17 7 L12 7";
@@ -91,6 +141,53 @@ final class UiTheme {
         box.setAccessibleText(name);
         box.getStyleClass().add("icon-" + name);
         return box;
+    }
+
+    /** Compact sidebar-only icons; other surfaces keep their existing icon family. */
+    static Node workspaceTreeIcon(String name) {
+        SVGPath path = new SVGPath();
+        path.setContent(switch (name) {
+            case "folder" -> "M1 3 L5.5 3 L7 4.5 L13 4.5 L13 11.5 L1 11.5 Z";
+            case "markdown" -> "M3 1.5 L8 1.5 L11 4.5 L11 12.5 L3 12.5 Z M8 1.5 L8 4.5 L11 4.5 M5 7 L9 7 M5 9.5 L9 9.5";
+            case "qbank" -> "M2.5 1.5 L11.5 1.5 L11.5 12.5 L2.5 12.5 Z M4.5 4.5 L4.6 4.5 M6.5 4.5 L9.5 4.5 M4.5 7 L4.6 7 M6.5 7 L9.5 7 M4.5 9.5 L4.6 9.5 M6.5 9.5 L9.5 9.5";
+            default -> "M3 1.5 L8 1.5 L11 4.5 L11 12.5 L3 12.5 Z M8 1.5 L8 4.5 L11 4.5";
+        });
+        path.getStyleClass().add("line-icon");
+        StackPane box = new StackPane(path);
+        box.setMinSize(14, 14);
+        box.setPrefSize(14, 14);
+        box.setMaxSize(14, 14);
+        box.setAccessibleText(name.equals("qbank") ? "题库文件" : name);
+        box.getStyleClass().addAll("workspace-tree-icon", "icon-" + name);
+        return box;
+    }
+
+    static Node workspaceMenuIcon(String name) {
+        SVGPath path = new SVGPath();
+        path.setContent(switch (name) {
+            case "check" -> "M2 7 L5.5 10.5 L12 3.5";
+            case "folder" -> "M1 3 L5.5 3 L7 4.5 L13 4.5 L13 11.5 L1 11.5 Z";
+            case "folder-open" -> "M1 11.5 L1 3 L5 3 L6.5 4.5 L12 4.5 L12 6 M1 11.5 L3 6 L13 6 L11 11.5 Z";
+            case "folder-plus" -> "M1 3 L5.5 3 L7 4.5 L13 4.5 L13 11.5 L1 11.5 Z M7 6 L7 10 M5 8 L9 8";
+            case "file-plus" -> "M3 1.5 L8 1.5 L11 4.5 L11 12.5 L3 12.5 Z M8 1.5 L8 4.5 L11 4.5 M7 6.5 L7 10.5 M5 8.5 L9 8.5";
+            case "refresh" -> "M11.5 5 A5 5 0 1 0 11.5 9 M11.5 1.5 L11.5 5 L8 5";
+            case "link" -> "M5.5 8.5 L8.5 5.5 M4.5 7.5 L3 9 A2.1 2.1 0 0 0 6 12 L8 10 M6 4 L8 2 A2.1 2.1 0 0 1 11 5 L9.5 6.5";
+            case "copy" -> "M5 5 L12 5 L12 12 L5 12 Z M9 3 L9 1.5 L1.5 1.5 L1.5 9 L3 9";
+            case "edit" -> "M2 9 L9.5 1.5 L12.5 4.5 L5 12 L1.5 12.5 Z M8 3 L11 6";
+            case "trash" -> "M2 4 L12 4 M5 4 L5 2 L9 2 L9 4 M3.5 4 L4 12 L10 12 L10.5 4 M6 6 L6 10 M8 6 L8 10";
+            default -> throw new IllegalArgumentException("Unknown workspace menu icon: " + name);
+        });
+        path.getStyleClass().add("workspace-menu-icon-path");
+        StackPane icon = new StackPane(path);
+        icon.setMinSize(14, 14);
+        icon.setPrefSize(14, 14);
+        icon.setMaxSize(14, 14);
+        StackPane gutter = new StackPane(icon);
+        gutter.setMinSize(18, 14);
+        gutter.setPrefSize(18, 14);
+        gutter.setMaxSize(18, 14);
+        gutter.getStyleClass().addAll("workspace-menu-icon", "icon-" + name);
+        return gutter;
     }
 
     static ScrollPane scroll(Node content) {

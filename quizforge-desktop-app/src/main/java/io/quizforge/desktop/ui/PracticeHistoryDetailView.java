@@ -1,22 +1,21 @@
 package io.quizforge.desktop.ui;
 
 import io.quizforge.core.practice.PracticeHistoryDetail;
-import io.quizforge.core.practice.PracticePayload;
 import io.quizforge.core.practice.PracticeSessionQuestion;
 import io.quizforge.core.practice.QuestionAttempt;
 import io.quizforge.core.workspace.WorkspaceId;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
-import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SplitPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
@@ -27,6 +26,7 @@ final class PracticeHistoryDetailView extends BorderPane {
     private final HistoryQuestionOutlineView outline;
     private final VBox question = new VBox(18);
     private final ScrollPane scroll;
+    private final VBox headings = new VBox();
     private final WorkspaceId workspace;
     private final HistorySourceNavigationAdapter sources;
     private HistorySourceListView sourceList;
@@ -45,16 +45,32 @@ final class PracticeHistoryDetailView extends BorderPane {
         HBox.setHgrow(title, Priority.ALWAYS);
         Button returnButton = UiTheme.button("返回历史记录", "arrow-left", "", back);
         returnButton.setId("history-detail-back");
-        HBox heading = new HBox(12, title, returnButton);
+        returnButton.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        title.setMinWidth(0);
+        HBox heading = new HBox(12, returnButton, title);
         heading.getStyleClass().add("history-heading");
-        setTop(heading);
+        headings.getChildren().add(heading);
         question.setId("history-detail-question");
-        question.getStyleClass().add("history-question");
-        scroll = UiTheme.scroll(question);
-        scroll.setFitToWidth(true);
-        setCenter(scroll);
+        QuestionCardLayout.configure(question);
+        scroll = QuestionCardLayout.scroll(question);
+        scroll.setId("history-question-scroll");
         outline = new HistoryQuestionOutlineView(detail, this::showQuestion);
-        setRight(outline);
+        BorderPane readerColumn = new BorderPane(scroll);
+        readerColumn.setMinWidth(320);
+        readerColumn.setTop(headings);
+        SplitPane layout = new SplitPane(readerColumn, outline);
+        layout.getStyleClass().add("history-browse-layout");
+        layout.setMinWidth(0);
+        SplitPane.setResizableWithParent(outline, false);
+        layout.widthProperty().addListener(new javafx.beans.value.ChangeListener<Number>() {
+            @Override public void changed(javafx.beans.value.ObservableValue<? extends Number> value,
+                    Number before, Number width) {
+                if (width.doubleValue() <= 500) return;
+                layout.setDividerPositions((width.doubleValue() - 260) / width.doubleValue());
+                layout.widthProperty().removeListener(this);
+            }
+        });
+        setCenter(layout);
         if (detail.questions().isEmpty()) render();
         else showQuestion(0);
     }
@@ -75,55 +91,40 @@ final class PracticeHistoryDetailView extends BorderPane {
     private void render() {
         outline.refresh(detail, questionIndex);
         question.getChildren().clear();
+        sourceList = null;
         if (detail.questions().isEmpty()) {
             question.getChildren().add(UiTheme.label("本轮没有题目", "muted"));
             return;
         }
         var row = detail.questions().get(questionIndex);
-        Label position = UiTheme.label("第 " + (questionIndex + 1) + " / " + detail.questions().size() + " 题", "muted");
-        position.setId("history-question-position");
-        question.getChildren().addAll(position, UiTheme.label(row.stem(), "question-stem"));
+        var content = QuestionPresentationMapper.history(row);
+        VBox context = new VBox(8);
+        context.getStyleClass().add("history-question-context");
         boolean unfinished = row.finalState() != PracticeSessionQuestion.State.SUBMITTED;
-        Label finalState = UiTheme.label(unfinished ? "本轮最终状态：未完成" : "本轮最终状态：已提交", "muted");
+        Label finalState = UiTheme.label(unfinished ? "本轮最终状态：未完成" : "本轮最终状态：已完成", "muted");
         finalState.setId("history-final-state");
-        question.getChildren().add(finalState);
-
-        PracticeHistoryDetail.Attempt attempt = attemptIndex < 0 ? null : row.attempts().get(attemptIndex);
-        Set<String> selected = attempt == null ? Set.of() : optionIds(attempt.answer());
-        VBox options = new VBox(8);
-        options.setId("history-options");
-        for (int index = 0; index < row.options().size(); index++) {
-            var option = row.options().get(index);
-            Label label = UiTheme.label((char) ('A' + index) + "   " + option.content(), "history-option");
-            label.setId("history-option-" + index);
-            if (selected.contains(option.id())) label.getStyleClass().add("selected");
-            if (row.correctOptionIds().contains(option.id())) label.getStyleClass().add("correct-option");
-            options.getChildren().add(label);
-        }
-        question.getChildren().add(options);
+        context.getChildren().add(finalState);
 
         if (row.draftAnswer() != null) {
-            Label draft = UiTheme.label("未提交选择：" + labels(row, optionIds(row.draftAnswer())), "history-draft");
+            Label draft = UiTheme.label("未提交选择：" + content.answerLabels(
+                    QuestionPresentationMapper.answerIds(row.draftAnswer())), "history-draft");
             draft.setId("history-draft");
-            question.getChildren().add(draft);
+            context.getChildren().add(draft);
         }
-        if (attempt == null) {
+        sourceList = new HistorySourceListView(workspace, row.sourceRefs(), sources);
+        QuestionCardView card;
+        if (attemptIndex < 0) {
             Label noAttempt = UiTheme.label("本轮未提交", "muted");
             noAttempt.setId("history-no-attempt");
-            question.getChildren().add(noAttempt);
+            context.getChildren().add(noAttempt);
+            card = QuestionCardView.readOnly(content, questionIndex, detail.questions().size(), "history-",
+                    row.draftAnswer() == null ? Set.of() : QuestionPresentationMapper.answerIds(row.draftAnswer()), sourceList);
         } else {
+            var attempt = row.attempts().get(attemptIndex);
             Label attemptHeader = UiTheme.label("第 " + (attemptIndex + 1) + " / " + row.attempts().size()
                     + " 次作答 · " + mode(attempt.mode()), "history-attempt-header");
             attemptHeader.setId("history-attempt-position");
-            Label result = UiTheme.label(result(attempt.result()), "history-attempt-result");
-            result.setId("history-attempt-result");
-            result.getStyleClass().add(switch (attempt.result()) {
-                case CORRECT -> "correct";
-                case INCORRECT -> "incorrect";
-                case UNSCORED -> "unscored";
-            });
-            question.getChildren().addAll(attemptHeader, result,
-                    UiTheme.label("你的答案：" + labels(row, selected), "history-answer"));
+            context.getChildren().add(attemptHeader);
             Button previousAttempt = new Button("↑ 上一次作答");
             previousAttempt.setId("history-previous-attempt");
             previousAttempt.setOnAction(event -> showAttempt(attemptIndex - 1));
@@ -132,49 +133,32 @@ final class PracticeHistoryDetailView extends BorderPane {
             nextAttempt.setId("history-next-attempt");
             nextAttempt.setOnAction(event -> showAttempt(attemptIndex + 1));
             nextAttempt.setDisable(attemptIndex == row.attempts().size() - 1);
-            HBox attempts = new HBox(16, previousAttempt, nextAttempt);
+            FlowPane attempts = new FlowPane(16, 8, previousAttempt, nextAttempt);
             attempts.getStyleClass().add("history-attempt-navigation");
-            question.getChildren().add(attempts);
+            context.getChildren().add(attempts);
+            card = QuestionCardView.result(QuestionPresentationMapper.historyResult(row, attempt),
+                    questionIndex, detail.questions().size(), "history-", sourceList);
+            card.resultLabel().setId("history-attempt-result");
         }
-        question.getChildren().add(UiTheme.label("正确答案：" + labels(row, Set.copyOf(row.correctOptionIds())),
-                "history-answer"));
-        if (!row.analysis().isBlank()) question.getChildren().add(UiTheme.label(row.analysis(), "preview-paragraph"));
-        sourceList = new HistorySourceListView(workspace, row.sourceRefs(), sources);
-        question.getChildren().add(sourceList);
-
-        Button previous = UiTheme.button("上一题", "arrow-left", "", () -> showQuestion(questionIndex - 1));
+        Button previous = QuestionCardLayout.navigation("arrow-left", "上一题", () -> showQuestion(questionIndex - 1));
         previous.setId("history-previous-question");
         previous.setDisable(questionIndex == 0);
-        Button next = UiTheme.button("下一题", "arrow", "", () -> showQuestion(questionIndex + 1));
+        Button next = QuestionCardLayout.navigation("arrow", "下一题", () -> showQuestion(questionIndex + 1));
         next.setId("history-next-question");
         next.setDisable(questionIndex == detail.questions().size() - 1);
-        HBox navigation = new HBox(52, previous, next);
+        HBox navigation = QuestionCardLayout.row(previous, card, next);
         navigation.setId("history-question-navigation");
-        navigation.setAlignment(Pos.CENTER);
-        question.getChildren().add(navigation);
+        question.getChildren().addAll(context, navigation);
         scroll.setVvalue(0);
     }
 
     void refreshSources() { if (sourceList != null) sourceList.refresh(); }
 
-    private static Set<String> optionIds(PracticePayload payload) {
-        if (!(payload.value() instanceof List<?> values)) throw new IllegalStateException("Invalid history choice answer");
-        Set<String> ids = new HashSet<>();
-        for (Object value : values) {
-            if (!(value instanceof String id)) throw new IllegalStateException("Invalid history choice answer");
-            ids.add(id);
-        }
-        return Set.copyOf(ids);
-    }
+    HistoryQuestionOutlineView outline() { return outline; }
 
-    private static String labels(PracticeHistoryDetail.Question question, Set<String> ids) {
-        StringBuilder text = new StringBuilder();
-        for (int index = 0; index < question.options().size(); index++) {
-            if (!ids.contains(question.options().get(index).id())) continue;
-            if (!text.isEmpty()) text.append("、");
-            text.append((char) ('A' + index));
-        }
-        return text.isEmpty() ? "—" : text.toString();
+    void setHeader(Node header) {
+        if (headings.getChildren().size() > 1) headings.getChildren().removeFirst();
+        if (header != null) headings.getChildren().addFirst(header);
     }
 
     private static String mode(QuestionAttempt.Mode mode) {
@@ -185,11 +169,4 @@ final class PracticeHistoryDetailView extends BorderPane {
         };
     }
 
-    private static String result(QuestionAttempt.Result result) {
-        return switch (result) {
-            case CORRECT -> "正确";
-            case INCORRECT -> "错误";
-            case UNSCORED -> "未评分";
-        };
-    }
 }

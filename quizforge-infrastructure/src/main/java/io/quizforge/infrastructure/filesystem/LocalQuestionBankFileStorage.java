@@ -19,7 +19,11 @@ public final class LocalQuestionBankFileStorage implements QuestionBankFileStora
     private final WorkspacePathResolver paths;
 
     public LocalQuestionBankFileStorage(QuizForgeDataDirectory directory) {
-        this.paths = new WorkspacePathResolver(directory);
+        this(new WorkspacePathResolver(directory));
+    }
+
+    public LocalQuestionBankFileStorage(WorkspacePathResolver paths) {
+        this.paths = paths;
     }
 
     @Override

@@ -16,6 +16,7 @@ import javafx.scene.layout.VBox;
 /** A document-scoped outline; a new preview creates a new selection and navigator. */
 final class MarkdownOutlineView extends VBox {
     private Button selected;
+    private final ScrollPane list;
 
     MarkdownOutlineView(List<MarkdownOutline.Entry> entries, MarkdownDocumentNavigator navigator,
             Consumer<MarkdownOutline.Entry> copyLink) {
@@ -26,11 +27,13 @@ final class MarkdownOutlineView extends VBox {
         rows.getStyleClass().add("markdown-outline-rows");
         for (MarkdownOutline.Entry entry : entries)
             rows.getChildren().add(row(entry, navigator, copyLink));
-        ScrollPane list = UiTheme.scroll(rows);
+        list = UiTheme.scroll(rows);
         list.getStyleClass().add("markdown-outline-scroll");
         VBox.setVgrow(list, Priority.ALWAYS);
         getChildren().addAll(title, list);
     }
+
+    ScrollPane scroll() { return list; }
 
     private Button row(MarkdownOutline.Entry entry, MarkdownDocumentNavigator navigator,
             Consumer<MarkdownOutline.Entry> copyLink) {

@@ -1,6 +1,12 @@
+param([switch]$LiveCss)
+
 $ErrorActionPreference = 'Stop'
 $logDirectory = Join-Path $env:LOCALAPPDATA 'QuizForge\logs'
 $logPath = Join-Path $logDirectory 'desktop-launch.log'
+$previousLiveCssDirectory = $env:QUIZFORGE_LIVE_CSS_DIR
+if ($LiveCss) {
+    $env:QUIZFORGE_LIVE_CSS_DIR = Join-Path $PSScriptRoot 'quizforge-desktop-app\src\main\resources\io\quizforge\desktop\ui'
+}
 
 try {
     [void][System.IO.Directory]::CreateDirectory($logDirectory)
@@ -37,4 +43,12 @@ try {
     [void][System.Windows.MessageBox]::Show(
         $_.Exception.Message, 'QuizForge V2', 'OK', 'Error')
     exit 1
+} finally {
+    if ($LiveCss) {
+        if ($null -eq $previousLiveCssDirectory) {
+            Remove-Item Env:QUIZFORGE_LIVE_CSS_DIR -ErrorAction SilentlyContinue
+        } else {
+            $env:QUIZFORGE_LIVE_CSS_DIR = $previousLiveCssDirectory
+        }
+    }
 }

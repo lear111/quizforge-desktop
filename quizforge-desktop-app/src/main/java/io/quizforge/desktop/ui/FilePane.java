@@ -9,7 +9,6 @@ import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
 import io.quizforge.core.document.registered.NamedMarkdownAnchor;
 import io.quizforge.core.document.registered.MarkdownSourceRange;
 import io.quizforge.core.port.MarkdownDocumentRegistration;
-import io.quizforge.core.question.QuestionBankReferenceResolver;
 import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.question.QuestionSourceLinkService;
 import io.quizforge.core.workspace.WorkspaceId;
@@ -25,13 +24,13 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.control.ScrollPane;
 import javafx.geometry.Pos;
 
 final class FilePane extends BorderPane {
     private final FilePresentationLoader loader;
-    private final QuestionBankReferenceResolver references;
     private final BiConsumer<WorkspaceId, FilePresentation> aiAction;
     private final QuestionBankFileEditService bankEdits;
     private final MarkdownFileEditService markdownEdits;
@@ -45,7 +44,6 @@ final class FilePane extends BorderPane {
     private final QuizForgeReferenceCodec referencesCodec = new QuizForgeReferenceCodec();
     private final QuizForgeNavigationLinkCodec navigationCodec = new QuizForgeNavigationLinkCodec();
     private final MarkdownNavigationLinkCodec markdownLinks = new MarkdownNavigationLinkCodec();
-    private final AssetDetailsPopover details = new AssetDetailsPopover();
     private WorkspaceId workspace;
     private FilePresentation current;
     private FileMode mode = FileMode.BROWSE;
@@ -59,14 +57,12 @@ final class FilePane extends BorderPane {
     private MarkdownSourceEditorView markdownEditor;
     private Runnable onEditStart = () -> { };
 
-    FilePane(FilePresentationLoader loader, QuestionBankReferenceResolver references,
-            BiConsumer<WorkspaceId, FilePresentation> aiAction,
+    FilePane(FilePresentationLoader loader, BiConsumer<WorkspaceId, FilePresentation> aiAction,
             QuestionBankFileEditService bankEdits, MarkdownFileEditService markdownEdits,
             MarkdownDocumentRegistration registration, Runnable refreshTree, TextClipboard clipboard,
             QuestionSourceLinkService sourceLinks, Consumer<String> openLink,
             QuestionSourceNavigationAdapter sourceNavigation, io.quizforge.core.port.PracticeRuntimeProvider practice) {
         this.loader = loader;
-        this.references = references;
         this.aiAction = aiAction;
         this.bankEdits = bankEdits;
         this.markdownEdits = markdownEdits;
@@ -87,21 +83,19 @@ final class FilePane extends BorderPane {
     }
 
     void open(WorkspaceId workspace, String path) {
+        FileViewerRouter.PracticeLayout previousLayout = current != null
+                && java.util.Objects.equals(this.workspace, workspace)
+                && current.file().entry().relativePath().equals(path)
+                && browseContent instanceof FileViewerRouter.PracticeLayout layout ? layout : null;
         clear();
         this.workspace = workspace;
         try {
             current = loader.load(workspace, path);
-            header = new FileHeader(current, this::toggleMode, anchor -> {
-                try {
-                    // Re-read the actual file and recompute revisions/references on every open.
-                    var fresh = loader.load(this.workspace, current.file().entry().relativePath());
-                    if (!fresh.asset()) { details.showFailure(anchor); return; }
-                    details.show(anchor, fresh, this.workspace, references);
-                } catch (RuntimeException error) { details.showFailure(anchor); }
-            }, this::invokeAi, this::openHistory);
-            setTop(header);
+            header = new FileHeader(current, this::toggleMode, this::invokeAi, this::openHistory);
             browseContent = router.view(current, FileMode.BROWSE);
-            setCenter(browseContent);
+            if (previousLayout != null && browseContent instanceof FileViewerRouter.PracticeLayout layout)
+                layout.keepDividerPosition(previousLayout);
+            showBrowseContent();
         } catch (RuntimeException error) {
             current = null;
             setTop(null);
@@ -111,7 +105,6 @@ final class FilePane extends BorderPane {
 
     private void toggleMode() {
         if (page == Page.HISTORY_LIST) return;
-        details.hide();
         if (mode == FileMode.EDIT && (bankEditor != null && bankEditor.dirty()
                 || markdownEditor != null && markdownEditor.dirty())) {
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
@@ -125,30 +118,66 @@ final class FilePane extends BorderPane {
         mode = mode == FileMode.BROWSE ? FileMode.EDIT : FileMode.BROWSE;
         if (mode == FileMode.EDIT) onEditStart.run();
         header.updateMode(mode);
+        if (mode == FileMode.EDIT && browseContent instanceof SafeMarkdownPreview.BrowseLayout markdown) {
+            markdown.setHeader(null);
+            setTop(header);
+        }
         if (mode == FileMode.EDIT && markdownSource()) {
             markdownEditor = new MarkdownSourceEditorView(current.file().sourceText(), this::saveMarkdown);
             setCenter(new StackPane(markdownEditor));
         } else if (mode == FileMode.EDIT && current.kind() == io.quizforge.core.workspace.WorkspaceFileKind.QUESTION_BANK
                 && current.file().questionBank() != null) {
             bankEditor = new QuestionBankEditorView(current.file().questionBank(), workspace,
-                    bankEdits, sourceLinks, sourceNavigation, this::saveBank);
+                    sourceLinks, sourceNavigation, this::saveBank);
             StackPane centered = new StackPane(bankEditor);
             centered.setAlignment(Pos.TOP_CENTER);
-            setCenter(UiTheme.scroll(centered));
+            ScrollPane editorScroll = UiTheme.scroll(centered);
+            if (browseContent instanceof FileViewerRouter.PracticeLayout practiceLayout) {
+                QuestionBankEditorView editor = bankEditor;
+                editor.jumpTo(practiceLayout.outline().currentIndex());
+                editor.onQuestionChange((bank, selected) ->
+                        practiceLayout.outline().showEditor(bank, selected, target -> {
+                            editor.jumpTo(target);
+                            editorScroll.setVvalue(0);
+                        }));
+                practiceLayout.setContent(editorScroll);
+            } else {
+                setCenter(editorScroll);
+            }
         } else {
             if (mode == FileMode.BROWSE && current.kind() == WorkspaceFileKind.QUESTION_BANK) {
                 // Re-read the file and synchronize the active revision on every Edit -> Practice entry.
                 try {
                     current = loader.load(workspace, current.file().entry().relativePath());
-                    browseContent = router.view(current, FileMode.BROWSE);
+                    Node renewed = router.view(current, FileMode.BROWSE);
+                    if (renewed instanceof FileViewerRouter.PracticeLayout next
+                            && browseContent instanceof FileViewerRouter.PracticeLayout previous) {
+                        next.keepDividerPosition(previous);
+                        previous.setHeader(null);
+                    }
+                    browseContent = renewed;
                 } catch (RuntimeException error) {
                     browseContent = UiTheme.quietState("无法恢复练习", error.getMessage());
                 }
                 bankEditor = null;
             }
-            setCenter(mode == FileMode.BROWSE ? browseContent : router.view(current, mode));
+            if (mode == FileMode.BROWSE) showBrowseContent();
+            else setCenter(router.view(current, mode));
             if (mode == FileMode.BROWSE) refreshSourceStatus();
         }
+    }
+
+    private void showBrowseContent() {
+        if (browseContent instanceof SafeMarkdownPreview.BrowseLayout markdown) {
+            setTop(null);
+            markdown.setHeader(header);
+        } else if (browseContent instanceof FileViewerRouter.PracticeLayout practiceLayout) {
+            setTop(null);
+            practiceLayout.setHeader(header);
+        } else {
+            setTop(header);
+        }
+        setCenter(browseContent);
     }
 
     private boolean markdownSource() {
@@ -286,15 +315,27 @@ final class FilePane extends BorderPane {
     }
 
     private void reopenPreviewPreservingScroll(String path) {
-        ScrollPane reader = (ScrollPane) lookup("#markdown-preview-scroll");
-        ScrollPane outline = (ScrollPane) lookup(".markdown-outline-scroll");
-        double readingPosition = reader == null ? 0 : reader.getVvalue();
-        double outlinePosition = outline == null ? 0 : outline.getVvalue();
+        SafeMarkdownPreview.BrowseLayout previous = markdownBrowseLayout();
+        double readingPosition = previous == null ? 0 : previous.reader().getVvalue();
+        double outlinePosition = previous == null ? 0 : previous.outlineScroll().getVvalue();
         open(workspace, path);
-        ScrollPane renewedReader = (ScrollPane) lookup("#markdown-preview-scroll");
-        ScrollPane renewedOutline = (ScrollPane) lookup(".markdown-outline-scroll");
-        if (renewedReader != null) renewedReader.setVvalue(readingPosition);
-        if (renewedOutline != null) renewedOutline.setVvalue(outlinePosition);
+        SafeMarkdownPreview.BrowseLayout renewed = markdownBrowseLayout();
+        if (renewed != null) {
+            renewed.reader().setVvalue(readingPosition);
+            renewed.outlineScroll().setVvalue(outlinePosition);
+        }
+    }
+
+    private SafeMarkdownPreview.BrowseLayout markdownBrowseLayout() {
+        return browseContent instanceof SafeMarkdownPreview.BrowseLayout markdown ? markdown : null;
+    }
+
+    Region visibleOutline() {
+        if (getCenter() instanceof FileViewerRouter.PracticeLayout practiceLayout) return practiceLayout.outline();
+        if (mode != FileMode.BROWSE) return null;
+        if (getCenter() instanceof SafeMarkdownPreview.BrowseLayout markdown) return markdown.outline();
+        if (getCenter() instanceof PracticeHistoryDetailView detail) return detail.outline();
+        return null;
     }
 
     private void showNavigationError(RuntimeException error) {
@@ -346,7 +387,6 @@ final class FilePane extends BorderPane {
     }
 
     void clear() {
-        details.hide();
         current = null;
         workspace = null;
         browseContent = null;
@@ -362,6 +402,8 @@ final class FilePane extends BorderPane {
 
     FilePresentation currentFile() { return current; }
     private void openHistory() {
+        if (page != Page.BROWSE) return;
+        if (mode == FileMode.EDIT && bankEditor != null) toggleMode();
         if (current == null || workspace == null || mode != FileMode.BROWSE
                 || current.kind() != WorkspaceFileKind.QUESTION_BANK || current.file().entry().assetId() == null) return;
         try {
@@ -369,6 +411,10 @@ final class FilePane extends BorderPane {
                     current.file().entry().name(), this::returnToBank, this::openHistoryDetail);
             page = Page.HISTORY_LIST;
             header.showHistory(false);
+            header.showMode(false);
+            if (browseContent instanceof FileViewerRouter.PracticeLayout practiceLayout)
+                practiceLayout.setHeader(null);
+            setTop(header);
             setCenter(historyList);
         } catch (RuntimeException error) {
             setCenter(UiTheme.quietState("无法读取练习历史", error.getMessage()));
@@ -381,6 +427,8 @@ final class FilePane extends BorderPane {
             var detail = practice.history(workspace).loadArchivedSessionDetail(current.file().entry().assetId(), sessionId);
             historyDetail = new PracticeHistoryDetailView(detail, this::returnToHistoryList, workspace,
                     new HistorySourceNavigationAdapter(sourceNavigation));
+            setTop(null);
+            historyDetail.setHeader(header);
             setCenter(historyDetail);
             page = Page.HISTORY_DETAIL;
         } catch (RuntimeException failure) {
@@ -390,13 +438,16 @@ final class FilePane extends BorderPane {
 
     private void returnToHistoryList() {
         page = Page.HISTORY_LIST;
+        if (historyDetail != null) historyDetail.setHeader(null);
+        setTop(header);
         setCenter(historyList);
     }
 
     private void returnToBank() {
         page = Page.BROWSE;
         header.showHistory(true);
-        setCenter(browseContent);
+        header.showMode(true);
+        showBrowseContent();
     }
     void refreshBrowseFromDisk() {
         if (mode != FileMode.BROWSE || current == null || !markdownSource()) return;
@@ -417,7 +468,7 @@ final class FilePane extends BorderPane {
     }
     void onEditStart(Runnable action) { onEditStart = action; }
     boolean jumpTo(MarkdownOutline.Kind kind, String label, int occurrence) {
-        if (mode != FileMode.BROWSE || !(browseContent instanceof javafx.scene.layout.HBox layout)) return false;
+        if (mode != FileMode.BROWSE || !(browseContent instanceof SafeMarkdownPreview.BrowseLayout layout)) return false;
         Object entriesValue = layout.getProperties().get("quizforge.outlineEntries");
         Object navigatorValue = layout.getProperties().get("quizforge.navigator");
         if (!(entriesValue instanceof List<?> entries)
@@ -434,5 +485,4 @@ final class FilePane extends BorderPane {
                 || markdownEditor != null && markdownEditor.dirty();
     }
     FileMode mode() { return mode; }
-    AssetDetailsPopover details() { return details; }
 }

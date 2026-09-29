@@ -34,16 +34,24 @@ public final class WorkspaceManifestStore {
     }
 
     public WorkspaceId readId(Path root) {
+        return read(root).id();
+    }
+
+    public Manifest read(Path root) {
         try {
             JsonNode manifest = JSON.readTree(root.resolve(".quizforge").resolve("workspace.json").toFile());
             if (manifest == null || !FORMAT.equals(manifest.path("format").asText())
                     || !SCHEMA_VERSION.equals(manifest.path("schemaVersion").asText())) {
                 throw new IllegalArgumentException("Unsupported workspace manifest");
             }
-            return WorkspaceId.parse(manifest.path("workspaceId").asText());
+            String name = manifest.path("name").asText().trim();
+            if (name.isEmpty()) throw new IllegalArgumentException("Workspace name is missing");
+            return new Manifest(WorkspaceId.parse(manifest.path("workspaceId").asText()), name);
         } catch (IOException | IllegalArgumentException error) {
             throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
                     "Could not read workspace.json.", error);
         }
     }
+
+    public record Manifest(WorkspaceId id, String name) { }
 }

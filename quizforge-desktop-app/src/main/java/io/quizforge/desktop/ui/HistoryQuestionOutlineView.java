@@ -2,7 +2,6 @@ package io.quizforge.desktop.ui;
 
 import io.quizforge.core.practice.PracticeHistoryDetail;
 import io.quizforge.core.practice.PracticeSessionQuestion;
-import io.quizforge.core.practice.QuestionAttempt;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,6 +22,7 @@ final class HistoryQuestionOutlineView extends VBox {
         setId("history-question-outline");
         getStyleClass().add("question-outline");
         VBox groups = new VBox();
+        groups.setMinWidth(0);
         groups.getStyleClass().add("question-outline-groups");
         Map<String, List<Integer>> byType = new LinkedHashMap<>();
         for (int index = 0; index < detail.questions().size(); index++)
@@ -34,6 +34,7 @@ final class HistoryQuestionOutlineView extends VBox {
                 default -> throw new IllegalArgumentException("Unsupported history question type: " + type);
             };
             FlowPane numbers = new FlowPane();
+            numbers.setMinWidth(0);
             numbers.getStyleClass().add("question-outline-numbers");
             for (int index : indexes) {
                 Button cell = new Button(Integer.toString(index + 1));
@@ -48,9 +49,10 @@ final class HistoryQuestionOutlineView extends VBox {
             groups.getChildren().add(section);
         });
         ScrollPane scroll = UiTheme.scroll(groups);
+        scroll.setId("history-question-outline-scroll");
         scroll.getStyleClass().add("question-outline-scroll");
         VBox.setVgrow(scroll, Priority.ALWAYS);
-        getChildren().addAll(UiTheme.label("历史题目大纲", "question-outline-title"), scroll);
+        getChildren().addAll(UiTheme.label("题目大纲", "question-outline-title"), scroll);
         refresh(detail, 0);
     }
 

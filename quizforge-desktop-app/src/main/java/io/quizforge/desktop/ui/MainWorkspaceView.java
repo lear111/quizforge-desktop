@@ -16,12 +16,24 @@ import io.quizforge.core.workspace.WorkspaceFileType;
 import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.core.workspace.WorkspaceService;
 import java.util.function.BiConsumer;
+import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
+import javafx.css.PseudoClass;
+import javafx.geometry.Bounds;
+import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.Region;
+import javafx.scene.transform.Transform;
 import javafx.stage.Stage;
+import javafx.stage.DirectoryChooser;
 
 /** The desktop shell: one current workspace tree and a file tab strip. */
 final class MainWorkspaceView extends BorderPane {
+    private static final double DIVIDER_HANDLE_WIDTH = 6;
+    private static final double DIVIDER_LINE_WIDTH = 0.75;
+    private static final PseudoClass DIVIDER_ACTIVE = PseudoClass.getPseudoClass("divider-active");
     private final WorkspaceService workspaces;
     private final WorkspaceFileService files;
     private final WorkspaceHistory history;
@@ -30,9 +42,24 @@ final class MainWorkspaceView extends BorderPane {
     private final WorkspaceSidebar sidebar;
     private final FilePane filePane;
     private final WorkspaceTabManager tabs;
+    private final SplitPane split;
+    private final WindowChrome chrome;
+    private final Region headerSeam = dividerSeam("workspace-header-seam");
+    private final Region headerSeamRight = dividerSeam("workspace-header-seam-right");
+    private final Region sidebarSeam = dividerSeam("workspace-sidebar-seam");
+    private final Region outlineSeam = dividerSeam("workspace-outline-seam");
+    private final ChangeListener<Bounds> outlineBounds = (ignored, before, after) -> positionSeams();
+    private final ChangeListener<Transform> outlinePosition = (ignored, before, after) -> positionSeams();
+    private final ChangeListener<Bounds> tabBounds = (ignored, before, after) -> positionSeams();
+    private final ChangeListener<Transform> tabPosition = (ignored, before, after) -> positionSeams();
+    private Node currentTab;
+    private Region currentOutline;
+    private boolean sidebarDividerActive;
+    private boolean outlineDividerActive;
     private final WorkspaceNavigationService navigation;
     private final QuizForgeNavigationLinkCodec navigationCodec = new QuizForgeNavigationLinkCodec();
     private Workspace current;
+    private double sidebarWidth = 250;
 
     MainWorkspaceView(WorkspaceService workspaces, WorkspaceFileService files, WorkspaceHistory history,
             FilePresentationLoader loader, QuestionBankReferenceResolver references, Stage stage,
@@ -50,10 +77,10 @@ final class MainWorkspaceView extends BorderPane {
         getStyleClass().add("workspace-shell");
         var sourceNavigation = new QuestionSourceNavigationAdapter(references, sourceLinks,
                 this::navigate, this::showNavigationStatus);
-        filePane = new FilePane(loader, references, ai, bankEdits,
+        filePane = new FilePane(loader, ai, bankEdits,
                 markdownEdits, registration, this::refreshTree, clipboard, sourceLinks, this::openNavigationUri,
                 sourceNavigation, practice);
-        tabs = new WorkspaceTabManager(() -> new FilePane(loader, references, ai, bankEdits,
+        tabs = new WorkspaceTabManager(() -> new FilePane(loader, ai, bankEdits,
                 markdownEdits, registration, this::refreshTree, clipboard, sourceLinks, this::openNavigationUri,
                 sourceNavigation, practice),
                 filePane, this::confirmDiscard);
@@ -77,13 +104,9 @@ final class MainWorkspaceView extends BorderPane {
             @Override public void copyLink(WorkspaceFileEntry entry) {
                 tabs.activePane().copyAssetLink(current.id(), entry);
             }
-        }, settings);
-        tabs.onActivate(path -> {
-            var item = find(sidebar.tree().getRoot(), path);
-            if (item != null) sidebar.tree().selectWithoutOpening(item);
-        });
+        }, settings, this::refresh, () -> createFolder(""), type -> createFile("", type));
         tabs.setMinWidth(320);
-        SplitPane split = new SplitPane(sidebar, tabs);
+        split = new SplitPane(sidebar, tabs);
         split.setId("workspace-split");
         split.getStyleClass().add("workspace-split");
         SplitPane.setResizableWithParent(sidebar, false);
@@ -92,13 +115,161 @@ final class MainWorkspaceView extends BorderPane {
                 split.setDividerPositions(250 / width.doubleValue());
             }
         });
+        chrome = new WindowChrome(stage, tabs.tabBar(), sidebar, this::toggleFileList);
+        tabs.onActivate(path -> {
+            trackTabSeam(tabs.activeTabNode());
+            if (path != null) {
+                var item = find(sidebar.tree().getRoot(), path);
+                if (item != null) sidebar.tree().selectWithoutOpening(item);
+            }
+            Region outline = tabs.activePane().visibleOutline();
+            chrome.trackOutline(outline);
+            trackOutlineSeam(outline);
+            Platform.runLater(this::positionSeams);
+        });
+        setTop(chrome);
         setCenter(split);
+        outlineSeam.setVisible(false);
+        getChildren().addAll(headerSeam, headerSeamRight, sidebarSeam, outlineSeam);
+        sidebar.widthProperty().addListener((ignored, before, after) -> positionSeams());
+        tabs.tabBar().hvalueProperty().addListener((ignored, before, after) -> positionSeams());
+        widthProperty().addListener((ignored, before, after) -> positionSeams());
+        heightProperty().addListener((ignored, before, after) -> positionSeams());
+        sceneProperty().addListener((ignored, before, after) -> Platform.runLater(this::positionSeams));
+        addEventFilter(MouseEvent.MOUSE_MOVED, this::updateDividerEmphasis);
+        addEventFilter(MouseEvent.MOUSE_DRAGGED, this::updateDividerEmphasis);
+        addEventFilter(MouseEvent.MOUSE_PRESSED, this::updateDividerEmphasis);
+        addEventFilter(MouseEvent.MOUSE_RELEASED, this::updateDividerEmphasis);
+        addEventFilter(MouseEvent.MOUSE_EXITED, event -> setDividerEmphasis(false, false));
         var available = history.order(workspaces.listWorkspaces());
         if (!available.isEmpty()) switchWorkspace(available.getFirst());
         else {
             updateSwitcher();
             filePane.setCenter(UiTheme.quietState("欢迎使用 QuizForge", "在左上角打开或新建一个工作区。"));
         }
+    }
+
+    private void toggleFileList() {
+        if (split.getItems().contains(sidebar)) {
+            if (sidebar.getWidth() > 0) sidebarWidth = sidebar.getWidth();
+            split.getItems().remove(sidebar);
+            chrome.setFileListVisible(false);
+            sidebarSeam.setVisible(false);
+            setDividerEmphasis(false, outlineDividerActive);
+        } else {
+            split.getItems().addFirst(sidebar);
+            chrome.setFileListVisible(true);
+            sidebarSeam.setVisible(true);
+            Platform.runLater(() -> {
+                if (split.getWidth() > 0)
+                    split.setDividerPositions(Math.min(0.7, sidebarWidth / split.getWidth()));
+                positionSeams();
+            });
+        }
+    }
+
+    @Override protected void layoutChildren() {
+        super.layoutChildren();
+        positionSeams();
+    }
+
+    private static Region dividerSeam(String id) {
+        Region line = new Region();
+        line.setId(id);
+        line.getStyleClass().add("workspace-divider-seam");
+        line.setManaged(false);
+        line.setMouseTransparent(true);
+        return line;
+    }
+
+    private void trackOutlineSeam(Region outline) {
+        if (currentOutline != null) {
+            currentOutline.boundsInParentProperty().removeListener(outlineBounds);
+            currentOutline.localToSceneTransformProperty().removeListener(outlinePosition);
+        }
+        currentOutline = outline;
+        outlineSeam.setVisible(outline != null);
+        if (outline == null) setDividerEmphasis(sidebarDividerActive, false);
+        if (outline != null) {
+            outline.boundsInParentProperty().addListener(outlineBounds);
+            outline.localToSceneTransformProperty().addListener(outlinePosition);
+        }
+        positionSeams();
+    }
+
+    private void trackTabSeam(Node tab) {
+        if (currentTab != null) {
+            currentTab.boundsInParentProperty().removeListener(tabBounds);
+            currentTab.localToSceneTransformProperty().removeListener(tabPosition);
+        }
+        currentTab = tab;
+        if (tab != null) {
+            tab.boundsInParentProperty().addListener(tabBounds);
+            tab.localToSceneTransformProperty().addListener(tabPosition);
+        }
+    }
+
+    private void positionSeams() {
+        if (getScene() == null || getHeight() <= 0) return;
+        if (chrome.getHeight() > 0) {
+            double y = chrome.getHeight() - DIVIDER_LINE_WIDTH;
+            Node activeTab = tabs.activeTabNode();
+            if (activeTab != null && activeTab.getScene() != null && activeTab.getBoundsInLocal().getWidth() > 0) {
+                double barLeft = sceneToLocal(tabs.tabBar().localToScene(0, 0)).getX();
+                double barRight = barLeft + tabs.tabBar().getWidth();
+                Bounds tabBounds = activeTab.localToScene(activeTab.getBoundsInLocal());
+                double tabLeft = sceneToLocal(tabBounds.getMinX(), 0).getX();
+                double tabRight = sceneToLocal(tabBounds.getMaxX(), 0).getX();
+                double gapLeft = Math.max(barLeft, Math.min(barRight, tabLeft));
+                double gapRight = Math.max(gapLeft, Math.min(barRight, tabRight));
+                headerSeam.resizeRelocate(0, y, gapLeft, DIVIDER_LINE_WIDTH);
+                headerSeamRight.resizeRelocate(gapRight, y, getWidth() - gapRight, DIVIDER_LINE_WIDTH);
+            } else {
+                headerSeam.resizeRelocate(0, y, getWidth(), DIVIDER_LINE_WIDTH);
+                headerSeamRight.resizeRelocate(getWidth(), y, 0, DIVIDER_LINE_WIDTH);
+            }
+        }
+        if (sidebarSeam.isVisible() && sidebar.getParent() != null) {
+            double offset = sidebarDividerActive ? 0 : DIVIDER_HANDLE_WIDTH - DIVIDER_LINE_WIDTH;
+            double edge = sidebar.localToScene(sidebar.getWidth() + offset, 0).getX();
+            sidebarSeam.resizeRelocate(sceneToLocal(edge, 0).getX(), 0,
+                    sidebarDividerActive ? DIVIDER_HANDLE_WIDTH : DIVIDER_LINE_WIDTH, getHeight());
+        }
+        if (outlineSeam.isVisible() && currentOutline != null && currentOutline.getScene() != null) {
+            double edge = currentOutline.localToScene(0, 0).getX() - DIVIDER_HANDLE_WIDTH;
+            outlineSeam.resizeRelocate(sceneToLocal(edge, 0).getX(), 0,
+                    outlineDividerActive ? DIVIDER_HANDLE_WIDTH : DIVIDER_LINE_WIDTH, getHeight());
+        }
+    }
+
+    private void updateDividerEmphasis(MouseEvent event) {
+        SplitPane owner = dividerOwner(event.getTarget());
+        setDividerEmphasis(owner == split, owner != null && owner == outlinePane());
+    }
+
+    private SplitPane outlinePane() {
+        for (Node parent = currentOutline; parent != null; parent = parent.getParent())
+            if (parent instanceof SplitPane pane) return pane;
+        return null;
+    }
+
+    private static SplitPane dividerOwner(Object target) {
+        if (!(target instanceof Node node)) return null;
+        for (Node child = node; child != null; child = child.getParent()) {
+            if (!child.getStyleClass().contains("split-pane-divider")) continue;
+            for (Node parent = child.getParent(); parent != null; parent = parent.getParent())
+                if (parent instanceof SplitPane pane) return pane;
+        }
+        return null;
+    }
+
+    private void setDividerEmphasis(boolean sidebarActive, boolean outlineActive) {
+        if (sidebarDividerActive == sidebarActive && outlineDividerActive == outlineActive) return;
+        sidebarDividerActive = sidebarActive;
+        outlineDividerActive = outlineActive;
+        sidebarSeam.pseudoClassStateChanged(DIVIDER_ACTIVE, sidebarActive);
+        outlineSeam.pseudoClassStateChanged(DIVIDER_ACTIVE, outlineActive);
+        positionSeams();
     }
 
     void switchWorkspace(Workspace workspace) {
@@ -113,27 +284,25 @@ final class MainWorkspaceView extends BorderPane {
 
     private void updateSwitcher() {
         sidebar.switcher().update(current, history.order(workspaces.listWorkspaces()), this::switchWorkspace,
-                this::openWorkspace, this::newWorkspace, this::refresh,
-                () -> createFolder(""), type -> createFile("", type));
+                this::openWorkspaceFolder, this::newWorkspace);
+        sidebar.setFileActionsEnabled(current != null);
     }
 
     private void createFolder(String parent) {
-        askName("新建文件夹", "文件夹名称", "").ifPresent(name -> {
-            try {
-                String path = files.createFolder(current.id(), parent, name);
-                refreshTree();
-                selectPath(path);
-            } catch (RuntimeException error) { showFileError("无法新建文件夹", error); }
+        if (current == null) return;
+        sidebar.tree().beginCreateFolder(parent, name -> {
+            String path = files.createFolder(current.id(), parent, name);
+            refreshTree();
+            selectPath(path);
         });
     }
 
     private void createFile(String parent, WorkspaceFileType type) {
-        askName("新建 " + type.extension() + " 文件", "文件名称", "").ifPresent(name -> {
-            try {
-                String path = files.createFile(current.id(), parent, name, type);
-                refreshTree();
-                selectPath(path);
-            } catch (RuntimeException error) { showFileError("无法新建文件", error); }
+        if (current == null) return;
+        sidebar.tree().beginCreateFile(parent, type, name -> {
+            String path = files.createFile(current.id(), parent, name, type);
+            refreshTree();
+            selectPath(path);
         });
     }
 
@@ -149,17 +318,15 @@ final class MainWorkspaceView extends BorderPane {
     }
 
     private void rename(WorkspaceFileEntry entry) {
-        askName("重命名", "新名称", entry.name()).ifPresent(name -> {
+        if (tabs.hasUnsavedChangesUnder(entry.relativePath()) && !confirmDiscard()) return;
+        sidebar.tree().beginRename(entry, name -> {
             String active = activePath();
             boolean affectsActive = contains(entry.relativePath(), active);
-            if (tabs.hasUnsavedChangesUnder(entry.relativePath()) && !confirmDiscard()) return;
-            try {
-                String renamed = files.rename(current.id(), entry.relativePath(), name);
-                tabs.renameUnder(current.id(), entry.relativePath(), renamed);
-                refreshTree();
-                if (affectsActive) selectPath(renamed + active.substring(entry.relativePath().length()));
-                else selectPath(renamed);
-            } catch (RuntimeException error) { showFileError("无法重命名", error); }
+            String renamed = files.rename(current.id(), entry.relativePath(), name);
+            tabs.renameUnder(current.id(), entry.relativePath(), renamed);
+            refreshTree();
+            if (affectsActive) selectPath(renamed + active.substring(entry.relativePath().length()));
+            else selectPath(renamed);
         });
     }
 
@@ -197,16 +364,6 @@ final class MainWorkspaceView extends BorderPane {
 
     private boolean contains(String path, String active) {
         return active != null && (active.equals(path) || active.startsWith(path + "/"));
-    }
-
-    private java.util.Optional<String> askName(String title, String label, String initial) {
-        TextInputDialog dialog = new TextInputDialog(initial);
-        dialog.initOwner(stage);
-        UiTheme.apply(dialog);
-        dialog.setTitle(title);
-        dialog.setHeaderText(title);
-        dialog.setContentText(label);
-        return dialog.showAndWait();
     }
 
     private void showFileError(String title, RuntimeException error) {
@@ -262,40 +419,33 @@ final class MainWorkspaceView extends BorderPane {
         return null;
     }
 
-    private void openWorkspace() {
-        var available = workspaces.listWorkspaces();
-        if (available.isEmpty()) { newWorkspace(); return; }
-        Dialog<Workspace> dialog = new Dialog<>();
-        dialog.initOwner(stage);
-        UiTheme.apply(dialog);
-        dialog.setTitle("Open Workspace");
-        dialog.setHeaderText("选择已登记的工作区");
-        ListView<Workspace> list = new ListView<>();
-        list.getItems().setAll(history.order(available));
-        list.setCellFactory(ignored -> new ListCell<>() {
-            @Override protected void updateItem(Workspace workspace, boolean empty) {
-                super.updateItem(workspace, empty);
-                setText(empty || workspace == null ? null : workspace.name());
-            }
-        });
-        list.getSelectionModel().selectFirst();
-        list.setPrefSize(340, 260);
-        dialog.getDialogPane().setContent(list);
-        ButtonType open = new ButtonType("打开", ButtonBar.ButtonData.OK_DONE);
-        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.CANCEL, open);
-        dialog.setResultConverter(button -> button == open ? list.getSelectionModel().getSelectedItem() : null);
-        dialog.showAndWait().ifPresent(this::switchWorkspace);
+    private void openWorkspaceFolder() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("选择已有的 QuizForge 工作区文件夹");
+        chooser.setInitialDirectory(workspaces.defaultWorkspaceParent().toFile());
+        java.io.File folder = chooser.showDialog(stage);
+        if (folder == null) return;
+        try {
+            switchWorkspace(workspaces.registerExistingWorkspace(folder.toPath()));
+        } catch (RuntimeException error) {
+            showFileError("无法打开工作区文件夹", error);
+        }
     }
 
     private void newWorkspace() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("选择新建工作区的位置");
+        chooser.setInitialDirectory(workspaces.defaultWorkspaceParent().toFile());
+        java.io.File parent = chooser.showDialog(stage);
+        if (parent == null) return;
         TextInputDialog dialog = new TextInputDialog();
         dialog.initOwner(stage);
         UiTheme.apply(dialog);
         dialog.setTitle("New Workspace");
-        dialog.setHeaderText("新建工作区");
+        dialog.setHeaderText("新建工作区 · " + parent.getAbsolutePath());
         dialog.setContentText("名称");
         dialog.showAndWait().ifPresent(name -> {
-            try { switchWorkspace(workspaces.createWorkspace(name)); }
+            try { switchWorkspace(workspaces.createWorkspace(name, parent.toPath())); }
             catch (RuntimeException error) {
                 Alert alert = new Alert(Alert.AlertType.ERROR, error.getMessage(), ButtonType.OK);
                 alert.initOwner(stage);

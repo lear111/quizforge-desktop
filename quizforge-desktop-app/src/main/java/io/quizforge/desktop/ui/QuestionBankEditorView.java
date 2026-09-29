@@ -1,13 +1,11 @@
 package io.quizforge.desktop.ui;
 
-import io.quizforge.core.asset.Asset;
 import io.quizforge.core.question.QuestionBankEditorModel;
 import io.quizforge.core.question.QuestionBankFile;
-import io.quizforge.core.question.QuestionBankFileEditService;
 import io.quizforge.core.question.QuestionSourceLinkService;
-import io.quizforge.core.question.SourceDocumentSnapshot;
 import io.quizforge.core.workspace.WorkspaceId;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import javafx.collections.FXCollections;
 import javafx.scene.control.*;
@@ -20,7 +18,6 @@ import javafx.geometry.Pos;
 final class QuestionBankEditorView extends VBox {
     private final QuestionBankEditorModel model;
     private final WorkspaceId workspace;
-    private final QuestionBankFileEditService edits;
     private final QuestionSourceLinkService sourceLinks;
     private final QuestionSourceNavigationAdapter sourceNavigation;
     private QuestionSourceListView sourceRows;
@@ -28,13 +25,13 @@ final class QuestionBankEditorView extends VBox {
     private final VBox body = new VBox(14);
     private final VBox errors = new VBox(3);
     private int index;
+    private BiConsumer<QuestionBankFile, Integer> onQuestionChange = (bank, selected) -> { };
 
     QuestionBankEditorView(QuestionBankFile bank, WorkspaceId workspace,
-            QuestionBankFileEditService edits, QuestionSourceLinkService sourceLinks,
+            QuestionSourceLinkService sourceLinks,
             QuestionSourceNavigationAdapter sourceNavigation, Consumer<QuestionBankFile> save) {
         model = new QuestionBankEditorModel(bank);
         this.workspace = workspace;
-        this.edits = edits;
         this.sourceLinks = sourceLinks;
         this.sourceNavigation = sourceNavigation;
         this.save = save;
@@ -51,6 +48,17 @@ final class QuestionBankEditorView extends VBox {
     boolean dirty() { return model.dirty(); }
     void refreshSources() { if (sourceRows != null) sourceRows.refresh(); }
 
+    void jumpTo(int target) {
+        if (target < 0 || target >= model.bank().questions().size()) return;
+        index = target;
+        render();
+    }
+
+    void onQuestionChange(BiConsumer<QuestionBankFile, Integer> action) {
+        onQuestionChange = action;
+        onQuestionChange.accept(model.bank(), index);
+    }
+
     private void save() {
         errors.getChildren().clear();
         try { save.accept(model.bank()); }
@@ -63,6 +71,7 @@ final class QuestionBankEditorView extends VBox {
     }
 
     private void render() {
+        onQuestionChange.accept(model.bank(), index);
         sourceRows = null;
         body.getChildren().clear();
         TextField bankTitle = new TextField(model.bank().title());
@@ -176,19 +185,12 @@ final class QuestionBankEditorView extends VBox {
                 UiTheme.label("引用来源", "editor-caption"));
         VBox refs = new VBox(6);
         sourceRows = new QuestionSourceListView(question.sourceRefs(), workspace, sourceNavigation, (refIndex, row) -> {
-            Button change = UiTheme.button("更换", "refresh", "text-action", () -> { });
-            change.setId("qbank-change-source-" + refIndex);
-            change.setOnAction(event -> chooseSource(refIndex));
             Button remove = UiTheme.iconButton("close", "移除引用", () -> { });
             remove.setId("qbank-remove-source-" + refIndex);
             remove.setOnAction(event -> { model.deleteSourceRef(index, refIndex); render(); });
-            row.getChildren().addAll(change, remove);
+            row.getChildren().add(remove);
         });
         refs.getChildren().add(sourceRows);
-        Button addSource = UiTheme.button("添加来源", "plus", "text-action", () -> { });
-        addSource.setId("qbank-add-source");
-        addSource.setOnAction(event -> chooseSource(-1));
-        refs.getChildren().add(addSource);
         TextField sourceLink = new TextField();
         sourceLink.setId("qbank-source-link");
         sourceLink.setPromptText("粘贴 Source Anchor 链接…");
@@ -212,68 +214,4 @@ final class QuestionBankEditorView extends VBox {
         return EditorUi.content(value, id, false);
     }
 
-    private void chooseSource(int replaceIndex) {
-        try {
-            List<Asset> available = edits.availableSources(workspace);
-            if (available.isEmpty()) { showError("No valid Markdown source is available."); return; }
-            ChoiceBox<Asset> documents = new ChoiceBox<>(FXCollections.observableArrayList(available));
-            documents.setConverter(new javafx.util.StringConverter<>() {
-                @Override public String toString(Asset asset) { return asset == null ? "" : asset.title(); }
-                @Override public Asset fromString(String text) { return null; }
-            });
-            ChoiceBox<SourceDocumentSnapshot.Chapter> chapters = new ChoiceBox<>();
-            chapters.setConverter(new javafx.util.StringConverter<>() {
-                @Override public String toString(SourceDocumentSnapshot.Chapter chapter) {
-                    return chapter == null ? "" : chapter.title();
-                }
-                @Override public SourceDocumentSnapshot.Chapter fromString(String text) { return null; }
-            });
-            ChoiceBox<SourceDocumentSnapshot.Section> sections = new ChoiceBox<>();
-            sections.setConverter(new javafx.util.StringConverter<>() {
-                @Override public String toString(SourceDocumentSnapshot.Section section) {
-                    return section == null ? "" : section.title();
-                }
-                @Override public SourceDocumentSnapshot.Section fromString(String text) { return null; }
-            });
-            documents.valueProperty().addListener((obs, old, selected) -> {
-                chapters.getItems().clear();
-                sections.getItems().clear();
-                if (selected != null) {
-                    chapters.getItems().setAll(edits.source(workspace, selected.assetId()).chapters());
-                    chapters.getSelectionModel().selectFirst();
-                }
-            });
-            chapters.valueProperty().addListener((obs, old, selected) -> {
-                sections.getItems().clear();
-                if (selected != null) {
-                    sections.getItems().setAll(selected.sections());
-                    sections.getSelectionModel().selectFirst();
-                }
-            });
-            documents.getSelectionModel().selectFirst();
-            VBox form = new VBox(8, UiTheme.label("Document", "field-label"), documents,
-                    UiTheme.label("Chapter", "field-label"), chapters,
-                    UiTheme.label("Section", "field-label"), sections);
-            Dialog<ButtonType> dialog = new Dialog<>();
-            dialog.setTitle("Select Markdown source");
-            UiTheme.apply(dialog);
-            dialog.getDialogPane().setContent(form);
-            ButtonType choose = new ButtonType("Use source", ButtonBar.ButtonData.OK_DONE);
-            dialog.getDialogPane().getButtonTypes().addAll(ButtonType.CANCEL, choose);
-            if (dialog.showAndWait().orElse(ButtonType.CANCEL) != choose) return;
-            Asset asset = documents.getValue();
-            SourceDocumentSnapshot.Section section = sections.getValue();
-            if (asset == null || section == null) { showError("Select a document and Section."); return; }
-            SourceDocumentSnapshot snapshot = edits.source(workspace, asset.assetId());
-            boolean valid = snapshot.chapters().stream().flatMap(chapter -> chapter.sections().stream())
-                    .anyMatch(candidate -> candidate.id().equals(section.id()));
-            if (!valid) { showError("Selected Section is no longer available."); return; }
-            var ref = QuestionBankFile.SourceRef.anchor(snapshot.assetId(), snapshot.contentId(),
-                    section.id(), 1, snapshot.title(), section.title());
-            if (replaceIndex < 0) model.addSourceRef(index, ref);
-            else model.replaceSourceRef(index, replaceIndex, ref);
-            errors.getChildren().clear();
-            render();
-        } catch (RuntimeException error) { showError(error.getMessage()); }
-    }
 }

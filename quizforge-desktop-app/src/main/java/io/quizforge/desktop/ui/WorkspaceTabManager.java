@@ -6,10 +6,14 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.function.Consumer;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 
 /** Owns the tab list; each tab owns its own FilePane and editor state. */
 final class WorkspaceTabManager extends BorderPane {
@@ -18,7 +22,9 @@ final class WorkspaceTabManager extends BorderPane {
     private final BooleanSupplier discardDirty;
     private final List<WorkspaceTab> tabs = new ArrayList<>();
     private final HBox row = new HBox();
+    private final ScrollPane bar;
     private WorkspaceTab active;
+    private HBox activeTabItem;
     private Consumer<String> onActivate = ignored -> { };
 
     WorkspaceTabManager(Supplier<FilePane> panes, FilePane emptyPane, BooleanSupplier discardDirty) {
@@ -27,15 +33,18 @@ final class WorkspaceTabManager extends BorderPane {
         this.discardDirty = discardDirty;
         setId("workspace-tab-manager");
         row.getStyleClass().add("workspace-tab-row");
-        ScrollPane bar = new ScrollPane(row);
+        bar = new ScrollPane(row);
         bar.setId("workspace-tab-bar");
         bar.getStyleClass().add("workspace-tab-bar");
         bar.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         bar.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        bar.setFitToWidth(true);
         bar.setFitToHeight(true);
-        setTop(bar);
         setCenter(emptyPane);
     }
+
+    ScrollPane tabBar() { return bar; }
+    Node activeTabNode() { return activeTabItem; }
 
     WorkspaceTab openPreview(WorkspaceId workspace, String path) { return open(workspace, path, false); }
     WorkspaceTab openPinned(WorkspaceId workspace, String path) { return open(workspace, path, true); }
@@ -63,6 +72,9 @@ final class WorkspaceTabManager extends BorderPane {
         }
         WorkspaceTab opened = active;
         pane.onEditStart(() -> { opened.pin(); showActive(); });
+        pane.centerProperty().addListener((ignored, before, after) -> {
+            if (active != null && active.pane() == pane) onActivate.accept(active.path());
+        });
         showActive();
         return active;
     }
@@ -142,22 +154,30 @@ final class WorkspaceTabManager extends BorderPane {
         setCenter(shown);
         shown.refreshSourceStatus();
         row.getChildren().clear();
+        activeTabItem = null;
         for (WorkspaceTab tab : tabs) {
             Button select = new Button(tab.displayName());
             select.getStyleClass().add("workspace-tab-select");
             if (tab == active) select.getStyleClass().add("workspace-tab-selected");
             if (!tab.pinned()) select.getStyleClass().add("workspace-tab-preview");
             select.setId("workspace-tab-" + tabs.indexOf(tab));
+            select.setTooltip(new Tooltip(tab.displayName()));
+            HBox.setHgrow(select, Priority.ALWAYS);
             select.setOnAction(event -> activate(tab));
             Button close = new Button("×");
             close.getStyleClass().add("workspace-tab-close");
+            close.setMinWidth(Region.USE_PREF_SIZE);
+            close.setMaxWidth(Region.USE_PREF_SIZE);
             close.setAccessibleText("关闭 " + tab.displayName());
             close.setOnAction(event -> close(tab));
             HBox item = new HBox(select, close);
             item.getStyleClass().add("workspace-tab");
-            if (tab == active) item.getStyleClass().add("workspace-tab-active");
+            if (tab == active) {
+                item.getStyleClass().add("workspace-tab-active");
+                activeTabItem = item;
+            }
             row.getChildren().add(item);
         }
-        if (active != null) onActivate.accept(active.path());
+        onActivate.accept(active == null ? null : active.path());
     }
 }

@@ -16,12 +16,14 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
 public final class LocalStandardDocumentFileStorage implements StandardDocumentFileStorage, FileDocumentStorage {
-    private final QuizForgeDataDirectory directory;
     private final WorkspacePathResolver paths;
 
     public LocalStandardDocumentFileStorage(QuizForgeDataDirectory directory) {
-        this.directory = directory;
-        this.paths = new WorkspacePathResolver(directory);
+        this(new WorkspacePathResolver(directory));
+    }
+
+    public LocalStandardDocumentFileStorage(WorkspacePathResolver paths) {
+        this.paths = paths;
     }
 
     @Override
@@ -134,14 +136,15 @@ public final class LocalStandardDocumentFileStorage implements StandardDocumentF
     }
 
     private Path documentDirectory(WorkspaceId id) {
-        Path folder = paths.workspaceRoot(id).resolve("document");
-        if (!folder.normalize().startsWith(directory.root()) || Files.isSymbolicLink(folder)) {
+        Path root = paths.workspaceRoot(id);
+        Path folder = root.resolve("document");
+        if (Files.isSymbolicLink(folder)) {
             throw failure("access standard document directory", null);
         }
         try {
             Files.createDirectories(folder);
             Path real = folder.toRealPath();
-            if (!real.startsWith(directory.root())) {
+            if (!real.startsWith(root)) {
                 throw failure("access standard document directory", null);
             }
             return real;

@@ -93,10 +93,10 @@ public class DesktopConfiguration {
     }
 
     @Bean
-    public io.quizforge.core.port.PracticeRuntimeProvider practiceRuntimeProvider(QuizForgeDataDirectory directory,
+    public io.quizforge.core.port.PracticeRuntimeProvider practiceRuntimeProvider(WorkspacePathResolver paths,
             QuestionBankFileCodec codec, Clock clock) {
         return new io.quizforge.infrastructure.persistence.SqliteWorkspacePracticeRuntimeProvider(
-                new WorkspacePathResolver(directory), codec, clock);
+                paths, codec, clock);
     }
 
     @Bean
@@ -110,24 +110,25 @@ public class DesktopConfiguration {
     }
 
     @Bean
-    public MaterialFileStorage materialFileStorage(QuizForgeDataDirectory directory) {
-        return new LocalMaterialFileStorage(new WorkspacePathResolver(directory));
+    public MaterialFileStorage materialFileStorage(WorkspacePathResolver paths) {
+        return new LocalMaterialFileStorage(paths);
     }
 
     @Bean
-    public WorkspaceDirectoryStorage workspaceDirectoryStorage(QuizForgeDataDirectory directory) {
-        return new WorkspacePathResolver(directory);
+    public WorkspacePathResolver workspacePathResolver(QuizForgeDataDirectory directory,
+            WorkspaceRepository repository) {
+        return new WorkspacePathResolver(directory, repository);
     }
 
     @Bean
-    public AssetIndexRepository assetIndexRepository(QuizForgeDataDirectory directory) {
-        return new SqliteAssetIndexRepository(new WorkspacePathResolver(directory));
+    public AssetIndexRepository assetIndexRepository(WorkspacePathResolver paths) {
+        return new SqliteAssetIndexRepository(paths);
     }
 
     @Bean
-    public WorkspaceAssetScanner workspaceAssetScanner(QuizForgeDataDirectory directory,
+    public WorkspaceAssetScanner workspaceAssetScanner(WorkspacePathResolver paths,
             AssetIndexRepository index, Clock clock) {
-        return new FileSystemWorkspaceAssetScanner(new WorkspacePathResolver(directory), index, clock);
+        return new FileSystemWorkspaceAssetScanner(paths, index, clock);
     }
 
     @Bean
@@ -188,8 +189,8 @@ public class DesktopConfiguration {
     }
 
     @Bean
-    public LocalStandardDocumentFileStorage standardDocumentFileStorage(QuizForgeDataDirectory directory) {
-        return new LocalStandardDocumentFileStorage(directory);
+    public LocalStandardDocumentFileStorage standardDocumentFileStorage(WorkspacePathResolver paths) {
+        return new LocalStandardDocumentFileStorage(paths);
     }
 
     @Bean
@@ -244,8 +245,8 @@ public class DesktopConfiguration {
     public QuestionBankFileCodec questionBankFileCodec() { return new QuestionBankV1Codec(); }
 
     @Bean
-    public QuestionBankFileStorage questionBankFileStorage(QuizForgeDataDirectory directory) {
-        return new LocalQuestionBankFileStorage(directory);
+    public QuestionBankFileStorage questionBankFileStorage(WorkspacePathResolver paths) {
+        return new LocalQuestionBankFileStorage(paths);
     }
 
     @Bean
@@ -262,20 +263,20 @@ public class DesktopConfiguration {
     }
 
     @Bean
-    public WorkspaceFileCatalog workspaceFileCatalog(QuizForgeDataDirectory directory,
+    public WorkspaceFileCatalog workspaceFileCatalog(WorkspacePathResolver paths,
             QuestionBankFileCodec banks) {
-        return new LocalWorkspaceFileCatalog(new WorkspacePathResolver(directory), banks);
+        return new LocalWorkspaceFileCatalog(paths, banks);
     }
 
     @Bean
-    public MarkdownDocumentRegistration markdownDocumentRegistration(QuizForgeDataDirectory directory,
+    public MarkdownDocumentRegistration markdownDocumentRegistration(WorkspacePathResolver paths,
             WorkspaceAssetScanner scanner) {
-        return new MarkdownDocumentRegistrationService(new WorkspacePathResolver(directory), scanner);
+        return new MarkdownDocumentRegistrationService(paths, scanner);
     }
 
     @Bean
-    public WorkspaceFileOperations workspaceFileOperations(QuizForgeDataDirectory directory) {
-        return new LocalWorkspaceFileOperations(new WorkspacePathResolver(directory));
+    public WorkspaceFileOperations workspaceFileOperations(WorkspacePathResolver paths) {
+        return new LocalWorkspaceFileOperations(paths);
     }
 
     @Bean

@@ -13,8 +13,8 @@ import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
+import javafx.scene.control.SplitPane;
+import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
 import org.commonmark.node.Code;
 import org.commonmark.node.FencedCodeBlock;
@@ -37,6 +37,38 @@ import org.commonmark.node.SourceSpan;
 final class SafeMarkdownPreview {
     record Block(String style, String text) { }
     private record SourceLocation(int line, int column) { }
+    static final class BrowseLayout extends SplitPane {
+        private final BorderPane readerColumn = new BorderPane();
+        private final ScrollPane reader;
+        private final MarkdownOutlineView outline;
+        private boolean initialDividerSet;
+
+        BrowseLayout(ScrollPane reader, MarkdownOutlineView outline) {
+            this.reader = reader;
+            this.outline = outline;
+            setId("markdown-browse-layout");
+            getStyleClass().add("markdown-browse-layout");
+            setMinWidth(0);
+            readerColumn.setMinWidth(320);
+            readerColumn.setCenter(reader);
+            getItems().addAll(readerColumn, outline);
+            SplitPane.setResizableWithParent(outline, false);
+            widthProperty().addListener((ignored, before, width) -> {
+                if (initialDividerSet || width.doubleValue() <= 500) return;
+                initialDividerSet = true;
+                setDividerPositions((width.doubleValue() - 260) / width.doubleValue());
+            });
+        }
+
+        void setHeader(javafx.scene.Node header) {
+            readerColumn.setTop(header);
+        }
+
+        ScrollPane reader() { return reader; }
+        MarkdownOutlineView outline() { return outline; }
+        ScrollPane outlineScroll() { return outline.scroll(); }
+    }
+
     interface SourceActions {
         void create(MarkdownSourceRange block);
         void copy(List<NamedMarkdownAnchor> anchors);
@@ -92,12 +124,8 @@ final class SafeMarkdownPreview {
         render(parsed, preview, anchors, actions, navigator, openLink);
         List<MarkdownOutline.Entry> entries = MarkdownOutline.extract(parsed, available);
         MarkdownOutlineView outline = new MarkdownOutlineView(entries, navigator, copyLink);
-        HBox layout = new HBox(scroll, outline);
-        layout.setId("markdown-browse-layout");
-        layout.getStyleClass().add("markdown-browse-layout");
-        layout.setMinWidth(0);
         scroll.setMinWidth(0);
-        HBox.setHgrow(scroll, Priority.ALWAYS);
+        BrowseLayout layout = new BrowseLayout(scroll, outline);
         layout.getProperties().put("quizforge.outlineEntries", entries);
         layout.getProperties().put("quizforge.navigator", navigator);
         return layout;

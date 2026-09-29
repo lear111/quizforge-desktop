@@ -5,10 +5,13 @@ import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.material.Material;
 import io.quizforge.core.material.MaterialId;
 import io.quizforge.core.port.WorkspaceDirectoryStorage;
+import io.quizforge.core.port.WorkspaceRepository;
 import io.quizforge.core.workspace.Workspace;
+import io.quizforge.core.workspace.WorkspaceFolder;
 import io.quizforge.core.workspace.WorkspaceId;
 import io.quizforge.infrastructure.persistence.WorkspaceAssetDatabase;
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -16,14 +19,56 @@ import java.util.stream.Stream;
 
 public final class WorkspacePathResolver implements WorkspaceDirectoryStorage {
     private final QuizForgeDataDirectory dataDirectory;
+    private final WorkspaceRepository repository;
 
     public WorkspacePathResolver(QuizForgeDataDirectory dataDirectory) {
+        this(dataDirectory, null);
+    }
+
+    public WorkspacePathResolver(QuizForgeDataDirectory dataDirectory, WorkspaceRepository repository) {
         this.dataDirectory = dataDirectory;
+        this.repository = repository;
+    }
+
+    @Override
+    public Path defaultParent() {
+        return dataDirectory.workspacesDirectory();
+    }
+
+    @Override
+    public WorkspaceFolder inspectExisting(Path root) {
+        if (root == null) {
+            throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
+                    "Select a workspace folder.");
+        }
+        Path selected = root.toAbsolutePath().normalize();
+        Path internal = selected.resolve(".quizforge");
+        Path manifest = internal.resolve("workspace.json");
+        if (!Files.isDirectory(selected, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(selected)
+                || !Files.isDirectory(internal, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(internal)
+                || !Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(manifest)) {
+            throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
+                    "This folder does not contain a valid .quizforge/workspace.json.");
+        }
+        try {
+            Path real = selected.toRealPath();
+            var metadata = new WorkspaceManifestStore().read(real);
+            return new WorkspaceFolder(metadata.id(), metadata.name(), real);
+        } catch (IOException error) {
+            throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
+                    "Could not access workspace folder.", error);
+        }
+    }
+
+    @Override
+    public Path rootOf(WorkspaceId id) {
+        return workspaceRoot(id);
     }
 
     @Override
     public void create(Workspace workspace) {
-        Path root = checkedWorkspacePath(workspace.id());
+        Path root = workspacePath(workspace);
         boolean rootCreated = false;
         try {
             Files.createDirectory(root);
@@ -34,12 +79,16 @@ public final class WorkspacePathResolver implements WorkspaceDirectoryStorage {
         } catch (IOException | RuntimeException failure) {
             if (rootCreated) {
                 try {
-                    deleteIfEmpty(workspace.id());
+                    deleteIfEmpty(workspace);
                 } catch (RuntimeException cleanup) {
                     failure.addSuppressed(cleanup);
                 }
             }
             if (failure instanceof QuizForgeException known) throw known;
+            if (failure instanceof FileAlreadyExistsException) {
+                throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
+                        "A file or folder with this workspace name already exists in the selected location.", failure);
+            }
             throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
                     "Could not initialize workspace directory.", failure);
         }
@@ -99,26 +148,36 @@ public final class WorkspacePathResolver implements WorkspaceDirectoryStorage {
     }
 
     @Override
-    public void deleteIfEmpty(WorkspaceId id) {
-        Path workspace = checkedWorkspacePath(id);
+    public void deleteIfEmpty(Workspace workspace) {
+        Path root = workspacePath(workspace);
         try {
-            if (!Files.exists(workspace, LinkOption.NOFOLLOW_LINKS)) return;
-            if (Files.isSymbolicLink(workspace)
-                    || !workspace.toRealPath().startsWith(dataDirectory.workspacesDirectory().toRealPath())) {
+            if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return;
+            if (Files.isSymbolicLink(root) || (workspace.rootPath() == null
+                    && !root.toRealPath().startsWith(dataDirectory.workspacesDirectory().toRealPath()))) {
                 throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
-                        "Workspace directory is outside the workspace storage area.");
+                        "Workspace directory is unavailable for cleanup.");
             }
-            Path internal = workspace.resolve(".quizforge");
+            Path internal = root.resolve(".quizforge");
+            if (Files.isSymbolicLink(internal)) {
+                throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
+                        "Workspace internal directory cannot be a symbolic link during cleanup.");
+            }
+            Path manifest = internal.resolve("workspace.json");
+            if (Files.exists(manifest, LinkOption.NOFOLLOW_LINKS)
+                    && !new WorkspaceManifestStore().readId(root).equals(workspace.id())) {
+                throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
+                        "Workspace manifest ID does not match during cleanup.");
+            }
             Files.deleteIfExists(internal.resolve("workspace.json"));
             Files.deleteIfExists(internal.resolve("workspace.db"));
             Files.deleteIfExists(internal.resolve("workspace.db-wal"));
             Files.deleteIfExists(internal.resolve("workspace.db-shm"));
             Files.deleteIfExists(internal);
-            Files.deleteIfExists(workspace.resolve("materials"));
-            Files.deleteIfExists(workspace.resolve("question-banks"));
-            Files.deleteIfExists(workspace.resolve("documents"));
-            Files.deleteIfExists(workspace.resolve("sources"));
-            Files.deleteIfExists(workspace);
+            Files.deleteIfExists(root.resolve("materials"));
+            Files.deleteIfExists(root.resolve("question-banks"));
+            Files.deleteIfExists(root.resolve("documents"));
+            Files.deleteIfExists(root.resolve("sources"));
+            Files.deleteIfExists(root);
         } catch (IOException e) {
             throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
                     "Could not clean up the workspace directory.", e);
@@ -126,7 +185,9 @@ public final class WorkspacePathResolver implements WorkspaceDirectoryStorage {
     }
 
     public Path workspaceRoot(WorkspaceId id) {
-        Path root = locateWorkspacePath(id);
+        Workspace registered = repository == null ? null : repository.findById(id).orElse(null);
+        Path root = registered != null && registered.rootPath() != null
+                ? workspacePath(registered) : locateWorkspacePath(id);
         try {
             if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)
                     || Files.isSymbolicLink(root)) {
@@ -134,7 +195,12 @@ public final class WorkspacePathResolver implements WorkspaceDirectoryStorage {
                         "Workspace directory was not found.");
             }
             Path real = root.toRealPath();
-            if (!real.startsWith(dataDirectory.workspacesDirectory().toRealPath())) {
+            if (registered != null && registered.rootPath() != null) {
+                if (!new WorkspaceManifestStore().readId(real).equals(id)) {
+                    throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
+                            "Workspace manifest ID does not match the selected directory.");
+                }
+            } else if (!real.startsWith(dataDirectory.workspacesDirectory().toRealPath())) {
                 throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
                         "Workspace directory is outside the workspace storage area.");
             }
@@ -187,6 +253,16 @@ public final class WorkspacePathResolver implements WorkspaceDirectoryStorage {
         return root;
     }
 
+    private Path workspacePath(Workspace workspace) {
+        if (workspace.rootPath() == null) return checkedWorkspacePath(workspace.id());
+        Path root = workspace.rootPath();
+        if (!root.isAbsolute() || !root.equals(root.normalize()) || root.getParent() == null) {
+            throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
+                    "Invalid workspace directory path.");
+        }
+        return root;
+    }
+
     public Path materialPath(WorkspaceId workspaceId, MaterialId materialId) {
         return checkedMaterialPath(materialsDirectory(workspaceId), materialId + ".md");
     }
@@ -201,13 +277,14 @@ public final class WorkspacePathResolver implements WorkspaceDirectoryStorage {
     }
 
     private Path materialsDirectory(WorkspaceId workspaceId) {
-        Path directory = workspaceRoot(workspaceId).resolve("materials");
+        Path root = workspaceRoot(workspaceId);
+        Path directory = root.resolve("materials");
         try {
             Files.createDirectories(directory);
             Path realDirectory = directory.toRealPath();
-            if (!realDirectory.startsWith(dataDirectory.root())) {
+            if (!realDirectory.startsWith(root)) {
                 throw new QuizForgeException(ErrorCode.MATERIAL_STORAGE_FAILED,
-                        "Material directory is outside the QuizForge data directory.");
+                        "Material directory is outside the workspace.");
             }
             return realDirectory;
         } catch (IOException e) {
@@ -218,9 +295,9 @@ public final class WorkspacePathResolver implements WorkspaceDirectoryStorage {
 
     private Path checkedPath(Path parent, String child) {
         Path path = parent.resolve(child).normalize();
-        if (!path.startsWith(dataDirectory.root())) {
+        if (!path.startsWith(parent)) {
             throw new QuizForgeException(ErrorCode.MATERIAL_STORAGE_FAILED,
-                    "Material path is outside the QuizForge data directory.");
+                    "Material path is outside the workspace material directory.");
         }
         return path;
     }

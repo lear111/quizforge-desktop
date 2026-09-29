@@ -1,10 +1,9 @@
 package io.quizforge.desktop.ui;
 
-import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SplitPane;
+import javafx.scene.layout.BorderPane;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -53,20 +52,39 @@ final class FileViewerRouter {
 
     private Node practice(FilePresentation file) {
         var practice = new QuestionBankPracticeView(practiceRuntime.apply(file), sources);
-        practice.setMaxHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
-        StackPane aligned = new StackPane(practice);
-        aligned.setId("practice-stage");
-        aligned.setMinWidth(0);
-        aligned.setAlignment(Pos.CENTER);
-        var scroll = UiTheme.scroll(aligned);
+        var scroll = QuestionCardLayout.scroll(practice);
+        scroll.getContent().setId("practice-stage");
         scroll.setId("practice-scroll");
-        scroll.setMinWidth(0);
-        // Fill a short viewport, but let a long question grow and scroll naturally.
-        aligned.minHeightProperty().bind(javafx.beans.binding.Bindings.createDoubleBinding(
-                () -> scroll.getViewportBounds().getHeight(), scroll.viewportBoundsProperty()));
-        HBox.setHgrow(scroll, Priority.ALWAYS);
-        HBox layout = new HBox(scroll, practice.outline());
-        layout.setId("practice-layout");
-        return layout;
+        return new PracticeLayout(scroll, practice.outline());
+    }
+
+    static final class PracticeLayout extends SplitPane {
+        private final BorderPane readerColumn = new BorderPane();
+        private final QuestionOutlineView outline;
+        private boolean initialDividerSet;
+
+        PracticeLayout(ScrollPane reader, QuestionOutlineView outline) {
+            this.outline = outline;
+            setId("practice-layout");
+            getStyleClass().add("practice-browse-layout");
+            setMinWidth(0);
+            readerColumn.setMinWidth(320);
+            readerColumn.setCenter(reader);
+            getItems().addAll(readerColumn, outline);
+            SplitPane.setResizableWithParent(outline, false);
+            widthProperty().addListener((ignored, before, width) -> {
+                if (initialDividerSet || width.doubleValue() <= 500) return;
+                initialDividerSet = true;
+                setDividerPositions((width.doubleValue() - 260) / width.doubleValue());
+            });
+        }
+
+        void setHeader(Node header) { readerColumn.setTop(header); }
+        void setContent(Node content) { readerColumn.setCenter(content); }
+        void keepDividerPosition(PracticeLayout previous) {
+            initialDividerSet = true;
+            setDividerPositions(previous.getDividerPositions());
+        }
+        QuestionOutlineView outline() { return outline; }
     }
 }

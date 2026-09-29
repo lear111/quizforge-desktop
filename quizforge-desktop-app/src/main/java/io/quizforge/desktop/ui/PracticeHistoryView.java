@@ -44,7 +44,9 @@ final class PracticeHistoryView extends VBox {
         HBox.setHgrow(title, Priority.ALWAYS);
         Button returnButton = UiTheme.button("返回题库", "arrow-left", "", back);
         returnButton.setId("history-back");
-        HBox heading = new HBox(12, title, returnButton);
+        returnButton.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        title.setMinWidth(0);
+        HBox heading = new HBox(12, returnButton, title);
         heading.getStyleClass().add("history-heading");
         grid.setId("history-grid");
         grid.getStyleClass().add("history-grid");

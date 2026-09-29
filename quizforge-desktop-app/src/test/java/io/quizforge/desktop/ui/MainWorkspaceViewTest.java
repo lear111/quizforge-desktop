@@ -27,6 +27,7 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
@@ -78,13 +79,27 @@ class MainWorkspaceViewTest {
         });
     }
 
+    @Test void selectedWorkspaceLocationReopensThroughDesktopFileTree() throws Exception {
+        Path parent = Files.createDirectory(temp.resolve("chosen-location"));
+        var external = fixture.workspaces.createWorkspace("外部学习库", parent);
+        Path root = parent.resolve("外部学习库");
+        Files.writeString(root.resolve("笔记.md"), "# 外部工作区笔记\n");
+        fx(() -> {
+            shell.switchWorkspace(external);
+            assertEquals("外部学习库", shell.sidebar().switcher().getText());
+            assertTrue(paths(shell.sidebar().tree().getRoot()).contains("笔记.md"));
+            open("笔记.md");
+            assertEquals("笔记.md", shell.filePane().currentFile().file().entry().relativePath());
+        });
+    }
+
     @Test void sidebarContainsSwitcherOneRealFileTreeAndFixedSettings() throws Exception {
         fx(() -> {
-            assertEquals(3, shell.sidebar().getChildren().size());
+            assertEquals(4, shell.sidebar().getChildren().size());
             assertEquals(1, shell.lookupAll(".tree-view").size());
             assertTrue(shell.lookupAll(".tab-pane").isEmpty());
             assertNull(shell.lookup("#home-button"));
-            assertNull(shell.getTop());
+            assertEquals("window-chrome", shell.getTop().getId());
             assertNull(shell.getBottom());
             assertEquals("Java 学习库", shell.sidebar().switcher().getText());
             for (String obsolete : List.of("Home", "Workspace Files", "Generate Document", "Generate QuestionBank", "QuestionBank Practice")) {
@@ -93,24 +108,322 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void formalHeaderHidesIdsAndMetadataPopoverReReadsTheFile() throws Exception {
+    @Test void topTabRowCanHideAndRestoreTheWorkspaceFileList() throws Exception {
+        fx(() -> {
+            open("我的笔记/学习计划.md");
+            var currentFile = shell.filePane().currentFile();
+            var split = (SplitPane) shell.getCenter();
+            assertSame(shell.tabs().tabBar(), shell.lookup("#workspace-tab-bar"));
+            assertNotNull(shell.lookup("#window-minimize"));
+            assertNotNull(shell.lookup("#window-maximize"));
+            assertNotNull(shell.lookup("#window-close"));
+            assertEquals(2, split.getItems().size());
+            button("toggle-file-list").fire();
+            assertEquals(1, split.getItems().size());
+            assertNull(shell.lookup("#workspace-sidebar"));
+            assertSame(currentFile, shell.filePane().currentFile());
+            button("toggle-file-list").fire();
+            assertEquals(2, split.getItems().size());
+            assertSame(shell.sidebar(), split.getItems().getFirst());
+            assertSame(currentFile, shell.filePane().currentFile());
+        });
+    }
+
+    @Test void topRowSeparatorsFollowTheSidebarAndMarkdownOutline() throws Exception {
+        fx(() -> {
+            open("Java/Java集合.md");
+            pulse(100);
+            var outer = (SplitPane) shell.getCenter();
+            var markdown = (SplitPane) shell.filePane().getCenter();
+            var outline = (MarkdownOutlineView) markdown.getItems().get(1);
+            var sidebarCell = shell.lookup("#window-sidebar-cell");
+            var outlineCell = shell.lookup("#window-outline-cell");
+            var sidebarDivider = shell.lookup("#window-sidebar-divider");
+            var outlineDivider = shell.lookup("#window-outline-divider");
+            var headerSeam = shell.lookup("#workspace-header-seam");
+            var headerSeamRight = shell.lookup("#workspace-header-seam-right");
+            var sidebarSeam = shell.lookup("#workspace-sidebar-seam");
+            var outlineSeam = shell.lookup("#workspace-outline-seam");
+            var tabBar = shell.tabs().tabBar();
+            assertTrue(headerSeam.isMouseTransparent());
+            assertTrue(headerSeamRight.isMouseTransparent());
+            assertTrue(sidebarSeam.isMouseTransparent());
+            assertTrue(outlineSeam.isMouseTransparent());
+            assertEquals(0.75, headerSeam.getBoundsInParent().getHeight(), 0.01);
+            assertEquals(0.75, headerSeamRight.getBoundsInParent().getHeight(), 0.01);
+            assertEquals(outer.localToScene(0, 0).getY(), headerSeam.localToScene(0, 0.75).getY(), 0.5);
+            var activeTabNode = shell.tabs().activeTabNode();
+            assertEquals(activeTabNode.localToScene(0, 0).getX(),
+                    headerSeam.localToScene(headerSeam.getBoundsInLocal().getWidth(), 0).getX(), 0.5);
+            assertEquals(activeTabNode.localToScene(activeTabNode.getBoundsInLocal().getWidth(), 0).getX(),
+                    headerSeamRight.localToScene(0, 0).getX(), 0.5);
+            assertEquals(shell.getWidth(), headerSeamRight.getBoundsInParent().getMaxX(), 0.5);
+            assertEquals(shell.getHeight(), sidebarSeam.getBoundsInParent().getHeight(), 0.5);
+            assertEquals(shell.getHeight(), outlineSeam.getBoundsInParent().getHeight(), 0.5);
+            assertEquals(tabBar.getBackground().getFills().getFirst().getFill(),
+                    ((javafx.scene.layout.Region) sidebarCell).getBackground().getFills().getFirst().getFill());
+            assertEquals(tabBar.getBackground().getFills().getFirst().getFill(),
+                    ((javafx.scene.layout.Region) outlineCell).getBackground().getFills().getFirst().getFill());
+            var activeTab = (javafx.scene.layout.Region) shell.lookup(".workspace-tab-active");
+            assertEquals(0.75, activeTab.getBorder().getStrokes().getFirst().getWidths().getTop(), 0.01);
+            assertEquals(0.75, sidebarSeam.getBoundsInParent().getWidth(), 0.01);
+            assertEquals(0.75, outlineSeam.getBoundsInParent().getWidth(), 0.01);
+            assertEquals(javafx.scene.paint.Color.web("#ded9d0"),
+                    ((javafx.scene.layout.Region) sidebarSeam).getBackground().getFills().getFirst().getFill());
+            assertEquals(((javafx.scene.layout.Region) sidebarSeam).getBackground().getFills().getFirst().getFill(),
+                    ((javafx.scene.layout.Region) headerSeam).getBackground().getFills().getFirst().getFill());
+            assertEquals(shell.sidebar().getWidth(), sidebarCell.getBoundsInParent().getWidth(), 2);
+            assertEquals(outline.getWidth(), outlineCell.getBoundsInParent().getWidth(), 2);
+            assertEquals(divider(outer).localToScene(0, 0).getX(), sidebarDivider.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineDivider.localToScene(0, 0).getX(), 0.5);
+            assertEquals(38, sidebarDivider.getBoundsInParent().getHeight(), 0.5);
+            assertEquals(38, outlineDivider.getBoundsInParent().getHeight(), 0.5);
+            assertEquals(divider(outer).localToScene(0, 0).getY(),
+                    sidebarDivider.localToScene(0, 38).getY(), 0.5);
+            assertEquals(divider(markdown).localToScene(0, 0).getY(),
+                    outlineDivider.localToScene(0, 38).getY(), 0.5);
+            assertEquals(divider(outer).localToScene(5.25, 0).getX(), sidebarSeam.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineSeam.localToScene(0, 0).getX(), 0.5);
+            assertEquals(sidebarDivider.localToScene(6, 0).getX(), tabBar.localToScene(0, 0).getX(), 0.5);
+            assertEquals(outline.localToScene(0, 0).getX(), outlineCell.localToScene(0, 0).getX(), 2);
+
+            javafx.event.Event.fireEvent(divider(outer), mouseMoved());
+            assertEquals(6, sidebarSeam.getBoundsInParent().getWidth(), 0.5);
+            assertEquals(0.75, outlineSeam.getBoundsInParent().getWidth(), 0.5);
+            assertEquals(divider(outer).localToScene(0, 0).getX(), sidebarSeam.localToScene(0, 0).getX(), 0.5);
+            sidebarSeam.applyCss();
+            assertEquals(javafx.scene.paint.Color.web("#e3dfd8"),
+                    ((javafx.scene.layout.Region) sidebarSeam).getBackground().getFills().getFirst().getFill());
+            javafx.event.Event.fireEvent(divider(outer), mouseEvent(javafx.scene.input.MouseEvent.MOUSE_DRAGGED));
+            assertEquals(6, sidebarSeam.getBoundsInParent().getWidth(), 0.5);
+            javafx.event.Event.fireEvent(divider(markdown), mouseMoved());
+            assertEquals(0.75, sidebarSeam.getBoundsInParent().getWidth(), 0.5);
+            assertEquals(6, outlineSeam.getBoundsInParent().getWidth(), 0.5);
+            javafx.event.Event.fireEvent(shell, mouseMoved());
+            assertEquals(0.75, sidebarSeam.getBoundsInParent().getWidth(), 0.5);
+            assertEquals(0.75, outlineSeam.getBoundsInParent().getWidth(), 0.5);
+
+            outer.setDividerPositions(0.35);
+            outer.layout();
+            assertEquals(divider(outer).localToScene(0, 0).getX(), sidebarDivider.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(outer).localToScene(5.25, 0).getX(), sidebarSeam.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineSeam.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineDivider.localToScene(0, 0).getX(), 0.5);
+            markdown.setDividerPositions(0.65);
+            markdown.layout();
+            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineDivider.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineSeam.localToScene(0, 0).getX(), 0.5);
+            shell.layout(); pulse(100);
+            assertEquals(divider(outer).localToScene(0, 0).getX(), sidebarDivider.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineDivider.localToScene(0, 0).getX(), 0.5);
+            assertEquals(outline.localToScene(0, 0).getX(), outlineCell.localToScene(0, 0).getX(), 2);
+
+            button("toggle-file-list").fire();
+            shell.layout(); pulse(100);
+            assertEquals(42, sidebarCell.getBoundsInParent().getWidth(), 2);
+            assertFalse(sidebarDivider.isManaged());
+            assertFalse(sidebarSeam.isVisible());
+            button("toggle-file-list").fire();
+            pulse(100); shell.layout(); pulse(100);
+            assertEquals(divider(outer).localToScene(0, 0).getX(), sidebarDivider.localToScene(0, 0).getX(), 0.5);
+            assertTrue(sidebarSeam.isVisible());
+
+            button("file-mode-toggle").fire();
+            assertFalse(outlineDivider.isManaged());
+            assertFalse(outlineSeam.isVisible());
+            button("file-mode-toggle").fire();
+            assertTrue(outlineDivider.isManaged());
+            assertTrue(outlineSeam.isVisible());
+        });
+    }
+
+    @Test void headerSeparatorGapFollowsTheActiveTab() throws Exception {
+        fx(() -> {
+            open("Java/Java集合.md");
+            var first = shell.tabs().active();
+            shell.tabs().openPinned(fixture.alpha.id(), "我的笔记/学习计划.md");
+            shell.applyCss(); shell.layout(); pulse(100);
+            assertHeaderGapUnderActiveTab();
+
+            shell.tabs().activate(first);
+            shell.applyCss(); shell.layout(); pulse(100);
+            assertHeaderGapUnderActiveTab();
+
+            shell.tabs().closeAll();
+            shell.applyCss(); shell.layout(); pulse(100);
+            assertEquals(shell.getWidth(), shell.lookup("#workspace-header-seam").getBoundsInParent().getWidth(), 0.5);
+            assertEquals(0, shell.lookup("#workspace-header-seam-right").getBoundsInParent().getWidth(), 0.01);
+        });
+    }
+
+    @Test void tabsShrinkBeforeScrollingAndKeepTheirCloseButtons() throws Exception {
+        String first = "Java/这是第一份用于检查标签宽度缩小的长文件名称.md";
+        String second = "Java/这是第二份用于检查标签宽度缩小的长文件名称.md";
+        fixture.write(first, "# 第一份文档\n");
+        fixture.write(second, "# 第二份文档\n");
+        fx(() -> {
+            shell.refresh();
+            shell.tabs().openPinned(fixture.alpha.id(), first);
+            shell.tabs().openPinned(fixture.alpha.id(), second);
+            shell.applyCss(); shell.layout(); pulse(100);
+            var bar = shell.tabs().tabBar();
+            var row = (javafx.scene.layout.HBox) bar.getContent();
+            var item = (javafx.scene.layout.HBox) row.getChildren().getFirst();
+            var select = (Button) item.getChildren().getFirst();
+            var close = (Button) item.getChildren().get(1);
+            double wideWidth = item.getWidth(), closeWidth = close.getWidth();
+            assertEquals(first.substring(first.indexOf('/') + 1), select.getTooltip().getText());
+
+            var outer = (SplitPane) shell.getCenter();
+            outer.setDividerPositions(0.45);
+            outer.layout(); shell.layout(); pulse(100);
+            assertTrue(item.getWidth() < wideWidth, "Tabs must shrink with the available strip width");
+            assertTrue(row.getWidth() <= bar.getViewportBounds().getWidth() + 0.5,
+                    "Two tabs must fit instead of requiring horizontal scrolling");
+            assertEquals(closeWidth, close.getWidth(), 0.01);
+            assertTrue(select.getWidth() > 0);
+            assertTrue(close.getBoundsInParent().getMaxX() <= item.getWidth() + 0.5);
+            assertHeaderGapUnderActiveTab();
+            close.fire();
+            assertEquals(1, shell.tabs().tabs().size());
+            assertEquals(second, shell.tabs().active().path());
+            assertTrue(text(shell.lookup("#markdown-preview-scroll")).contains("第二份文档"));
+        });
+    }
+
+    @Test void tabsKeepTheirMinimumWidthWhenScrollingIsNecessary() throws Exception {
+        List<String> files = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            String path = "Java/这是用于检查多标签滚动的长文件名" + i + ".md";
+            fixture.write(path, "# 文档 " + i + "\n");
+            files.add(path);
+        }
+        fx(() -> {
+            shell.refresh();
+            files.forEach(path -> shell.tabs().openPinned(fixture.alpha.id(), path));
+            shell.applyCss(); shell.layout(); pulse(100);
+            var bar = shell.tabs().tabBar();
+            var row = (javafx.scene.layout.HBox) bar.getContent();
+            assertTrue(row.getWidth() > bar.getViewportBounds().getWidth(),
+                    "The strip must scroll after tabs reach their minimum width");
+            var sidebarCell = (javafx.scene.layout.Region) shell.lookup("#window-sidebar-cell");
+            var outlineCell = (javafx.scene.layout.Region) shell.lookup("#window-outline-cell");
+            assertEquals(shell.sidebar().getWidth(), sidebarCell.getWidth(), 0.5);
+            assertEquals(shell.filePane().visibleOutline().getWidth(), outlineCell.getWidth(), 0.5);
+            for (Node child : row.getChildren()) {
+                var item = (javafx.scene.layout.HBox) child;
+                var close = (Button) item.getChildren().get(1);
+                assertTrue(item.getWidth() >= item.getMinWidth() - 0.5);
+                assertTrue(close.getWidth() > 0);
+                assertTrue(close.getBoundsInParent().getMaxX() <= item.getWidth() + 0.5);
+            }
+            assertEquals(files.size(), shell.tabs().tabs().size());
+            assertEquals(ScrollPane.ScrollBarPolicy.AS_NEEDED, bar.getHbarPolicy());
+            bar.setHvalue(1); pulse(100);
+            assertHeaderGapUnderActiveTab();
+        });
+    }
+
+    private void assertHeaderGapUnderActiveTab() {
+        var tab = shell.tabs().activeTabNode();
+        var left = shell.lookup("#workspace-header-seam");
+        var right = shell.lookup("#workspace-header-seam-right");
+        assertEquals(tab.localToScene(0, 0).getX(),
+                left.localToScene(left.getBoundsInLocal().getWidth(), 0).getX(), 0.5);
+        assertEquals(tab.localToScene(tab.getBoundsInLocal().getWidth(), 0).getX(),
+                right.localToScene(0, 0).getX(), 0.5);
+    }
+
+    private Node divider(SplitPane pane) {
+        return pane.getChildrenUnmodifiable().stream()
+                .filter(child -> child.getStyleClass().contains("split-pane-divider"))
+                .findFirst().orElseThrow();
+    }
+
+    private static javafx.scene.input.MouseEvent mouseMoved() {
+        return mouseEvent(javafx.scene.input.MouseEvent.MOUSE_MOVED);
+    }
+
+    private static javafx.scene.input.MouseEvent mouseEvent(
+            javafx.event.EventType<? extends javafx.scene.input.MouseEvent> type) {
+        return new javafx.scene.input.MouseEvent(type,
+                0, 0, 0, 0, javafx.scene.input.MouseButton.NONE, 0,
+                false, false, false, false, false, false, false, false, false, false, null);
+    }
+
+    @Test void customWindowButtonsControlTheStage() throws Exception {
+        fx(() -> {
+            button("window-maximize").fire();
+            assertTrue(stage.isMaximized());
+            button("window-maximize").fire();
+            assertFalse(stage.isMaximized());
+            button("window-minimize").fire();
+            assertTrue(stage.isIconified());
+            stage.setIconified(false);
+            button("window-close").fire();
+            assertFalse(stage.isShowing());
+        });
+    }
+
+    @Test void liveCssReappliesChangedStylesToAnOpenWindow() throws Exception {
+        Path styles = Files.createDirectory(temp.resolve("live-css"));
+        Path workspaceCss = styles.resolve("workspace.css");
+        Files.writeString(workspaceCss, ".live-css-sample { -fx-background-color: #b93131; }");
+        Files.writeString(styles.resolve("markdown-preview.css"), "");
+        String previous = System.getProperty("quizforge.ui.liveCssDir");
+        Stage[] preview = new Stage[1];
+        Runnable[] stop = new Runnable[1];
+        CountDownLatch changed = new CountDownLatch(1);
+        try {
+            System.setProperty("quizforge.ui.liveCssDir", styles.toString());
+            fx(() -> {
+                var sample = new javafx.scene.layout.StackPane();
+                sample.getStyleClass().add("live-css-sample");
+                Scene scene = new Scene(sample, 80, 80);
+                UiTheme.apply(scene);
+                scene.getStylesheets().addListener((javafx.collections.ListChangeListener<String>) ignored ->
+                        changed.countDown());
+                preview[0] = new Stage();
+                preview[0].setScene(scene);
+                preview[0].setOpacity(0);
+                preview[0].show();
+                stop[0] = LiveCssReloader.start(scene);
+            });
+
+            Path replacement = styles.resolve("replacement.css");
+            Files.writeString(replacement, ".live-css-sample { -fx-background-color: #276fc2; }");
+            Files.move(replacement, workspaceCss, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            assertTrue(changed.await(10, TimeUnit.SECONDS));
+            fx(() -> {
+                var sample = (javafx.scene.layout.StackPane) preview[0].getScene().getRoot();
+                sample.applyCss();
+                assertEquals(javafx.scene.paint.Color.web("#276fc2"),
+                        sample.getBackground().getFills().getFirst().getFill());
+            });
+        } finally {
+            fx(() -> {
+                if (stop[0] != null) stop[0].run();
+                if (preview[0] != null) preview[0].close();
+            });
+            if (previous == null) System.clearProperty("quizforge.ui.liveCssDir");
+            else System.setProperty("quizforge.ui.liveCssDir", previous);
+        }
+    }
+
+    @Test void formalHeadersHideMetadataAndKeepOnlyRelevantActions() throws Exception {
         fx(() -> {
             open("Java/Java集合.md");
             Parent header = (Parent) shell.lookup("#file-header");
             assertEquals("Java集合.md", ((Label) shell.lookup("#file-title")).getText());
             assertFalse(text(shell).contains("doc_java"));
             assertFalse(text(shell).contains("qfd:v1:"));
-            assertEquals(2, header.lookupAll(".button").size());
-            String updated = ShellFixture.document("Updated knowledge from disk.");
-            fixture.write("Java/Java集合.md", updated);
-            button("asset-info-button").fire();
-            assertTrue(shell.filePane().details().isShowing());
-            String metadata = text(shell.filePane().details().content());
-            assertTrue(metadata.contains("doc_java"));
-            assertTrue(metadata.contains(new StandardKnowledgeDocumentV1().parseIfStandard(updated).orElseThrow().contentId()));
-            assertTrue(metadata.contains("Java/Java集合.md"));
-            shell.filePane().details().hide();
+            assertEquals(1, header.lookupAll(".button").size());
+            assertNull(shell.lookup("#asset-info-button"));
+            open("题库/Java集合.qbank");
+            assertEquals(2, shell.lookup("#file-header").lookupAll(".button").size());
+            assertNull(shell.lookup("#asset-info-button"));
             assertFalse(text(shell).contains("doc_java"));
+            assertFalse(text(shell).contains("qfd:v1:"));
         });
     }
 
@@ -132,6 +445,34 @@ class MainWorkspaceViewTest {
             assertTrue(source.getText().contains("# 本周学习计划"));
             toggle.fire();
             assertEquals(FileMode.BROWSE, shell.filePane().mode());
+        });
+    }
+
+    @Test void markdownOutlineFillsTheHeaderHeightAndItsDividerCanMove() throws Exception {
+        fx(() -> {
+            open("Java/Java集合.md");
+            shell.applyCss(); shell.layout();
+            FilePane pane = shell.filePane();
+            var layout = (SplitPane) pane.getCenter();
+            var reader = (BorderPane) layout.getItems().getFirst();
+            var outline = (MarkdownOutlineView) layout.getItems().get(1);
+            assertNull(pane.getTop());
+            assertSame(shell.lookup("#file-header"), reader.getTop());
+            assertEquals(0, outline.getLayoutY(), 1);
+            assertEquals(shell.sidebar().getBackground().getFills().getFirst().getFill(),
+                    outline.getBackground().getFills().getFirst().getFill());
+            assertNotNull(layout.lookup(".split-pane-divider"));
+            double originalWidth = outline.getWidth();
+            layout.setDividerPositions(0.6);
+            shell.layout(); pulse(100);
+            assertTrue(outline.getWidth() > originalWidth + 20);
+
+            button("file-mode-toggle").fire();
+            assertSame(shell.lookup("#file-header"), pane.getTop());
+            assertNull(shell.lookup("#markdown-outline"));
+            button("file-mode-toggle").fire();
+            assertNull(pane.getTop());
+            assertSame(shell.lookup("#file-header"), reader.getTop());
         });
     }
 
@@ -168,6 +509,7 @@ class MainWorkspaceViewTest {
             assertNull(shell.lookup("#markdown-outline"));
             ((TextArea) shell.lookup("#markdown-source-text")).setText("# Updated\n## New section\nText.\n");
             button("markdown-save").fire();
+            shell.applyCss(); shell.layout(); pulse(100);
             assertNotNull(shell.lookup("#markdown-outline"));
             assertEquals("New section", button("qf-nav-1").getAccessibleText());
             open("题库/Java集合.qbank");
@@ -219,7 +561,7 @@ class MainWorkspaceViewTest {
             assertNull(shell.lookup("#question-outline"));
             toggle.fire();
             assertSame(toggle, button("file-mode-toggle"));
-            assertEquals("Question 2 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertEquals("第 2 / 2 题", ((Label) shell.lookup("#question-position")).getText());
         });
     }
 
@@ -231,8 +573,7 @@ class MainWorkspaceViewTest {
             assertEquals(WorkspaceFileKind.INVALID_STANDARD_DOCUMENT, fixture.files.open(fixture.alpha.id(), "空草稿/新文档.md").entry().kind());
             button("empty-asset-ai").fire();
             assertEquals(1, fixture.aiOpened.get());
-            button("asset-info-button").fire();
-            assertTrue(text(shell.filePane().details().content()).contains("未通过正式格式校验"));
+            assertNull(shell.lookup("#asset-info-button"));
         });
     }
 
@@ -265,7 +606,9 @@ class MainWorkspaceViewTest {
             add.getItems().getFirst().fire();
             shell.applyCss(); shell.layout();
             assertEquals("1 / 1", ((Label) shell.lookup("#qbank-editor-position")).getText());
-            assertNotNull(shell.lookup("#qbank-add-source"));
+            assertNull(shell.lookup("#qbank-add-source"));
+            assertNotNull(shell.lookup("#qbank-source-link"));
+            assertNotNull(shell.lookup("#qbank-use-source-link"));
         });
     }
 
@@ -314,15 +657,18 @@ class MainWorkspaceViewTest {
             ((CheckBox) shell.lookup("#option-1")).fire();
             button("submit-answer").fire();
             button("next-question").fire();
-            assertTrue(text(shell.lookup("#practice-summary")).contains("已提交：2 / 2"));
-            assertTrue(text(shell.lookup("#practice-summary")).contains("50%"));
+            assertEquals("50%", ((Label) shell.lookup("#summary-percentage")).getText());
+            assertEquals("1", ((Label) shell.lookup("#summary-correct-count")).getText());
+            assertEquals("1", ((Label) shell.lookup("#summary-incorrect-count")).getText());
+            assertEquals("0", ((Label) shell.lookup("#summary-unanswered-count")).getText());
             assertTrue(shell.lookup("#question-outline").isVisible());
             assertFalse(button("practice-restart").isDisabled());
             shell.tabs().closeAll();
             shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
             shell.applyCss(); shell.layout();
             assertNotNull(shell.lookup("#practice-summary"));
-            assertTrue(text(shell.lookup("#practice-summary")).contains("已提交：2 / 2"));
+            assertEquals("50%", ((Label) shell.lookup("#summary-percentage")).getText());
+            assertEquals("1", ((Label) shell.lookup("#summary-correct-count")).getText());
             assertTrue(shell.lookup("#question-outline").isVisible());
             assertEquals(before, Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
         });
@@ -361,17 +707,18 @@ class MainWorkspaceViewTest {
         fx(() -> {
             open("题库/Java集合.qbank");
             button("next-question").fire(); button("next-question").fire();
-            assertTrue(text(shell.lookup("#practice-summary")).contains("已提交：0 / 2"));
-            assertTrue(text(shell.lookup("#practice-summary")).contains("正确率：—"));
-            assertTrue(text(shell.lookup("#practice-summary")).contains("未完成：2"));
+            assertEquals("0%", ((Label) shell.lookup("#summary-percentage")).getText());
+            assertEquals("0", ((Label) shell.lookup("#summary-correct-count")).getText());
+            assertEquals("0", ((Label) shell.lookup("#summary-incorrect-count")).getText());
+            assertEquals("2", ((Label) shell.lookup("#summary-unanswered-count")).getText());
             assertTrue(shell.lookup("#question-outline").isVisible());
             assertFalse(button("question-number-1").getStyleClass().contains("current"));
             assertFalse(button("question-number-2").getStyleClass().contains("current"));
             button("summary-previous").fire();
-            assertEquals("Question 2 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertEquals("第 2 / 2 题", ((Label) shell.lookup("#question-position")).getText());
             assertTrue(button("question-number-2").getStyleClass().contains("current"));
             button("next-question").fire(); button("question-number-1").fire();
-            assertEquals("Question 1 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertEquals("第 1 / 2 题", ((Label) shell.lookup("#question-position")).getText());
             assertEquals(io.quizforge.core.practice.PracticeSession.View.QUESTION, practiceDbSession().currentView());
         });
     }
@@ -383,8 +730,9 @@ class MainWorkspaceViewTest {
             ((CheckBox) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
             assertNull(shell.lookup("#practice-summary"));
             button("next-question").fire();
-            assertTrue(text(shell.lookup("#practice-summary")).contains("已提交：1 / 2"));
-            assertTrue(text(shell.lookup("#practice-summary")).contains("正确率：0%"));
+            assertEquals("0%", ((Label) shell.lookup("#summary-percentage")).getText());
+            assertEquals("1", ((Label) shell.lookup("#summary-incorrect-count")).getText());
+            assertEquals("1", ((Label) shell.lookup("#summary-unanswered-count")).getText());
             String id = practiceDbSession().id();
             shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
             shell.applyCss(); shell.layout();
@@ -409,7 +757,7 @@ class MainWorkspaceViewTest {
             button("practice-restart").fire();
             assertSame(tab, shell.tabs().active());
             assertNotEquals(oldId, practiceDbSession().id());
-            assertEquals("Question 1 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertEquals("第 1 / 2 题", ((Label) shell.lookup("#question-position")).getText());
             assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
             assertTrue(button("question-number-2").getStyleClass().contains("unsubmitted"));
             assertEquals(io.quizforge.core.practice.PracticeSession.Status.ARCHIVED,
@@ -483,12 +831,18 @@ class MainWorkspaceViewTest {
         fx(() -> {
             open("Java/Java集合.md");
             var folderItems = folderCell("Java").getContextMenu().getItems();
-            assertEquals(java.util.Arrays.asList("folder-new-folder", "folder-new-md", "folder-new-qbank",
+            assertEquals(java.util.Arrays.asList("folder-new-folder", "folder-new-file",
                             null, "copy-file-path", null,
                             "rename-file-entry", "delete-file-entry"),
                     folderItems.stream().map(MenuItem::getId).toList());
+            Menu folderFiles = (Menu) folderItems.get(1);
+            assertEquals(List.of("folder-new-md", "folder-new-qbank"),
+                    folderFiles.getItems().stream().map(MenuItem::getId).toList());
+            assertEquals(List.of("Markdown 文件 (.md)", "题库文件 (.qbank)"),
+                    folderFiles.getItems().stream().map(MenuItem::getText).toList());
             var fileItems = folderCell("Java/Java集合.md").getContextMenu().getItems();
             assertEquals("copy-link", fileItems.getFirst().getId());
+            assertEquals("复制链接", fileItems.getFirst().getText());
             assertTrue(fileItems.stream().noneMatch(item -> item.getId() != null
                     && item.getId().startsWith("folder-new-")));
             Menu copy = (Menu) fileItems.stream().filter(item ->
@@ -496,12 +850,214 @@ class MainWorkspaceViewTest {
             assertEquals(List.of("copy-relative-path", "copy-absolute-path"),
                     copy.getItems().stream().map(MenuItem::getId).toList());
             var switcher = shell.sidebar().switcher().getItems();
-            assertTrue(switcher.stream().anyMatch(item -> "workspace-new-folder".equals(item.getId())));
-            Menu newFile = (Menu) switcher.stream().filter(item -> "workspace-new-file".equals(item.getId()))
-                    .findFirst().orElseThrow();
-            assertEquals(List.of(".md", ".qbank"),
-                    newFile.getItems().stream().map(MenuItem::getText).toList());
-            assertTrue(switcher.stream().anyMatch(item -> "refresh-workspace".equals(item.getId())));
+            assertEquals(java.util.Arrays.asList("workspace-history", null, "new-workspace", "open-workspace-folder"),
+                    switcher.stream().map(MenuItem::getId).toList());
+            assertEquals(List.of("refresh-workspace", "workspace-new-folder", "workspace-new-file"),
+                    shell.sidebar().fileActions().getChildren().stream().map(Node::getId).toList());
+            Button newFile = button("workspace-new-file");
+            assertEquals(List.of("Markdown 文件 (.md)", "题库文件 (.qbank)"),
+                    newFile.getContextMenu().getItems().stream().map(MenuItem::getText).toList());
+            var bankItems = folderCell("题库/Java集合.qbank").getContextMenu().getItems();
+            assertEquals(java.util.Arrays.asList("copy-file-path", null, "rename-file-entry", "delete-file-entry"),
+                    bankItems.stream().map(MenuItem::getId).toList());
+            for (var items : List.of(folderItems, fileItems, bankItems)) {
+                for (MenuItem item : items) {
+                    if (item instanceof javafx.scene.control.SeparatorMenuItem) continue;
+                    assertNotNull(item.getGraphic(), item.getText());
+                    if (item instanceof Menu submenu) {
+                        submenu.getItems().forEach(child -> assertNull(child.getGraphic(), child.getText()));
+                    }
+                }
+            }
+            assertFalse(folderCell("Java").getContextMenu().getStyleClass().contains("workspace-submenu"));
+            assertEquals("", newFile.getText());
+            assertEquals("新建文件", newFile.getTooltip().getText());
+        });
+    }
+
+    @Test void workspaceMenuUsesChineseGroupsAndKeepsEveryActionCallback() throws Exception {
+        fx(() -> {
+            var calls = new ArrayList<String>();
+            var menu = new WorkspaceSwitcher();
+            menu.update(fixture.alpha, List.of(fixture.alpha, fixture.beta),
+                    workspace -> calls.add("select:" + workspace.id()),
+                    () -> calls.add("open-folder"), () -> calls.add("new"));
+            assertEquals(List.of("", "|", "新建工作区…", "打开文件夹…"),
+                    menu.getItems().stream().map(item -> item instanceof SeparatorMenuItem ? "|" : item.getText()).toList());
+            assertEquals(2, menu.historyItems().getChildren().size());
+            assertTrue(menu.historyItems().getChildren().getFirst().getStyleClass().contains("current"));
+            ((Button) menu.historyItems().getChildren().get(1)).fire();
+            for (String id : List.of("new-workspace", "open-workspace-folder"))
+                menu.getItems().stream().filter(item -> id.equals(item.getId())).findFirst().orElseThrow().fire();
+            assertEquals(List.of("select:" + fixture.beta.id(), "new", "open-folder"), calls);
+            menu.update(null, List.of(), ignored -> {}, () -> {}, () -> {});
+            assertEquals("尚无已打开的工作区", ((Label) menu.historyItems().getChildren().getFirst()).getText());
+            assertEquals("open-workspace-folder", menu.getItems().getLast().getId());
+        });
+    }
+
+    @Test void workspaceHistoryScrollsWhileCreateAndOpenStayOutsideTheList() throws Exception {
+        fx(() -> {
+            var recent = new ArrayList<io.quizforge.core.workspace.Workspace>();
+            for (int index = 0; index < 12; index++) {
+                recent.add(new io.quizforge.core.workspace.Workspace(
+                        io.quizforge.core.workspace.WorkspaceId.newId(), "Workspace " + index,
+                        java.time.Instant.EPOCH, java.time.Instant.EPOCH));
+            }
+            var menu = new WorkspaceSwitcher();
+            menu.update(recent.getFirst(), recent, ignored -> {}, () -> {}, () -> {});
+
+            assertEquals(12, menu.historyItems().getChildren().size());
+            assertEquals(7 * 32, menu.historyScroll().getPrefViewportHeight());
+            assertEquals("new-workspace", menu.getItems().get(2).getId());
+            assertEquals("open-workspace-folder", menu.getItems().get(3).getId());
+        });
+    }
+
+    @Test void folderAndFileMenuCallbacksKeepTheirOriginalTargets() throws Exception {
+        fx(() -> {
+            var calls = new ArrayList<String>();
+            var tree = new WorkspaceFileTree((entry, pinned) -> {}, new WorkspaceFileTree.FileActions() {
+                public void createFolder(String path) { calls.add("folder:" + path); }
+                public void createFile(String path, io.quizforge.core.workspace.WorkspaceFileType type) {
+                    calls.add("file:" + path + ":" + type.extension());
+                }
+                public void copyPath(String path, boolean absolute) { calls.add("copy:" + path + ":" + absolute); }
+                public void rename(WorkspaceFileEntry entry) { calls.add("rename:" + entry.relativePath()); }
+                public void delete(WorkspaceFileEntry entry) { calls.add("delete:" + entry.relativePath()); }
+                public void copyLink(WorkspaceFileEntry entry) { calls.add("link:" + entry.relativePath()); }
+            });
+            tree.setRoot(shell.sidebar().tree().getRoot());
+            Stage review = new Stage();
+            Scene scene = new Scene(tree, 300, 900); UiTheme.apply(scene);
+            review.setScene(scene); review.setOpacity(0); review.show();
+            try {
+                tree.applyCss(); tree.layout();
+                for (String path : List.of("Java", "Java/Java集合.md", "题库/Java集合.qbank")) {
+                    calls.clear();
+                    TreeCell<?> cell = tree.lookupAll(".tree-cell").stream().filter(TreeCell.class::isInstance)
+                            .map(TreeCell.class::cast).filter(row -> row.getItem() instanceof WorkspaceFileEntry entry
+                                    && path.equals(entry.relativePath())).findFirst().orElseThrow();
+                    for (MenuItem item : cell.getContextMenu().getItems()) {
+                        if (item instanceof Menu submenu) submenu.getItems().forEach(MenuItem::fire);
+                        else if (!(item instanceof SeparatorMenuItem)) item.fire();
+                    }
+                    var expected = new ArrayList<String>();
+                    if (path.equals("Java")) expected.addAll(List.of("folder:Java", "file:Java:.md", "file:Java:.qbank"));
+                    if (path.endsWith(".md")) expected.add("link:" + path);
+                    expected.addAll(List.of("copy:" + path + ":false", "copy:" + path + ":true", "rename:" + path, "delete:" + path));
+                    assertEquals(expected, calls);
+                }
+            } finally { review.close(); }
+        });
+    }
+
+    @Test void newMarkdownFileIsNamedInTreeAndDuplicateNameStaysEditable() throws Exception {
+        fx(() -> {
+            Menu newFile = (Menu) folderCell("Java").getContextMenu().getItems().stream()
+                    .filter(item -> "folder-new-file".equals(item.getId())).findFirst().orElseThrow();
+            newFile.getItems().getFirst().fire();
+            shell.applyCss(); shell.layout();
+            TextField name = (TextField) shell.lookup("#inline-new-file-name");
+            assertNotNull(name);
+            assertFalse(Files.exists(fixture.alphaRoot.resolve("Java/新建文件.md")));
+            name.setText("Java集合");
+            name.fireEvent(new javafx.event.ActionEvent());
+            assertSame(name, shell.lookup("#inline-new-file-name"));
+            assertTrue(name.getPseudoClassStates().contains(javafx.css.PseudoClass.getPseudoClass("invalid-name")));
+            assertEquals("当前文件夹中已存在同名文件或文件夹", name.getTooltip().getText());
+            name.setText("新建笔记");
+            name.fireEvent(new javafx.event.ActionEvent());
+            assertTrue(Files.exists(fixture.alphaRoot.resolve("Java/新建笔记.md")));
+            assertNull(shell.lookup("#inline-new-file-name"));
+            assertTrue(paths(shell.sidebar().tree().getRoot()).contains("Java/新建笔记.md"));
+        });
+    }
+
+    @Test void unnamedNewFileCancelsAndWorkspaceMenuCanCreateQuestionBankAtRoot() throws Exception {
+        fx(() -> {
+            Button newFile = button("workspace-new-file");
+            newFile.getContextMenu().getItems().getFirst().fire();
+            shell.applyCss(); shell.layout();
+            TextField name = (TextField) shell.lookup("#inline-new-file-name");
+            assertNotNull(name);
+            name.fireEvent(new javafx.event.ActionEvent());
+            shell.applyCss(); shell.layout();
+            assertNull(shell.lookup("#inline-new-file-name"));
+            assertFalse(Files.exists(fixture.alphaRoot.resolve("新建文件.md")));
+            newFile.getContextMenu().getItems().get(1).fire();
+            shell.applyCss(); shell.layout();
+            name = (TextField) shell.lookup("#inline-new-file-name");
+            assertNotNull(name);
+            name.setText("取消的题库");
+            name.fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_PRESSED,
+                    "", "", javafx.scene.input.KeyCode.ESCAPE, false, false, false, false));
+            shell.applyCss(); shell.layout();
+            assertNull(shell.lookup("#inline-new-file-name"));
+            assertFalse(Files.exists(fixture.alphaRoot.resolve("取消的题库.qbank")));
+            newFile.getContextMenu().getItems().get(1).fire();
+            shell.applyCss(); shell.layout();
+            name = (TextField) shell.lookup("#inline-new-file-name");
+            name.setText("根目录题库");
+            name.fireEvent(new javafx.event.ActionEvent());
+            assertTrue(Files.exists(fixture.alphaRoot.resolve("根目录题库.qbank")));
+            assertTrue(paths(shell.sidebar().tree().getRoot()).contains("根目录题库.qbank"));
+        });
+    }
+
+    @Test void newFolderIsNamedInTreeAndRejectsSiblingDuplicate() throws Exception {
+        fx(() -> {
+            button("workspace-new-folder").fire();
+            shell.applyCss(); shell.layout();
+            TextField name = (TextField) shell.lookup("#inline-new-folder-name");
+            assertNotNull(name);
+            assertFalse(Files.exists(fixture.alphaRoot.resolve("新文件夹")));
+            name.setText("Java");
+            name.fireEvent(new javafx.event.ActionEvent());
+            assertSame(name, shell.lookup("#inline-new-folder-name"));
+            assertTrue(name.getPseudoClassStates().contains(javafx.css.PseudoClass.getPseudoClass("invalid-name")));
+            name.setText("新的资料");
+            name.fireEvent(new javafx.event.ActionEvent());
+            assertTrue(Files.isDirectory(fixture.alphaRoot.resolve("新的资料")));
+            assertTrue(paths(shell.sidebar().tree().getRoot()).contains("新的资料"));
+            assertNull(shell.lookup("#inline-new-folder-name"));
+            folderCell("Java").getContextMenu().getItems().stream()
+                    .filter(item -> "folder-new-folder".equals(item.getId())).findFirst().orElseThrow().fire();
+            shell.applyCss(); shell.layout();
+            name = (TextField) shell.lookup("#inline-new-folder-name");
+            assertNotNull(name);
+            name.fireEvent(new javafx.event.ActionEvent());
+            shell.applyCss(); shell.layout();
+            assertNull(shell.lookup("#inline-new-folder-name"));
+            assertFalse(Files.exists(fixture.alphaRoot.resolve("Java/新文件夹")));
+        });
+    }
+
+    @Test void fileAndFolderRenameHappenInTreeWithoutOverwritingSiblings() throws Exception {
+        fx(() -> {
+            folderCell("Java").getContextMenu().getItems().stream()
+                    .filter(item -> "rename-file-entry".equals(item.getId())).findFirst().orElseThrow().fire();
+            shell.applyCss(); shell.layout();
+            TextField name = (TextField) shell.lookup("#inline-rename-name");
+            assertEquals("Java", name.getText());
+            name.setText("题库");
+            name.fireEvent(new javafx.event.ActionEvent());
+            assertSame(name, shell.lookup("#inline-rename-name"));
+            assertTrue(name.getPseudoClassStates().contains(javafx.css.PseudoClass.getPseudoClass("invalid-name")));
+            name.setText("Java新");
+            name.fireEvent(new javafx.event.ActionEvent());
+            assertTrue(Files.exists(fixture.alphaRoot.resolve("Java新/Java集合.md")));
+            assertFalse(Files.exists(fixture.alphaRoot.resolve("Java")));
+            assertTrue(paths(shell.sidebar().tree().getRoot()).contains("Java新/Java集合.md"));
+            folderCell("Java新/Java集合.md").getContextMenu().getItems().stream()
+                    .filter(item -> "rename-file-entry".equals(item.getId())).findFirst().orElseThrow().fire();
+            shell.applyCss(); shell.layout();
+            name = (TextField) shell.lookup("#inline-rename-name");
+            assertEquals("Java集合.md", name.getText());
+            name.setText("集合笔记.md");
+            name.fireEvent(new javafx.event.ActionEvent());
+            assertTrue(Files.exists(fixture.alphaRoot.resolve("Java新/集合笔记.md")));
+            assertFalse(Files.exists(fixture.alphaRoot.resolve("Java新/Java集合.md")));
         });
     }
 
@@ -644,8 +1200,8 @@ class MainWorkspaceViewTest {
             assertTrue(saved.endsWith(source.substring(source.indexOf("# Java"))));
             assertFalse(saved.contains("qf:id="));
             assertEquals(2, saved.split("qf:anchor=定义", -1).length - 1);
-            var previewLayout = (javafx.scene.layout.HBox) shell.filePane().getCenter();
-            var reader = (ScrollPane) previewLayout.getChildren().getFirst();
+            var previewLayout = (SafeMarkdownPreview.BrowseLayout) shell.filePane().getCenter();
+            var reader = previewLayout.reader();
             var page = (javafx.scene.layout.StackPane) reader.getContent();
             assertTrue(text(page).contains("内容 B"));
             assertFalse(text(page).contains("qf:anchor"));
@@ -722,13 +1278,13 @@ class MainWorkspaceViewTest {
                     fixture.copiedText.get());
             assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, shell.filePane().currentFile().kind());
             assertNotNull(shell.filePane().currentFile().registeredMarkdown());
-            assertNotNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
+            assertNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
             assertTrue(Files.readString(fixture.alphaRoot.resolve(path)).contains("quizforge:"));
             assertTrue(Files.readString(fixture.alphaRoot.resolve(path)).contains("<!-- qf:anchor=学习计划来源 -->"));
             assertFalse(Files.readString(fixture.alphaRoot.resolve(path)).contains("qf:id=node_"));
             shell.refresh();
             open(path);
-            assertNotNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
+            assertNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
             assertNotNull(shell.filePane().currentFile().registeredMarkdown());
             assertEquals("copy-link", folderCell(path).getContextMenu().getItems()
                     .getFirst().getId());
@@ -781,7 +1337,7 @@ class MainWorkspaceViewTest {
                     menu.getItems().stream().map(MenuItem::getId).toList());
             menu.getItems().get(1).fire();
             assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, shell.filePane().currentFile().kind());
-            assertNotNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
+            assertNull(folderCell(path).getGraphic().lookup(".reference-link-indicator"));
             String saved = Files.readString(fixture.alphaRoot.resolve(path));
             assertEquals(1, saved.split("qf:anchor=手写来源", -1).length - 1);
             assertTrue(saved.contains("quizforge:"));
@@ -792,7 +1348,7 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void fileTreeMarksOnlyReferenceEnabledMarkdown() throws Exception {
+    @Test void fileTreeUsesPlainMarkdownIconsForOrdinaryAndRegisteredDocuments() throws Exception {
         fixture.write("Java/registered-in-name.md", "# Ordinary Markdown\n");
         fixture.write("Java/addressable.md", new RegisteredMarkdownCodec()
                 .prepare("# Registered\n\nAddressable paragraph.\n", "Java/addressable.md").source());
@@ -803,10 +1359,10 @@ class MainWorkspaceViewTest {
             assertNull(ordinary.lookup(".reference-link-indicator"));
             Node registered = folderCell("Java/addressable.md").getGraphic();
             assertNotNull(registered.lookup(".icon-markdown"));
-            assertNotNull(registered.lookup(".reference-link-indicator"));
-            assertEquals("可引用文档", registered.getAccessibleText());
-            assertTrue(registered.getProperties().values().stream().anyMatch(value ->
-                    value instanceof Tooltip tooltip && "可引用文档".equals(tooltip.getText())));
+            assertNull(registered.lookup(".reference-link-indicator"));
+            assertEquals(ordinary.getAccessibleText(), registered.getAccessibleText());
+            assertEquals(((javafx.scene.shape.SVGPath) ordinary.lookup(".line-icon")).getContent(),
+                    ((javafx.scene.shape.SVGPath) registered.lookup(".line-icon")).getContent());
         });
     }
 
@@ -964,29 +1520,13 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void referencesAreResolvedWhenOpeningDetailsAndReflectChangedOrMissingFiles() throws Exception {
-        fx(() -> {
-            open("题库/Java集合.qbank");
-            button("asset-info-button").fire();
-            assertTrue(text(shell.filePane().details().content()).contains("Exact"));
-            shell.filePane().details().hide();
-            fixture.write("Java/Java集合.md", ShellFixture.document("Different revision."));
-            button("asset-info-button").fire();
-            assertTrue(text(shell.filePane().details().content()).contains("Changed"));
-            shell.filePane().details().hide();
-            Files.delete(fixture.alphaRoot.resolve("Java/Java集合.md"));
-            button("asset-info-button").fire();
-            assertTrue(text(shell.filePane().details().content()).contains("Missing"));
-        });
-    }
-
     @Test void switcherTracksRecentWorkspacesAndSettingsStaysAtSidebarBottom() throws Exception {
         fx(() -> {
             shell.switchWorkspace(fixture.beta);
             assertEquals(fixture.beta.id(), new WorkspaceHistory(fixture.history).order(fixture.workspaces.listWorkspaces()).getFirst().id());
             var menu = shell.sidebar().switcher();
             assertEquals("Spring 学习", menu.getText());
-            assertNotNull(menu.getItems().getFirst().getGraphic());
+            assertNotNull(menu.historyItems().getChildren().getFirst());
             Button settings = button("settings-button");
             settings.fire();
             assertEquals(1, fixture.settingsOpened.get());
@@ -996,8 +1536,29 @@ class MainWorkspaceViewTest {
             assertEquals(shell.sidebar().getHeight() - 10, footer.getBoundsInParent().getMaxY(), 1);
             assertEquals("", settings.getText());
             assertEquals("设置", settings.getTooltip().getText());
-            menu.getItems().stream().filter(item -> fixture.alpha.id().equals(item.getUserData())).findFirst().orElseThrow().fire();
+            ((Button) menu.historyItems().getChildren().stream()
+                    .filter(item -> fixture.alpha.id().equals(item.getUserData())).findFirst().orElseThrow()).fire();
             assertEquals(fixture.alpha.id(), shell.currentWorkspace().id());
+        });
+    }
+
+    @Test void workspaceSwitcherArrowRotatesDownWhenOpenAndUpWhenClosed() throws Exception {
+        fx(() -> {
+            var menu = shell.sidebar().switcher();
+            shell.applyCss();
+            shell.layout();
+            Node arrow = menu.lookup(".arrow-button .arrow");
+            assertNotNull(arrow);
+            assertNotNull(((javafx.scene.layout.Region) arrow).getShape());
+            assertEquals(0, arrow.getRotate(), 0.1);
+
+            menu.show();
+            pulse(240);
+            assertEquals(180, arrow.getRotate(), 0.1);
+
+            menu.hide();
+            pulse(240);
+            assertEquals(0, arrow.getRotate(), 0.1);
         });
     }
 
@@ -1073,6 +1634,7 @@ class MainWorkspaceViewTest {
             TreeCell<?> cell = folderCell("Java");
             int row = cell.getIndex();
             Node icon = cell.getGraphic();
+            double iconWidth = icon.getLayoutBounds().getWidth();
             var stroke = ((javafx.scene.shape.SVGPath) icon.lookup(".line-icon")).getStroke();
             assertNotNull(stroke);
             for (int i = 0; i < 6; i++) {
@@ -1082,13 +1644,176 @@ class MainWorkspaceViewTest {
                 cell.updateIndex(row);
                 assertSame(icon, cell.getGraphic());
                 assertEquals(stroke, ((javafx.scene.shape.SVGPath) cell.getGraphic().lookup(".line-icon")).getStroke());
-                assertEquals(20, cell.getGraphic().getLayoutBounds().getWidth(), 0.01);
+                assertEquals(iconWidth, cell.getGraphic().getLayoutBounds().getWidth(), 0.01);
             }
         });
     }
 
-    @Test void practiceCentersShortQuestionsAndScrollsLongOnesWithSymbolControls() throws Exception {
+    @Test void rootFilesKeepDedicatedIconsAndQuestionBankActivation() throws Exception {
+        fixture.write("Root.md", "# Root Markdown");
+        fixture.write("Root.qbank", Files.readString(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
         fx(() -> {
+            shell.refresh();
+            TreeCell<?> markdown = folderCell("Root.md");
+            assertNotNull(markdown.getGraphic().lookup(".icon-markdown"));
+            TreeCell<?> bank = folderCell("Root.qbank");
+            var entry = (WorkspaceFileEntry) bank.getItem();
+            assertEquals(WorkspaceFileKind.QUESTION_BANK, entry.kind());
+            assertNotNull(bank.getGraphic().lookup(".icon-qbank"));
+            assertNull(bank.getGraphic().lookup(".icon-file"));
+            assertEquals("题库文件", bank.getGraphic().getAccessibleText());
+            open("Root.qbank");
+            assertEquals("Root.qbank", shell.tabs().active().path());
+            assertEquals(entry, shell.sidebar().tree().getSelectionModel().getSelectedItem().getValue());
+            assertNotNull(shell.lookup("#question-practice"));
+            assertTrue(paths(shell.sidebar().tree().getRoot()).contains("空目录"));
+        });
+    }
+
+    @Test void sharedAnsweringRendererPreservesChoiceControlsAndOnlyCallsSelectionAction() throws Exception {
+        fx(() -> {
+            var chosen = new ArrayList<String>();
+            var single = QuestionCardView.answering(QuestionPresentationMapperTest.content("SINGLE_CHOICE"),
+                    0, 2, java.util.Set.of("opt_b"), chosen::add);
+            assertEquals("第 1 / 2 题", single.position().getText());
+            assertTrue(((RadioButton) single.lookup("#option-1")).isSelected());
+            ((RadioButton) single.lookup("#option-0")).fire();
+            assertEquals(List.of("opt_a"), chosen);
+            assertTrue(single.resultPresentation().isEmpty());
+            assertNull(single.lookup("#answer-feedback"));
+            var multiple = QuestionCardView.answering(QuestionPresentationMapperTest.content("MULTIPLE_CHOICE"),
+                    1, 2, java.util.Set.of("opt_a", "opt_b"), chosen::add);
+            assertTrue(((CheckBox) multiple.lookup("#option-0")).isSelected());
+            ((CheckBox) multiple.lookup("#option-2")).fire();
+            assertEquals(List.of("opt_a", "opt_c"), chosen);
+            assertEquals("第 2 / 2 题", multiple.position().getText());
+        });
+    }
+
+    @Test void sharedResultRendererDistinguishesSelectedCorrectMissedWrongAndNeutralOptions() throws Exception {
+        fx(() -> {
+            var result = new QuestionResultPresentation(QuestionPresentationMapperTest.content("MULTIPLE_CHOICE"),
+                    java.util.Set.of("opt_a", "opt_c"), QuestionResultPresentation.Result.INCORRECT, true, true, true);
+            var card = QuestionCardView.result(result, 0, 1, "history-", null);
+            assertEquals("回答错误", card.resultLabel().getText());
+            assertTrue(text(card).contains("你的答案：A、C"));
+            assertTrue(text(card).contains("正确答案：A、B"));
+            assertTrue(text(card).contains("题目解析"));
+            var correctSelected = (CheckBox) card.lookup("#history-option-0");
+            var correctMissed = (CheckBox) card.lookup("#history-option-1");
+            var wrongSelected = (CheckBox) card.lookup("#history-option-2");
+            var neutral = (CheckBox) card.lookup("#history-option-3");
+            assertTrue(correctSelected.isSelected());
+            assertTrue(correctSelected.getStyleClass().contains("correct-option"));
+            assertFalse(correctMissed.isSelected());
+            assertTrue(correctMissed.getStyleClass().contains("correct-option"));
+            assertTrue(wrongSelected.isSelected());
+            assertTrue(wrongSelected.getStyleClass().contains("incorrect-option"));
+            assertFalse(neutral.isSelected());
+            assertFalse(neutral.getStyleClass().contains("correct-option"));
+            assertFalse(neutral.getStyleClass().contains("incorrect-option"));
+            for (var option : List.of(correctSelected, correctMissed, wrongSelected, neutral)) {
+                assertTrue(option.isDisabled());
+                assertNull(option.getOnAction());
+            }
+            wrongSelected.fire();
+            assertEquals(java.util.Set.of("opt_a", "opt_c"), result.userAnswer());
+        });
+    }
+
+    @Test void sharedResultRendererHonorsVisibilityFlagsAndDoesNotShowEmptySourceHeading() throws Exception {
+        fx(() -> {
+            Label source = new Label("测试来源");
+            var hidden = new QuestionResultPresentation(QuestionPresentationMapperTest.content("SINGLE_CHOICE"),
+                    java.util.Set.of("opt_a"), QuestionResultPresentation.Result.CORRECT, false, false, false);
+            var card = QuestionCardView.result(hidden, 0, 1, "", source);
+            assertFalse(text(card).contains("正确答案："));
+            assertFalse(text(card).contains("题目解析"));
+            assertFalse(text(card).contains("测试来源"));
+            assertFalse(card.lookup("#option-0").getStyleClass().contains("correct-option"));
+            var emptySources = new javafx.scene.layout.VBox();
+            emptySources.setVisible(false); emptySources.setManaged(false);
+            var shown = new QuestionResultPresentation(hidden.question(), hidden.userAnswer(), hidden.result(), true, true, true);
+            var visibleCard = QuestionCardView.result(shown, 0, 1, "history-", emptySources);
+            Label heading = visibleCard.lookupAll(".editor-caption").stream().map(Label.class::cast)
+                    .filter(label -> label.getText().equals("来源")).findFirst().orElseThrow();
+            assertFalse(heading.isVisible());
+            assertFalse(heading.isManaged());
+        });
+    }
+
+    @Test void sharedReadOnlyPreviewShowsDraftWithoutResultOrFictitiousAttempt() throws Exception {
+        fx(() -> {
+            var card = QuestionCardView.readOnly(QuestionPresentationMapperTest.content("SINGLE_CHOICE"),
+                    0, 1, "history-", java.util.Set.of("opt_b"), null);
+            assertTrue(card.resultPresentation().isEmpty());
+            assertNull(card.resultLabel());
+            assertNull(card.lookup("#history-question-result"));
+            assertFalse(text(card).contains("你的答案："));
+            assertFalse(text(card).contains("回答正确"));
+            RadioButton draft = (RadioButton) card.lookup("#history-option-1");
+            assertTrue(draft.isSelected());
+            assertTrue(draft.isDisabled());
+            assertNull(draft.getOnAction());
+            assertFalse(draft.getStyleClass().contains("incorrect-option"));
+        });
+    }
+
+    @Test void practiceAndHistoryUseSameResultRendererWhileHistoryShellKeepsItsOwnNavigation() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            assertInstanceOf(QuestionCardView.class, shell.lookup("#practice-question-card"));
+            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            shell.applyCss(); shell.layout();
+            var practice = (QuestionCardView) shell.lookup("#practice-question-card");
+            var presentation = practice.resultPresentation().orElseThrow();
+            String archived = practiceDbSession().id();
+            new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb())
+                    .archive(archived, java.time.Instant.parse("2026-09-28T05:00:00Z"));
+            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
+            button("qbank-history-entry").fire(); shell.applyCss(); shell.layout();
+            click(shell.lookup("#history-card-" + archived), 1); shell.applyCss(); shell.layout();
+            var before = practiceRows();
+            forbidPracticeWrites();
+            var history = (QuestionCardView) shell.lookup("#history-question-card");
+            assertEquals(presentation, history.resultPresentation().orElseThrow());
+            assertEquals(practice.getPadding(), history.getPadding());
+            assertEquals(practice.getSpacing(), history.getSpacing());
+            assertEquals(1, shell.lookupAll(".shared-question-card").size());
+            assertNotNull(shell.lookup("#history-final-state"));
+            assertNotNull(shell.lookup("#history-attempt-position"));
+            assertNotNull(shell.lookup("#history-detail-back"));
+            assertNull(shell.lookup("#submit-answer"));
+            button("history-next-question").fire();
+            history = (QuestionCardView) shell.lookup("#history-question-card");
+            assertTrue(history.resultPresentation().isEmpty());
+            assertNotNull(shell.lookup("#history-no-attempt"));
+            button("history-previous-question").fire();
+            assertEquals(before, practiceRows());
+        });
+    }
+
+    @Test void sharedSourceRowsKeepChangedRevisionNavigableAndMissingSourceWithoutAction() throws Exception {
+        fx(() -> {
+            var clicks = new java.util.concurrent.atomic.AtomicInteger();
+            var changed = QuestionSourceVisuals.row(new QuestionSourceVisuals.Presentation("来源", "来源已修改",
+                    QuestionBankReferenceResolver.Status.DIFFERENT_REVISION, true, clicks::incrementAndGet), "changed");
+            Button link = (Button) changed.lookup("#changed");
+            assertFalse(link.isDisabled()); link.fire();
+            assertEquals(1, clicks.get());
+            assertNotNull(changed.lookup(".question-source-warning"));
+            var missing = QuestionSourceVisuals.row(new QuestionSourceVisuals.Presentation("来源", "来源文档不存在",
+                    QuestionBankReferenceResolver.Status.MISSING_DOCUMENT, false, clicks::incrementAndGet), "missing");
+            Button disabled = (Button) missing.lookup("#missing");
+            assertTrue(disabled.isDisabled());
+            assertNull(disabled.getOnAction()); disabled.fire();
+            assertEquals(1, clicks.get());
+        });
+    }
+
+    @Test void practiceCardKeepsItsWidthGrowsForLongQuestionsAndPlacesControlsAroundIt() throws Exception {
+        fx(() -> {
+            stage.setWidth(1600);
             open("题库/Java集合.qbank");
             pulse(200);
             ScrollPane scroll = (ScrollPane) shell.lookup("#practice-scroll");
@@ -1097,21 +1822,35 @@ class MainWorkspaceViewTest {
             assertEquals(scroll.getViewportBounds().getHeight() / 2,
                     bounds.getMinY() + bounds.getHeight() / 2, 2);
             var navigation = (javafx.scene.layout.HBox) shell.lookup("#practice-navigation");
-            assertEquals(List.of("previous-question", "submit-answer", "next-question"),
+            assertEquals(List.of("previous-question", "practice-question-card", "next-question"),
                     navigation.getChildren().stream().map(Node::getId).toList());
-            for (Node child : navigation.getChildren()) {
-                Button control = (Button) child;
+            var card = (javafx.scene.layout.VBox) shell.lookup("#practice-question-card");
+            double cardHeight = card.getHeight();
+            assertEquals(720, card.getWidth(), 1);
+            var cardBounds = card.localToScene(card.getBoundsInLocal());
+            assertTrue(button("previous-question").localToScene(button("previous-question").getBoundsInLocal())
+                    .getMaxX() < cardBounds.getMinX());
+            assertTrue(button("next-question").localToScene(button("next-question").getBoundsInLocal())
+                    .getMinX() > cardBounds.getMaxX());
+            for (Button control : List.of(button("previous-question"), button("next-question"))) {
                 assertEquals("", control.getText());
                 assertNotNull(control.getTooltip());
                 assertNotNull(control.getGraphic());
             }
+            Button submit = button("submit-answer");
+            assertEquals("提交答案", submit.getText());
+            assertTrue(submit.getStyleClass().contains("primary"));
+            assertEquals("practice-card-actions", submit.getParent().getId());
+            assertSame(card.getChildren().getLast(), submit.getParent());
             ((Label) shell.lookup(".question-stem")).setText("这是一道包含大量背景信息的长题目，请阅读场景并选择正确答案。".repeat(90));
             shell.layout(); pulse(200);
+            assertEquals(720, card.getWidth(), 1);
+            assertTrue(card.getHeight() > cardHeight);
             assertTrue(scroll.getContent().getBoundsInLocal().getHeight() > scroll.getViewportBounds().getHeight());
             scroll.setVvalue(1); pulse(200);
             var viewport = scroll.lookup(".viewport");
             var visible = viewport.localToScene(viewport.getBoundsInLocal());
-            var controls = navigation.localToScene(navigation.getBoundsInLocal());
+            var controls = submit.localToScene(submit.getBoundsInLocal());
             assertTrue(controls.getMinY() >= visible.getMinY());
             assertTrue(controls.getMaxY() <= visible.getMaxY() + 1);
         });
@@ -1160,9 +1899,11 @@ class MainWorkspaceViewTest {
         fx(() -> {
             open("我的笔记/学习计划.md");
             shell.tabs().openPinned(fixture.alpha.id(), "Java/Java集合.md");
+            shell.applyCss(); shell.layout(); pulse(100);
             assertNotNull(shell.lookup("#markdown-outline"));
             assertTrue(shell.tabs().close(shell.tabs().active()));
             assertEquals("我的笔记/学习计划.md", shell.tabs().active().path());
+            shell.applyCss(); shell.layout(); pulse(100);
             assertNotNull(shell.lookup("#markdown-outline"));
             assertTrue(shell.tabs().close(shell.tabs().active()));
             assertNull(shell.tabs().active());
@@ -1263,7 +2004,7 @@ class MainWorkspaceViewTest {
             ((RadioButton) shell.lookup("#option-1")).fire();
             assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
             button("question-number-5").fire();
-            assertEquals("Question 5 / 5", ((Label) shell.lookup("#question-position")).getText());
+            assertEquals("第 5 / 5 题", ((Label) shell.lookup("#question-position")).getText());
             assertNull(shell.lookup("#answer-feedback"));
             assertTrue(button("question-number-5").getStyleClass().contains("current"));
             button("previous-question").fire();
@@ -1323,7 +2064,7 @@ class MainWorkspaceViewTest {
             assertNull(shell.lookup("#question-outline"));
             shell.tabs().activate(bankTab);
             assertSame(outline, shell.lookup("#question-outline"));
-            assertEquals("Question 2 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertEquals("第 2 / 2 题", ((Label) shell.lookup("#question-position")).getText());
             assertTrue(button("question-number-2").getStyleClass().contains("current"));
             assertTrue(((CheckBox) shell.lookup("#option-0")).isSelected());
         });
@@ -1345,7 +2086,86 @@ class MainWorkspaceViewTest {
             assertEquals(mainHeight, main.getHeight());
             assertTrue(outline.getVvalue() > 0);
             button("question-number-120").fire();
-            assertEquals("Question 120 / 120", ((Label) shell.lookup("#question-position")).getText());
+            assertEquals("第 120 / 120 题", ((Label) shell.lookup("#question-position")).getText());
+        });
+    }
+
+    @Test void questionOutlineReflowsWhileResizingWithoutLosingSelections() throws Exception {
+        String[] types = new String[60];
+        for (int i = 0; i < types.length; i++) types[i] = i % 2 == 0 ? "SINGLE_CHOICE" : "MULTIPLE_CHOICE";
+        String path = outlineBank(types);
+        fx(() -> {
+            shell.refresh(); open(path); pulse(100);
+            var layout = (FileViewerRouter.PracticeLayout) shell.filePane().getCenter();
+            var outline = layout.outline();
+            var section = (javafx.scene.layout.VBox) shell.lookup("#question-outline-single_choice");
+            var numbers = (javafx.scene.layout.FlowPane) section.getChildren().get(1);
+            var firstCell = button("question-number-1");
+            ((RadioButton) shell.lookup("#option-0")).fire();
+
+            layout.setDividerPositions(0.45);
+            shell.layout(); layout.layout(); pulse(100);
+            long wideColumns = numbers.getChildren().stream().filter(node -> node.getLayoutY() == 0).count();
+            double wideHeight = numbers.getHeight();
+            assertTrue(outline.getWidth() > 280, "Outline must expand beyond its former fixed maximum");
+
+            layout.setDividerPositions(0.8);
+            shell.layout(); layout.layout(); pulse(100);
+            long narrowColumns = numbers.getChildren().stream().filter(node -> node.getLayoutY() == 0).count();
+            assertTrue(narrowColumns >= 1);
+            assertTrue(narrowColumns < wideColumns, "A narrower outline must show fewer columns");
+            assertTrue(numbers.getHeight() > wideHeight);
+            var scroll = (ScrollPane) shell.lookup("#question-outline-scroll");
+            assertTrue(numbers.getWidth() <= scroll.getViewportBounds().getWidth() + 1);
+            assertSame(firstCell, button("question-number-1"));
+            assertTrue(firstCell.getStyleClass().containsAll(List.of("unsubmitted", "current")));
+            assertTrue(((RadioButton) shell.lookup("#option-0")).isSelected());
+            assertNull(shell.lookup("#answer-feedback"));
+            assertEquals(30, outlineNumbers("single_choice").size());
+            assertEquals(30, outlineNumbers("multiple_choice").size());
+            stage.setWidth(850); stage.setHeight(620);
+            shell.layout(); pulse(100);
+            assertTrue(numbers.getWidth() <= scroll.getViewportBounds().getWidth() + 1);
+            assertTrue(outline.getWidth() >= outline.getMinWidth());
+            assertTrue(outline.localToScene(0, 0).getX() >= layout.localToScene(320, 0).getX());
+            button("question-number-60").fire();
+            assertEquals("第 60 / 60 题", ((Label) shell.lookup("#question-position")).getText());
+            button("question-number-1").fire();
+            assertTrue(((RadioButton) shell.lookup("#option-0")).isSelected());
+        });
+    }
+
+    @Test void questionOutlineDividerTracksSidebarAndDisappearsInEditMode() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank"); pulse(100);
+            var outer = (SplitPane) shell.getCenter();
+            var layout = (FileViewerRouter.PracticeLayout) shell.filePane().getCenter();
+            var outline = layout.outline();
+            var seam = shell.lookup("#workspace-outline-seam");
+            var topDivider = shell.lookup("#window-outline-divider");
+            assertNull(shell.filePane().getTop());
+            var readerColumn = (BorderPane) layout.getItems().getFirst();
+            assertSame(shell.lookup("#file-header"), readerColumn.getTop());
+            assertEquals(outline.localToScene(0, 0).getY(), layout.localToScene(0, 0).getY(), 0.5);
+            assertTrue(seam.isVisible());
+
+            outer.setDividerPositions(0.35);
+            outer.layout();
+            assertEquals(divider(layout).localToScene(0, 0).getX(), seam.localToScene(0, 0).getX(), 0.5);
+            layout.setDividerPositions(0.55);
+            layout.layout();
+            assertEquals(divider(layout).localToScene(0, 0).getX(), seam.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(layout).localToScene(0, 0).getX(), topDivider.localToScene(0, 0).getX(), 0.5);
+
+            button("file-mode-toggle").fire();
+            assertFalse(seam.isVisible());
+            assertNull(shell.lookup("#question-outline"));
+            assertNotNull(shell.filePane().getTop());
+            button("file-mode-toggle").fire(); pulse(100);
+            assertTrue(seam.isVisible());
+            assertNotNull(shell.lookup("#question-outline"));
+            assertNull(shell.filePane().getTop());
+            assertNull(shell.lookup("#markdown-outline"));
         });
     }
 
@@ -1477,14 +2297,15 @@ class MainWorkspaceViewTest {
         });
     }
 
-    @Test void legacySourceUiRetainsReadOnlyResolutionAndExplicitReplacement() throws Exception {
+    @Test void legacySourceUiRetainsReadOnlyResolutionAndRemoval() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank"); button("file-mode-toggle").fire();
             assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
                     button("qbank-source-0").getProperties().get("quizforge.sourceStatus"));
             assertTrue(button("qbank-source-0").isDisabled());
             assertTrue(text(shell.lookup("#question-bank-editor")).contains("旧版节点引用"));
-            assertFalse(button("qbank-change-source-0").isDisabled());
+            assertNull(shell.lookup("#qbank-change-source-0"));
+            assertFalse(button("qbank-remove-source-0").isDisabled());
             assertFalse(shell.filePane().hasUnsavedChanges());
         });
     }
@@ -1573,7 +2394,7 @@ class MainWorkspaceViewTest {
             assertEquals(sourcePath, shell.tabs().tabs().getFirst().path());
             @SuppressWarnings("unchecked")
             List<MarkdownOutline.Entry> targetEntries = (List<MarkdownOutline.Entry>)
-                    ((javafx.scene.layout.HBox) shell.filePane().getCenter())
+                    shell.filePane().getCenter()
                             .getProperties().get("quizforge.outlineEntries");
             assertTrue(targetEntries.stream().anyMatch(entry -> "Same".equals(entry.label())
                     && entry.occurrence() == 2));
@@ -1655,7 +2476,7 @@ class MainWorkspaceViewTest {
                     shell.navigate(QuizForgeNavigationLink.heading(assetId, "Same", 2)));
             assertEquals(WorkspaceNavigationService.Result.OPENED,
                     shell.navigate(QuizForgeNavigationLink.anchor(assetId, "定义", 2)));
-            var layout = (javafx.scene.layout.HBox) shell.filePane().getCenter();
+            var layout = shell.filePane().getCenter();
             @SuppressWarnings("unchecked")
             List<MarkdownOutline.Entry> entries = (List<MarkdownOutline.Entry>)
                     layout.getProperties().get("quizforge.outlineEntries");
@@ -1759,7 +2580,7 @@ class MainWorkspaceViewTest {
             shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
             shell.applyCss(); shell.layout();
             assertEquals(before.id(), practiceDbSession().id());
-            assertEquals("Question 2 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertEquals("第 2 / 2 题", ((Label) shell.lookup("#question-position")).getText());
             assertTrue(button("question-number-2").getStyleClass().contains("current"));
             button("previous-question").fire();
             assertTrue(((RadioButton) shell.lookup("#option-1")).isSelected());
@@ -1783,7 +2604,7 @@ class MainWorkspaceViewTest {
             Scene scene = new Scene(shell, 1100, 740); UiTheme.apply(scene); stage.setScene(scene);
             open("题库/Java集合.qbank");
             assertEquals(id, practiceDbSession().id());
-            assertEquals("Question 2 / 2", ((Label) shell.lookup("#question-position")).getText());
+            assertEquals("第 2 / 2 题", ((Label) shell.lookup("#question-position")).getText());
             assertTrue(((CheckBox) shell.lookup("#option-0")).isSelected());
             assertNull(shell.lookup("#answer-feedback"));
             assertTrue(button("question-number-1").getStyleClass().contains("incorrect"));
@@ -1868,16 +2689,23 @@ class MainWorkspaceViewTest {
         fx(() -> {
             open("题库/Java集合.qbank");
             var tab = shell.tabs().active();
-            assertNotNull(button("qbank-history-entry"));
-            button("qbank-history-entry").fire();
+            Button history = button("qbank-history-entry");
+            assertEquals("", history.getText());
+            assertEquals("clock", history.getGraphic().getAccessibleText());
+            assertEquals("历史记录", history.getTooltip().getText());
+            assertEquals("历史记录", history.getAccessibleText());
+            history.fire();
             shell.applyCss(); shell.layout();
             assertSame(tab, shell.tabs().active());
             assertNotNull(shell.lookup("#practice-history"));
             assertNotNull(shell.lookup("#history-empty"));
             assertNull(shell.lookup("#question-practice"));
+            assertSame(shell.lookup("#file-header"), shell.filePane().getTop());
             button("history-back").fire();
             assertSame(tab, shell.tabs().active());
             assertNotNull(shell.lookup("#question-practice"));
+            assertNull(shell.filePane().getTop());
+            assertNotNull(shell.lookup("#file-header"));
             assertEquals(io.quizforge.core.practice.PracticeSession.Status.ACTIVE, practiceDbSession().status());
         });
     }
@@ -2133,13 +2961,13 @@ class MainWorkspaceViewTest {
         var archived = archiveSourceHistory(sample);
         fx(() -> {
             openSourceHistory(sample, archived);
-            assertEquals(4, shell.lookupAll(".history-source-item").size());
+            assertEquals(4, shell.lookupAll(".question-source-row").size());
             assertEquals(button("history-source-0").getText(), button("history-source-1").getText());
             assertFalse(button("history-source-1").getText().contains("#2"));
-            var missing = (Label) shell.lookup("#history-source-2");
-            var orphan = (Label) shell.lookup("#history-source-3");
-            assertTrue(missing.isDisabled()); assertNull(missing.getOnMouseClicked());
-            assertTrue(orphan.isDisabled()); assertNull(orphan.getOnMouseClicked());
+            var missing = button("history-source-2");
+            var orphan = button("history-source-3");
+            assertTrue(missing.isDisabled()); assertNull(missing.getOnAction());
+            assertTrue(orphan.isDisabled()); assertNull(orphan.getOnAction());
             assertEquals(QuestionBankReferenceResolver.Status.MISSING_ANCHOR,
                     missing.getProperties().get("quizforge.sourceStatus"));
             assertEquals(QuestionBankReferenceResolver.Status.ORPHAN_ANCHOR,
@@ -2163,7 +2991,7 @@ class MainWorkspaceViewTest {
             assertSame(detail, shell.lookup("#practice-history-detail"));
             assertTrue(text(shell.lookup(".workspace-navigation-status")).contains("来源文档缺失"));
             shell.filePane().refreshSourceStatus();
-            Label missing = (Label) shell.lookup("#history-source-0");
+            Button missing = button("history-source-0");
             assertTrue(missing.isDisabled()); assertNull(missing.getOnMouseClicked());
             assertTrue(text(shell.lookup("#history-sources")).contains("来源文档缺失"));
             assertNotNull(shell.lookup("#history-attempt-position"));
@@ -2229,7 +3057,8 @@ class MainWorkspaceViewTest {
                     "<!-- qf:anchor=定义 -->\nSecond definition.", "Second definition."));
             shell.filePane().refreshSourceStatus();
             assertFalse(button("history-source-0").isDisabled());
-            assertInstanceOf(Label.class, shell.lookup("#history-source-1"));
+            assertTrue(button("history-source-1").isDisabled());
+            assertNull(button("history-source-1").getOnAction());
             assertEquals(QuestionBankReferenceResolver.Status.MISSING_ANCHOR,
                     shell.lookup("#history-source-1").getProperties().get("quizforge.sourceStatus"));
             fixture.write(sample.documentPath(), sample.markdown());
@@ -2247,7 +3076,7 @@ class MainWorkspaceViewTest {
                     .archive(archived, java.time.Instant.now());
             button("qbank-history-entry").fire(); shell.applyCss(); shell.layout();
             click(shell.lookup("#history-card-" + archived), 1); shell.applyCss(); shell.layout();
-            Label source = (Label) shell.lookup("#history-source-0");
+            Button source = button("history-source-0");
             assertEquals("Java集合 · ArrayList", source.getText());
             assertTrue(source.isDisabled()); assertNull(source.getOnMouseClicked());
             assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
@@ -2369,6 +3198,8 @@ class MainWorkspaceViewTest {
         if (node == null) return "";
         if (node instanceof javafx.scene.text.Text span) return span.getText();
         if (node instanceof ScrollPane scroll) return text(scroll.getContent());
+        if (node instanceof SplitPane split) return split.getItems().stream()
+                .map(MainWorkspaceViewTest::text).collect(java.util.stream.Collectors.joining("\n"));
         StringBuilder out = new StringBuilder(node instanceof Labeled label ? label.getText() + "\n" : "");
         if (node instanceof Parent parent) parent.getChildrenUnmodifiable().forEach(child -> out.append(text(child)));
         return out.toString();
