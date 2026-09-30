@@ -722,13 +722,10 @@
 }
 .essay-toolbar-action:hover, .essay-section-edit:hover { -fx-background-color: #ece7f1; -fx-background-radius: 4; }
 .essay-content-section { -fx-padding: 6 0 22 0; -fx-border-color: #e7e1d8; -fx-border-width: 0 0 1 0; }
-.essay-section-title { -fx-font-size: 12px; -fx-text-fill: #766f65; }
+.essay-section-title { -fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #403a34; }
 .essay-content-preview { -fx-min-height: 135; -fx-padding: 10 0 6 0; }
 .essay-preview-empty { -fx-text-fill: #aaa195; -fx-font-size: 13px; }
 .essay-editor .essay-guidance-input { -fx-min-height: 125; }
-.essay-more-settings > .title { -fx-background-color: transparent; -fx-padding: 5 0; }
-.essay-more-settings > .content { -fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 12 0; }
-.essay-more-settings { -fx-text-fill: #948a7d; -fx-font-size: 12px; }
 .question-image { -fx-padding: 8px 0; }
 #rich-editor-window { -fx-background-color: #faf9f6; }
 #rich-editor-toolbar { -fx-background-color: #f7f6f3; -fx-border-color: #e3ded5; -fx-border-width: 0 0 1 0; }

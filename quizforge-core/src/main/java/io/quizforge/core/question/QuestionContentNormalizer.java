@@ -8,7 +8,7 @@ public final class QuestionContentNormalizer {
     private QuestionContentNormalizer() { }
     public static QuestionContent normalize(QuestionContent content) {
         Objects.requireNonNull(content);
-        if (content instanceof TextContent) return content;
+        if (content instanceof TextContent || content instanceof DocumentContent) return content;
         var document=((RichContent)content).document();
         if (document.blocks().stream().allMatch(block->block instanceof ParagraphNode paragraph
                 && paragraph.alignment()==null && paragraph.children().stream().allMatch(node->node instanceof InlineTextNode text && text.marks().isEmpty() || node instanceof LineBreakNode))) {

@@ -50,6 +50,7 @@ final class QuestionBankAuthoringView extends SplitPane {
                     && q.choicePayload().options().stream().allMatch(o->o.content() instanceof TextContent));
     }
     private static boolean editableContent(QuestionContent content){
+        if(content instanceof DocumentContent)return true;
         try { RichContentEditorAdapter.toEditorJson(content);return true; }
         catch(IllegalArgumentException unsupported) { return false; }
     }

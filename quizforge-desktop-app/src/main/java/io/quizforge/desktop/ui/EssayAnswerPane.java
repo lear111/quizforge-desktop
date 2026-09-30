@@ -2,7 +2,6 @@ package io.quizforge.desktop.ui;
 
 import io.quizforge.core.port.QuestionResourceInput;
 import io.quizforge.core.question.*;
-import io.quizforge.infrastructure.filesystem.qbank.QBankImageImporter;
 import java.util.*;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -13,7 +12,7 @@ final class EssayAnswerPane extends VBox {
     private final Question question;
     private final List<QBankResource> existing;
     private final QuestionResourceInput input;
-    private final Map<String,QBankImageImporter.ImportedImage> imported=new LinkedHashMap<>();
+    private final Map<String,StagedContentResource> imported=new LinkedHashMap<>();
     private final VBox preview=new VBox(12);
     private final VBox feedback=new VBox(12);
     private final Label error=UiTheme.label("","incorrect");
@@ -49,12 +48,12 @@ final class EssayAnswerPane extends VBox {
                     "编辑作答",answer,resources(),resourceInput());
             if(!result.saved())return;
             answer=result.content();result.addedResources().forEach(image->imported.put(image.resource().id(),image));
-            var used=QuestionContentData.imageIds(answer);imported.keySet().removeIf(id->!used.contains(id));
+            var used=QuestionContentData.resourceIds(answer);imported.keySet().removeIf(id->!used.contains(id));
             feedback.setVisible(false);feedback.setManaged(false);error.setText("");refreshAnswer();
         }catch(RuntimeException failure){error.setText("作答编辑失败："+failure.getMessage());}
     }
     private void refreshAnswer(){
-        boolean empty=QuestionContentData.plainText(answer).isBlank() && QuestionContentData.imageIds(answer).isEmpty();
+        boolean empty=QuestionContentData.plainText(answer).isBlank() && QuestionContentData.resourceIds(answer).isEmpty();
         if(empty){
             String hint=question.essayPayload().placeholder();
             var label=UiTheme.label(hint==null || hint.isBlank()?"点击“编辑作答”，使用富文本编辑器完成作答。":hint,"essay-answer-empty");

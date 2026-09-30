@@ -23,7 +23,7 @@ class ContentEditSessionTest {
             try(var stream=session.open(resource)){assertNotNull(stream);assertTrue(stream.read()>=0);}
             var saved=session.save(edited);
             assertTrue(saved.saved());assertEquals(edited,saved.content());
-            assertEquals(List.of(resource),saved.addedResources().stream().map(QBankImageImporter.ImportedImage::resource).toList());
+            assertEquals(List.of(resource),saved.addedResources().stream().map(StagedContentResource::resource).toList());
             assertEquals(format.equals("png")?"image/png":"image/jpeg",resource.mediaType());
         }
     }
@@ -47,6 +47,32 @@ class ContentEditSessionTest {
         assertEquals(Set.of(imported.resource().id()),saved.removedResourceReferences());
         model.setPrompt(0,saved.content());
         assertEquals(1,model.bank().resources().size());
-        assertEquals(Set.of(imported.resource().id()),QuestionContentData.imageIds(model.bank().questions().get(1).prompt()));
+        assertEquals(Set.of(imported.resource().id()),QuestionContentData.resourceIds(model.bank().questions().get(1).prompt()));
+    }
+    @Test void nativeDocumentBytesSurvivePackageMoveAndEditingDoesNotRewriteSharedDocuments() throws Exception {
+        String picture="data:image/png;base64,"+Base64.getEncoder().encodeToString(EssayTestBanks.image("png"));
+        String document=RichContentEditorAdapter.json(Map.of("version","1.0.4","options",Map.of("defaultFont","Georgia"),
+                "data",Map.of("main",List.of(Map.of("value","First\n\nSecond","font","Georgia","size",24),
+                        Map.of("type","image","value",picture,"width",137,"height",91)))));
+        var session=new ContentEditSession(new TextContent("First"),List.of(),resource->null);
+        var content=session.stageDocument(document,"First\n\nSecond");
+        var saved=session.save(content);assertEquals(1,saved.addedResources().size());
+        var pending=saved.addedResources().getFirst();assertEquals(ResourceKind.DOCUMENT,pending.resource().kind());
+        assertEquals(document,session.document(content));
+        var model=new QuestionBankEditorModel(EssayTestBanks.bank());model.addResource(pending.resource());model.setPrompt(0,content);
+        var writer=new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter();
+        var original=temp.resolve("bank.qbank");writer.write(original,model.bank(),resource->pending.open());
+        var moved=temp.resolve("elsewhere/moved.qbank");Files.createDirectories(moved.getParent());Files.move(original,moved);
+        try(var loaded=new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader().open(moved)) {
+            var restored=(DocumentContent)loaded.bank().questions().getFirst().prompt();
+            var reopened=new ContentEditSession(restored,loaded.bank().resources(),loaded::open);
+            assertEquals(document,reopened.document(restored));
+            var unchanged=reopened.stageDocument(document,restored.text());
+            assertEquals(restored,unchanged);assertTrue(reopened.save(unchanged).addedResources().isEmpty());
+            assertFalse(reopened.cancel().saved());
+            var shared=new QuestionBankEditorModel(loaded.bank());shared.duplicateQuestion(0);
+            shared.setPrompt(0,new TextContent("Replacement"));assertEquals(1,shared.bank().resources().size());
+            shared.setPrompt(1,new TextContent("Replacement"));assertTrue(shared.bank().resources().isEmpty());
+        }
     }
 }

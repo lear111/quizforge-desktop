@@ -129,6 +129,8 @@ final class UiTheme {
             case "arrow-left" -> "M17 10 L3 10 M8 5 L3 10 L8 15";
             case "save" -> "M3 2 L15 2 L18 5 L18 18 L2 18 L2 2 Z M6 2 L6 8 L14 8 L14 2 M6 18 L6 12 L14 12 L14 18";
             case "more" -> "M4 10 L4.1 10 M10 10 L10.1 10 M16 10 L16.1 10";
+            case "copy" -> "M7 7 L18 7 L18 18 L7 18 Z M13 4 L13 2 L2 2 L2 13 L4 13";
+            case "trash" -> "M3 5 L17 5 M7 5 L7 2 L13 2 L13 5 M5 5 L6 18 L14 18 L15 5 M8 8 L8 15 M12 8 L12 15";
             case "close" -> "M5 5 L15 15 M15 5 L5 15";
             case "finish" -> "M4 18 L4 2 L16 2 L16 11 L4 11 M8 2 L8 11 M12 2 L12 11 M4 6.5 L16 6.5";
             case "spark" -> "M10 2 L12 8 L18 10 L12 12 L10 18 L8 12 L2 10 L8 8 Z";

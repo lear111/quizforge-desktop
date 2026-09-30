@@ -24,8 +24,8 @@ public final class QuestionBankEditorModel {
     }
     public void setAnalysis(int question, QuestionContent analysis) {
         var old = entry(question);
-        var removed = new java.util.HashSet<>(QuestionContentData.imageIds(old.analysis()));
-        removed.removeAll(QuestionContentData.imageIds(analysis));
+        var removed = new java.util.HashSet<>(QuestionContentData.resourceIds(old.analysis()));
+        removed.removeAll(QuestionContentData.resourceIds(analysis));
         replace(question, new Question(old.id(), old.type(), old.stimulusRefs(), old.prompt(), old.payload(), old.answerSpec(), old.scoreSpec(), old.evaluationSpec(), analysis, old.sourceRefs()));
         removeUnusedImages(removed);
     }
@@ -41,7 +41,7 @@ public final class QuestionBankEditorModel {
             throw new IllegalArgumentException("Unsupported question type");
         var old = entry(question);
         if (old.type().equals(type)) return;
-        if (!"ESSAY".equals(type) && old.prompt() instanceof RichContent)
+        if (!"ESSAY".equals(type) && !(old.prompt() instanceof TextContent))
             throw new IllegalArgumentException("含富文本的作文题不能转换为选择题");
         QuestionPayload payload = "ESSAY".equals(type) ? new EssayPayload(null)
                 : old.payload() instanceof ChoicePayload ? old.payload() : new ChoicePayload(List.of(
@@ -123,10 +123,10 @@ public final class QuestionBankEditorModel {
 
     public void deleteQuestion(int question) {
         var removed = entry(question);
-        var images = new java.util.HashSet<>(QuestionContentData.imageIds(removed.prompt()));
-        images.addAll(QuestionContentData.imageIds(removed.analysis()));
+        var images = new java.util.HashSet<>(QuestionContentData.resourceIds(removed.prompt()));
+        images.addAll(QuestionContentData.resourceIds(removed.analysis()));
         if (removed.answerSpec() instanceof EssayAnswerSpec essay)
-            images.addAll(QuestionContentData.imageIds(essay.referenceAnswer()));
+            images.addAll(QuestionContentData.resourceIds(essay.referenceAnswer()));
         List<Question> questions = new ArrayList<>(bank.questions());
         questions.remove(question);
         bank = copy(bank.title(), questions);
@@ -184,8 +184,8 @@ public final class QuestionBankEditorModel {
     private String id(String prefix) { return prefix + UUID.randomUUID(); }
 
     public void setPrompt(int index, QuestionContent content) {
-        var old=entry(index); var removed=new java.util.HashSet<>(QuestionContentData.imageIds(old.prompt()));
-        removed.removeAll(QuestionContentData.imageIds(content));
+        var old=entry(index); var removed=new java.util.HashSet<>(QuestionContentData.resourceIds(old.prompt()));
+        removed.removeAll(QuestionContentData.resourceIds(content));
         replace(index,new Question(old.id(),old.type(),old.stimulusRefs(),content,old.payload(),old.answerSpec(),old.scoreSpec(),old.evaluationSpec(),old.analysis(),old.sourceRefs()));
         removeUnusedImages(removed);
     }
@@ -195,8 +195,8 @@ public final class QuestionBankEditorModel {
         replace(index,new Question(q.id(),q.type(),q.stimulusRefs(),q.prompt(),payload,q.answerSpec(),q.scoreSpec(),q.evaluationSpec(),q.analysis(),q.sourceRefs()));
     }
     public void setReferenceAnswer(int index, QuestionContent reference) {
-        var q=entry(index); var removed=new java.util.HashSet<>(QuestionContentData.imageIds(q.essayAnswerSpec().referenceAnswer()));
-        removed.removeAll(QuestionContentData.imageIds(reference));
+        var q=entry(index); var removed=new java.util.HashSet<>(QuestionContentData.resourceIds(q.essayAnswerSpec().referenceAnswer()));
+        removed.removeAll(QuestionContentData.resourceIds(reference));
         replace(index,new Question(q.id(),q.type(),q.stimulusRefs(),q.prompt(),q.payload(),new EssayAnswerSpec(reference),q.scoreSpec(),q.evaluationSpec(),q.analysis(),q.sourceRefs()));
         removeUnusedImages(removed);
     }
@@ -213,11 +213,11 @@ public final class QuestionBankEditorModel {
     private void removeUnusedImages(java.util.Set<String> candidates) {
         if(candidates.isEmpty()) return;
         java.util.Set<String> used=new java.util.HashSet<>();
-        bank.stimuli().forEach(s->used.addAll(QuestionContentData.imageIds(s.content())));
+        bank.stimuli().forEach(s->used.addAll(QuestionContentData.resourceIds(s.content())));
         for(var q:bank.questions()) {
-            used.addAll(QuestionContentData.imageIds(q.prompt()));used.addAll(QuestionContentData.imageIds(q.analysis()));
-            if(q.answerSpec() instanceof EssayAnswerSpec e) used.addAll(QuestionContentData.imageIds(e.referenceAnswer()));
-            if(q.payload() instanceof ChoicePayload c) c.options().forEach(o->used.addAll(QuestionContentData.imageIds(o.content())));
+            used.addAll(QuestionContentData.resourceIds(q.prompt()));used.addAll(QuestionContentData.resourceIds(q.analysis()));
+            if(q.answerSpec() instanceof EssayAnswerSpec e) used.addAll(QuestionContentData.resourceIds(e.referenceAnswer()));
+            if(q.payload() instanceof ChoicePayload c) c.options().forEach(o->used.addAll(QuestionContentData.resourceIds(o.content())));
         }
         bank=new QuestionBank(bank.assetId(),bank.title(),bank.schemaVersion(),bank.stimuli(),bank.questions(),bank.resources().stream()
                 .filter(r->!candidates.contains(r.id()) || used.contains(r.id())).toList());

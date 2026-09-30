@@ -820,7 +820,7 @@ class MainWorkspaceViewTest {
             ((TextArea) shell.lookup("#qbank-question-stem")).setText("New question stem?");
             ((TextField) shell.lookup("#qbank-option-0")).setText("Updated option");
             ((TextArea) shell.lookup("#qbank-analysis")).setText("Updated analysis");
-            ((MenuButton) shell.lookup("#qbank-question-actions")).getItems().getFirst().fire();
+            button("qbank-duplicate-question").fire();
             button("qbank-save").fire();
             assertEquals(FileMode.BROWSE, shell.filePane().mode());
             assertTrue(text(shell.filePane()).contains("New question stem?"));
@@ -2259,9 +2259,8 @@ class MainWorkspaceViewTest {
             assertTrue(text(shell.lookup("#question-bank-editor")).contains("来源位置缺失"));
             assertTrue(text(shell.lookup("#question-bank-editor")).contains("来源锚点无有效内容"));
             assertEquals(button("qbank-source-0").getText(), button("qbank-source-1").getText());
-            TextField title = (TextField) shell.lookup("#qbank-title");
             TextArea stem = (TextArea) shell.lookup("#qbank-question-stem");
-            title.setText("Unsaved bank title"); stem.appendText(" Unsaved stem");
+            stem.appendText(" Unsaved stem");
             var bankTab = shell.tabs().active();
             button("qbank-source-1").fire();
             assertTrue(bankTab.pinned()); assertTrue(bankTab.pane().hasUnsavedChanges());
@@ -2270,9 +2269,7 @@ class MainWorkspaceViewTest {
                             "<!-- qf:anchor=新名字 -->\nSecond definition.");
             fixture.write(sample.documentPath(), changed);
             shell.tabs().activate(bankTab);
-            assertSame(title, shell.lookup("#qbank-title"));
             assertSame(stem, shell.lookup("#qbank-question-stem"));
-            assertEquals("Unsaved bank title", title.getText());
             assertTrue(stem.getText().endsWith("Unsaved stem"));
             assertEquals(QuestionBankReferenceResolver.Status.DIFFERENT_REVISION,
                     button("qbank-source-0").getProperties().get("quizforge.sourceStatus"));
@@ -2318,6 +2315,32 @@ class MainWorkspaceViewTest {
             assertTrue(text(shell.tabs().getBottom()).contains("找不到这个文档资产"));
             assertEquals(sample.bankPath(), shell.tabs().active().path());
             assertEquals(sample.json(), QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(sample.bankPath())));
+        });
+    }
+
+    @Test void leavingUnsavedBankEditUsesOwnedDialogAndCancelKeepsDraft() throws Exception {
+        fx(()->{
+            open("题库/Java集合.qbank");button("file-mode-toggle").fire();
+            shell.applyCss();shell.layout();
+            var stem=(TextArea)shell.lookup("#qbank-question-stem");
+            stem.setText("Draft retained after cancel");
+            var dialogFailure=new AtomicReference<Throwable>();
+            Platform.runLater(()->{
+                try {
+                    var dialog=(Stage)currentDialog().getScene().getWindow();
+                    assertSame(stage,dialog.getOwner());
+                    assertEquals(javafx.stage.Modality.WINDOW_MODAL,dialog.getModality());
+                }catch(Throwable error){dialogFailure.set(error);}
+                finally{answerDialog(ButtonType.CANCEL.getText());}
+            });
+            button("file-mode-toggle").fire();
+            if(dialogFailure.get()!=null)throw new AssertionError("Edit confirmation must stay with its owner",dialogFailure.get());
+            assertSame(stem,shell.lookup("#qbank-question-stem"));
+            assertEquals("Draft retained after cancel",stem.getText());
+            assertTrue(shell.filePane().hasUnsavedChanges());
+            button("qbank-save").fire();
+            assertFalse(shell.filePane().hasUnsavedChanges());
+            assertNull(shell.lookup("#question-bank-editor"));
         });
     }
 
@@ -3262,18 +3285,16 @@ class MainWorkspaceViewTest {
         byte[] original = Files.readAllBytes(fixture.alphaRoot.resolve("题库/Essay.qbank"));
         fx(() -> {
             shell.refresh(); open("题库/Essay.qbank"); button("file-mode-toggle").fire(); shell.applyCss(); shell.layout();
-            TextField title = (TextField) shell.lookup("#qbank-title");
-            title.setText("Unsaved development title"); title.selectRange(2, 8);
-            ((TextArea) shell.lookup("#essay-evaluation-guidance")).setText("Unsaved guidance");
+            TextArea guidance = (TextArea) shell.lookup("#essay-evaluation-guidance");
+            guidance.setText("Unsaved guidance"); guidance.selectRange(2, 8);
             ((TextField) shell.lookup("#essay-max-score")).setText("invalid");
             var editor = shell.lookup("#question-bank-editor");
             DevelopmentUiReloader.refreshNode(editor);
             assertSame(editor, shell.lookup("#question-bank-editor"));
-            assertEquals("Unsaved development title", ((TextField) shell.lookup("#qbank-title")).getText());
             assertEquals("Unsaved guidance", ((TextArea) shell.lookup("#essay-evaluation-guidance")).getText());
             assertEquals("invalid", ((TextField) shell.lookup("#essay-max-score")).getText());
-            assertEquals(2, ((TextField) shell.lookup("#qbank-title")).getAnchor());
-            assertEquals(8, ((TextField) shell.lookup("#qbank-title")).getCaretPosition());
+            assertEquals(2, ((TextArea) shell.lookup("#essay-evaluation-guidance")).getAnchor());
+            assertEquals(8, ((TextArea) shell.lookup("#essay-evaluation-guidance")).getCaretPosition());
             assertTrue(shell.filePane().hasUnsavedChanges());
             assertArrayEquals(original, Files.readAllBytes(fixture.alphaRoot.resolve("题库/Essay.qbank")));
         });

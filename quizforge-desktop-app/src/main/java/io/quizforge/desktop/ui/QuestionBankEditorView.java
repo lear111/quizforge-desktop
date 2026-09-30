@@ -6,7 +6,6 @@ import io.quizforge.core.workspace.WorkspaceId;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import javafx.collections.FXCollections;
 import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -22,7 +21,7 @@ final class QuestionBankEditorView extends VBox {
     private QuestionSourceListView sourceRows;
     private final Consumer<QuestionBank> save;
     private final io.quizforge.core.port.QuestionResourceInput existingResources;
-    private final java.util.Map<String,io.quizforge.infrastructure.filesystem.qbank.QBankImageImporter.ImportedImage> imported=new java.util.LinkedHashMap<>();
+    private final java.util.Map<String,StagedContentResource> imported=new java.util.LinkedHashMap<>();
     private final java.util.List<Runnable> validateFields=new java.util.ArrayList<>();
     private final VBox body = new VBox(14);
     private final VBox errors = new VBox(3);
@@ -90,12 +89,6 @@ final class QuestionBankEditorView extends VBox {
         boolean essay = !model.bank().questions().isEmpty() && "ESSAY".equals(model.bank().questions().get(index).type());
         getStyleClass().remove("essay-editor");
         if (essay) getStyleClass().add("essay-editor");
-        TextField bankTitle = new TextField(model.bank().title());
-        bankTitle.setId("qbank-title");
-        bankTitle.setPromptText("题库标题");
-        bankTitle.getStyleClass().add("editor-document-title");
-        bankTitle.textProperty().addListener((obs, old, text) -> model.setTitle(text));
-        body.getChildren().add(bankTitle);
 
         Button previous = UiTheme.iconButton("arrow-left", "上一题", () -> { });
         previous.setId("qbank-editor-previous");
@@ -124,41 +117,37 @@ final class QuestionBankEditorView extends VBox {
             return;
         }
         Question question = model.bank().questions().get(index);
-        MenuButton actions = EditorUi.menu("more", "题目操作");
-        actions.setId("qbank-question-actions");
-        MenuItem duplicate = new MenuItem("复制题目");
+        Button duplicate = UiTheme.iconButton("copy", "复制题目", () -> { });
+        duplicate.setId("qbank-duplicate-question");
         duplicate.setOnAction(event -> { index = model.duplicateQuestion(index); render(); });
-        MenuItem delete = new MenuItem("删除题目");
+        Button delete = UiTheme.iconButton("trash", "删除题目", () -> { });
+        delete.setId("qbank-delete-question");
         delete.setOnAction(event -> {
+            var remove = new ButtonType("删除", ButtonBar.ButtonData.OK_DONE);
+            var cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                    "This question and its options will be removed.", ButtonType.CANCEL, ButtonType.OK);
-            confirm.setHeaderText("Delete this question?");
+                    "题干、选项及相关内容将一并从当前题库中移除。", cancel, remove);
+            confirm.setTitle("删除题目");
+            confirm.setHeaderText("确定删除第 " + (index + 1) + " 题吗？");
+            if (getScene() != null && getScene().getWindow() != null) {
+                confirm.initOwner(getScene().getWindow());
+                confirm.initModality(javafx.stage.Modality.WINDOW_MODAL);
+            }
             UiTheme.apply(confirm);
-            if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+            ((Button) confirm.getDialogPane().lookupButton(remove)).setDefaultButton(false);
+            ((Button) confirm.getDialogPane().lookupButton(cancel)).setDefaultButton(true);
+            if (confirm.showAndWait().orElse(cancel) != remove) return;
             model.deleteQuestion(index);
             index = Math.min(index, Math.max(0, model.bank().questions().size() - 1));
             render();
         });
-        actions.getItems().addAll(duplicate, delete);
-        ChoiceBox<String> type = new ChoiceBox<>(FXCollections.observableArrayList("SINGLE_CHOICE", "MULTIPLE_CHOICE", "ESSAY"));
+        Label type = UiTheme.label(typeName(question.type()), "muted");
         type.setId("qbank-question-type");
-        type.setConverter(new javafx.util.StringConverter<>() {
-            @Override public String toString(String value) { return typeName(value); }
-            @Override public String fromString(String value) { return "单选题".equals(value) ? "SINGLE_CHOICE" : "作文题".equals(value)?"ESSAY":"MULTIPLE_CHOICE"; }
-        });
-        type.setValue(question.type());
-        type.valueProperty().addListener((obs, old, value) -> { try {model.setType(index, value);render();} catch(RuntimeException failure){render();showError(failure.getMessage());} });
         javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        navigation.getChildren().addAll(spacer, type, actions);
+        navigation.getChildren().addAll(spacer, type, delete, duplicate);
 
         if("ESSAY".equals(question.type())) {
-            navigation.getChildren().remove(actions);
-            Button deleteButton = new Button("删除题目");deleteButton.setId("qbank-delete-question");
-            deleteButton.getStyleClass().add("essay-toolbar-action");deleteButton.setOnAction(e -> delete.fire());
-            Button duplicateButton = new Button("复制题目");duplicateButton.setId("qbank-duplicate-question");
-            duplicateButton.getStyleClass().add("essay-toolbar-action");duplicateButton.setOnAction(e -> duplicate.fire());
-            navigation.getChildren().addAll(deleteButton, duplicateButton);
             essayFields(question, navigation, spacer);
         }
         else {
@@ -211,7 +200,7 @@ final class QuestionBankEditorView extends VBox {
             analysis.textProperty().addListener((obs, old, value) -> model.setAnalysis(index, value));
             body.getChildren().addAll(UiTheme.label("解析", "editor-caption"), analysis);
         }
-        body.getChildren().add(UiTheme.label("引用来源", "editor-caption"));
+        body.getChildren().add(UiTheme.label("引用来源", essay ? "essay-section-title" : "editor-caption"));
         VBox refs = new VBox(6);
         sourceRows = new QuestionSourceListView(question.sourceRefs(), workspace, sourceNavigation, (refIndex, row) -> {
             Button remove = UiTheme.iconButton("close", "移除引用", () -> { });
@@ -250,14 +239,9 @@ final class QuestionBankEditorView extends VBox {
     }
     private void essayFields(Question question, HBox navigation, javafx.scene.layout.Region spacer) {
         TextField score=new TextField(question.scoreSpec().defaultMaxScore().toPlainString());score.setId("essay-max-score");score.setPrefColumnCount(5);
-        var payload=question.essayPayload();
-        TextField placeholder=new TextField(payload.placeholder()==null?"":payload.placeholder());placeholder.setId("essay-placeholder");placeholder.setPromptText("作答提示（可选）");
-        Runnable commit=()->{
-            model.setMaxScore(index,new java.math.BigDecimal(score.getText().trim()));
-            model.setEssayPayload(index,new EssayPayload(placeholder.getText().isEmpty()?null:placeholder.getText()));
-        };
+        Runnable commit=()->model.setMaxScore(index,new java.math.BigDecimal(score.getText().trim()));
         validateFields.add(commit);
-        for(var field:List.of(score,placeholder)) field.textProperty().addListener((o,a,b)->{
+        score.textProperty().addListener((o,a,b)->{
             try{commit.run();errors.getChildren().clear();}catch(RuntimeException error){showError("请填写有效的分值。");}
         });
         score.getStyleClass().add("essay-score-input");
@@ -271,11 +255,13 @@ final class QuestionBankEditorView extends VBox {
             promptPreview.getChildren().setAll(essayPreview(model.bank().questions().get(questionIndex).prompt(),"essay-edit-preview-"));
         };
         refreshPreview.run();
-        Button editPrompt=new Button("编辑");editPrompt.setId("essay-edit-prompt");
+        Button editPrompt=UiTheme.iconButton("edit","编辑题干",()->{});editPrompt.setId("essay-edit-prompt");
         editPrompt.getStyleClass().add("essay-section-edit");
         editPrompt.setOnAction(event->editEssayContent("编辑题干",model.bank().questions().get(questionIndex).prompt(),
                 content->model.setPrompt(questionIndex,content),refreshPreview));
-        var promptSection=new VBox(12,new HBox(12,UiTheme.label("题干","essay-section-title"),editPrompt),promptPreview);
+        var promptTitle=UiTheme.label("题干","essay-section-title");
+        var promptHeader=new HBox(12,promptTitle,editPrompt);promptHeader.setAlignment(Pos.CENTER_LEFT);
+        var promptSection=new VBox(12,promptHeader,promptPreview);
         promptSection.getStyleClass().add("essay-content-section");
 
         var referencePreview=new VBox(14);referencePreview.setId("essay-reference-preview");
@@ -283,38 +269,47 @@ final class QuestionBankEditorView extends VBox {
         Runnable refreshReference=()->{
             var current=model.bank().questions().get(questionIndex);
             referencePreview.getChildren().clear();
-            var reference=current.essayAnswerSpec().referenceAnswer();
-            var analysis=current.analysis();
-            boolean hasReference=hasContent(reference),hasAnalysis=hasContent(analysis);
-            if(hasReference) referencePreview.getChildren().add(essayPreview(reference,"essay-reference-preview-"));
-            if(hasAnalysis) {
-                if(hasReference)referencePreview.getChildren().add(UiTheme.label("解析","editor-caption"));
-                referencePreview.getChildren().add(essayPreview(analysis,"essay-analysis-preview-"));
+            try {
+                var session=new ContentEditSession(new TextContent(""),model.bank().resources(),resources());
+                var combined=combinedReference(current,session);
+                if(hasContent(combined)) {
+                    var rendered=QuestionContentRenderer.render(combined,session.resources(),session::open,"essay-reference-preview-");
+                    if(rendered instanceof Label label) {
+                        label.getStyleClass().remove("question-stem");label.getStyleClass().add("authoring-essay-text");
+                    }
+                    referencePreview.getChildren().add(rendered);
+                }
+                else referencePreview.getChildren().add(UiTheme.label("暂无参考答案或解析","essay-preview-empty"));
+            }catch(RuntimeException failure){
+                referencePreview.getChildren().add(UiTheme.label("参考答案与解析无法显示","editor-error"));
+                showError(failure.getMessage());
             }
-            if(!hasReference && !hasAnalysis)referencePreview.getChildren().add(UiTheme.label("暂无参考答案或解析","essay-preview-empty"));
         };
         refreshReference.run();
-        MenuButton editReference=new MenuButton("编辑");editReference.setId("essay-edit-reference");
+        Button editReference=UiTheme.iconButton("edit","编辑参考答案与解析",()->{});editReference.setId("essay-edit-reference");
         editReference.getStyleClass().add("essay-section-edit");
-        var referenceItem=new MenuItem("参考答案");
-        referenceItem.setOnAction(event->editEssayContent("编辑参考答案",model.bank().questions().get(questionIndex).essayAnswerSpec().referenceAnswer(),
-                content->model.setReferenceAnswer(questionIndex,optionalContent(content)),refreshReference));
-        var analysisItem=new MenuItem("解析");
-        analysisItem.setOnAction(event->editEssayContent("编辑解析",model.bank().questions().get(questionIndex).analysis(),
-                content->model.setAnalysis(questionIndex,optionalContent(content)),refreshReference));
-        editReference.getItems().addAll(referenceItem,analysisItem);
-        var referenceSection=new VBox(12,new HBox(12,UiTheme.label("参考答案与解析（可为空）","essay-section-title"),editReference),referencePreview);
+        editReference.setOnAction(event->{
+            try {
+                var session=new ContentEditSession(new TextContent(""),model.bank().resources(),resources());
+                var combined=combinedReference(model.bank().questions().get(questionIndex),session);
+                editEssayContent("编辑参考答案与解析",combined,content->{
+                    model.setReferenceAnswer(questionIndex,optionalContent(content));
+                    model.setAnalysis(questionIndex,(QuestionContent)null);
+                },refreshReference,session);
+            }catch(RuntimeException failure){showError(failure.getMessage());}
+        });
+        var referenceTitle=UiTheme.label("参考答案与解析","essay-section-title");
+        var referenceHeader=new HBox(12,referenceTitle,editReference);referenceHeader.setAlignment(Pos.CENTER_LEFT);
+        var referenceSection=new VBox(12,referenceHeader,referencePreview);
         referenceSection.getStyleClass().add("essay-content-section");
 
         TextArea guidance=area(question.evaluationSpec()==null?"":question.evaluationSpec().evaluatorGuidance(),"essay-evaluation-guidance",5);
-        guidance.setPromptText("填写评分细则（可为空）");guidance.getStyleClass().add("essay-guidance-input");
+        guidance.setPromptText("填写评分细则");guidance.getStyleClass().add("essay-guidance-input");
         guidance.textProperty().addListener((o,a,b)->model.setEvaluatorGuidance(questionIndex,b));
-        var guidanceSection=new VBox(12,UiTheme.label("评分细则（可为空）","essay-section-title"),guidance);
+        var guidanceSection=new VBox(12,UiTheme.label("评分细则","essay-section-title"),guidance);
         guidanceSection.getStyleClass().add("essay-content-section");
 
-        var more=new TitledPane("更多设置",new VBox(10,placeholder));more.setExpanded(false);
-        more.setId("essay-more-settings");more.getStyleClass().add("essay-more-settings");
-        body.getChildren().addAll(promptSection,referenceSection,guidanceSection,more);
+        body.getChildren().addAll(promptSection,referenceSection,guidanceSection);
     }
     private javafx.scene.Node essayPreview(QuestionContent content,String prefix) {
         var node=QuestionContentRenderer.render(content,model.bank().resources(),resources(),prefix);
@@ -324,14 +319,27 @@ final class QuestionBankEditorView extends VBox {
         return node;
     }
     private void editEssayContent(String title,QuestionContent content,Consumer<QuestionContent> apply,Runnable refresh) {
+        editEssayContent(title,content,apply,refresh,null);
+    }
+    private void editEssayContent(String title,QuestionContent content,Consumer<QuestionContent> apply,Runnable refresh,ContentEditSession seed) {
         try {
             var result=CanvasEditorWindow.openEditor(getScene().getWindow(),title,content==null?new TextContent(""):content,
-                    model.bank().resources(),resources());
+                    seed==null?model.bank().resources():seed.resources(),seed==null?resources():seed::open);
             if(result.saved()) {
+                if(seed!=null && content!=null)for(var added:seed.save(content).addedResources())
+                    if(QuestionContentData.resourceIds(result.content()).contains(added.resource().id())) {
+                        model.addResource(added.resource());imported.put(added.resource().id(),added);
+                    }
                 for(var added:result.addedResources()){model.addResource(added.resource());imported.put(added.resource().id(),added);}
                 apply.accept(result.content());refresh.run();errors.getChildren().clear();
             }
         }catch(RuntimeException failure){showError(failure.getMessage());}
+    }
+    private static QuestionContent combinedReference(Question question,ContentEditSession session) {
+        var reference=question.essayAnswerSpec().referenceAnswer();var analysis=question.analysis();
+        if(!hasContent(reference))return analysis;
+        if(!hasContent(analysis))return reference;
+        return session.combine(reference,analysis);
     }
     private static boolean hasContent(QuestionContent content){return content!=null && !(content instanceof TextContent text && text.text().isBlank());}
     private static QuestionContent optionalContent(QuestionContent content){return hasContent(content)?content:null;}

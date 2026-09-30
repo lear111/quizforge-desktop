@@ -17,7 +17,7 @@ public final class QuestionBankValidator {
         for (var resource : bank.resources()) {
             if (!id(resource.id(), "res_") || resource.kind() == null || blank(resource.mediaType())
                     || !resource.mediaType().matches("[A-Za-z0-9.+-]+/[A-Za-z0-9.+-]+")
-                    || !resource.mediaType().startsWith(resource.kind() == ResourceKind.IMAGE ? "image/" : "audio/")
+                    || !resource.mediaType().startsWith(switch(resource.kind()) {case IMAGE -> "image/";case AUDIO -> "audio/";case DOCUMENT -> "application/";})
                     || !locator(resource.locator()) || resource.sha256() == null
                     || !resource.sha256().matches("[0-9a-f]{64}")
                     || resources.putIfAbsent(resource.id(), resource) != null) fail("Invalid or duplicate resource");
@@ -89,6 +89,10 @@ public final class QuestionBankValidator {
         if (content == null) fail("Question content is required");
         if (content instanceof TextContent text) {
             if (nonblank && blank(text.text())) fail("Content cannot be blank");
+        } else if (content instanceof DocumentContent doc) {
+            var resource = resources.get(doc.resourceId());
+            if (resource == null || resource.kind() != ResourceKind.DOCUMENT
+                    || !"application/vnd.quizforge.canvas+json".equals(resource.mediaType())) fail("Invalid document resourceId");
         } else if (content instanceof RichContent rich) {
             if (nonblank && rich.document().blocks().stream().noneMatch(this::meaningful))
                 fail("Rich content cannot be blank");

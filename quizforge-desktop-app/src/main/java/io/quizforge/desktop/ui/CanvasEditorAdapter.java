@@ -24,7 +24,7 @@ final class CanvasEditorAdapter {
 
     private static void encodeBlock(BlockNode block,List<Object> out,Map<String,ImageData> images) {
         if(block instanceof ParagraphNode p) {
-            if(!out.isEmpty())out.add(Map.of("value","\n\n"));
+            if(!out.isEmpty())out.add(Map.of("value","\n"));
             encodeInline(p.children(),out,images,p.alignment());
         } else if(block instanceof HeadingNode h) {
             var values=new ArrayList<Object>();encodeInline(h.children(),values,images,h.alignment());

@@ -71,9 +71,9 @@ public final class QBankPackageReader {
                 String location = string(resource, "path", ErrorCode.INVALID_MANIFEST);
                 resourcePath(location);
                 if (!id.matches("res_[A-Za-z0-9_-]+") || !ids.add(id) || !paths.add(location)
-                        || !Set.of("IMAGE", "AUDIO").contains(kind)
+                        || !Set.of("IMAGE", "AUDIO", "DOCUMENT").contains(kind)
                         || !media.matches("[A-Za-z0-9.+-]+/[A-Za-z0-9.+-]+")
-                        || !media.startsWith(kind.equals("IMAGE") ? "image/" : "audio/")
+                        || !media.startsWith(kind.equals("IMAGE") ? "image/" : kind.equals("AUDIO") ? "audio/" : "application/")
                         || !string(resource, "sha256", ErrorCode.INVALID_MANIFEST).matches("[0-9a-f]{64}"))
                     throw error(ErrorCode.INVALID_MANIFEST, "Invalid or duplicate resource metadata");
                 required(entries, location, ErrorCode.MISSING_RESOURCE);

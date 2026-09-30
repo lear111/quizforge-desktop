@@ -19,6 +19,7 @@ final class QuestionContentRenderer {
     private QuestionContentRenderer() { }
 
     static Node render(QuestionContent content,List<QBankResource> resources,QuestionResourceInput input,String prefix) {
+        if(content instanceof DocumentContent document) return new CanvasDocumentView(document,resources,input,prefix);
         if(content instanceof TextContent text) {
             Label plain=label(text.text(),"question-stem");
             plain.setStyle(QuestionContentLayout.previewStyle());

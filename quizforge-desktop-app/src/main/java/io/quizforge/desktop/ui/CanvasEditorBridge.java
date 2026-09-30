@@ -20,10 +20,15 @@ final class CanvasEditorBridge {
     private QuestionContent initial;
     private JSObject api;
     private boolean closed;
+    private final boolean preview;
 
     CanvasEditorBridge(QuestionContent initial,ContentEditSession session,Consumer<String> errors,Runnable chooseImage) {
+        this(initial,session,errors,chooseImage,false);
+    }
+    CanvasEditorBridge(QuestionContent initial,ContentEditSession session,Consumer<String> errors,Runnable chooseImage,boolean preview) {
+        this.preview=preview;
         this.initial=Objects.requireNonNull(initial);this.session=session;this.errors=errors;
-        host=new CanvasEditorImageHost(chooseImage,this::initializePage);web.setId("canvas-editor-webview");web.setContextMenuEnabled(false);
+        host=new CanvasEditorImageHost(chooseImage,this::initializePage,errors);web.setId("canvas-editor-webview");web.setContextMenuEnabled(false);
         var page=new CanvasEditorPageLocator();
         var engine=web.getEngine();engine.setCreatePopupHandler(ignored->null);
         engine.setConfirmHandler(ignored->false);
@@ -45,15 +50,26 @@ final class CanvasEditorBridge {
                 initializePage();
             }catch(RuntimeException failed){api=null;errors.accept("Canvas Editor 初始化失败："+failed.getMessage());}
         });
-        engine.load(page.editorUrl());
+        if(preview)web.addEventFilter(javafx.scene.input.ScrollEvent.SCROLL,event->{
+            // Preview is part of the surrounding page, not an independent viewport.
+            if(!event.isControlDown() && web.getParent()!=null)
+                javafx.event.Event.fireEvent(web.getParent(),event.copyFor(web.getParent(),web.getParent()));
+            event.consume();
+        });
+        if(preview)host.onHeight(height->{
+            if(closed)return;
+            double contentHeight=Math.max(24,Math.ceil(height));
+            web.setMinHeight(contentHeight);web.setPrefHeight(contentHeight);web.setMaxHeight(contentHeight);
+        });
+        engine.load(preview?page.previewUrl():page.editorUrl());
     }
     private void initializePage() {
         if (closed || api != null) return;
         try {
             var candidate=web.getEngine().executeScript("window.canvasEditor");
             if (!(candidate instanceof JSObject editorApi)) return; // Vite's module graph is still loading.
-            if (!Boolean.TRUE.equals(editorApi.call("ready"))) {
-                var fault=String.valueOf(editorApi.call("error"));
+            if (!Boolean.TRUE.equals(web.getEngine().executeScript("window.canvasEditor.ready()"))) {
+                var fault=String.valueOf(web.getEngine().executeScript("window.canvasEditor.error()"));
                 if (!fault.isBlank()) errors.accept("Canvas Editor 初始化失败："+fault);
                 return;
             }
@@ -63,14 +79,32 @@ final class CanvasEditorBridge {
     }
     WebView view(){return web;}
     boolean ready(){return api!=null && !closed;}
-    void loadContent(QuestionContent content){initial=Objects.requireNonNull(content);requireReady();api.call("load",CanvasEditorAdapter.toCanvasJson(content,imageData()));}
-    QuestionContent getContent(){requireReady();return CanvasEditorAdapter.fromCanvasJson((String)api.call("value"),resourceIds());}
-    void setMode(String mode){requireReady();if(!Set.of("edit","readonly").contains(mode))throw new IllegalArgumentException("Invalid mode");api.call("mode",mode);}
-    void insertImage(QBankResource resource){requireReady();api.call("insertImage",CanvasEditorAdapter.imageJson(resource,imageData()));}
-    void destroy(){if(closed)return;closed=true;if(api!=null)try{api.call("destroy");}finally{api=null;}web.getEngine().loadContent("");}
+    void loadContent(QuestionContent content){
+        initial=Objects.requireNonNull(content);requireReady();
+        if(content instanceof DocumentContent document)call("loadDocument",session.document(document));
+        else call("load",CanvasEditorAdapter.toCanvasJson(content,imageData()));
+        if(preview)call("mode","readonly");
+    }
+    QuestionContent getContent(){
+        requireReady();
+        if(Boolean.TRUE.equals(call("empty")))return new TextContent("");
+        return session.stageDocument((String)call("document"),(String)call("text"));
+    }
+    void setMode(String mode){requireReady();if(!Set.of("edit","readonly").contains(mode))throw new IllegalArgumentException("Invalid mode");call("mode",mode);}
+    void insertImage(QBankResource resource){requireReady();call("insertImage",CanvasEditorAdapter.imageJson(resource,imageData()));}
+    void destroy(){if(closed)return;try{if(api!=null)call("destroy");}finally{closed=true;api=null;web.getEngine().loadContent("");}}
     private void requireReady(){if(!ready())throw new IllegalStateException("Canvas Editor 尚未就绪");}
-    private Set<String> resourceIds(){var ids=new HashSet<String>();session.resources().forEach(r->ids.add(r.id()));return ids;}
+    private Object call(String method,Object... args) {
+        requireReady();
+        // Resolve the live global API inside JavaScript, not a cached native function handle.
+        String name=RichContentEditorAdapter.json(method);
+        String arguments=RichContentEditorAdapter.json(Arrays.asList(args)).replace("\u2028","\\u2028").replace("\u2029","\\u2029");
+        return web.getEngine().executeScript("window.canvasEditor["+name+"].apply(window.canvasEditor,"+arguments+")");
+    }
     private Map<String,CanvasEditorAdapter.ImageData> imageData(){
+        return imageData(session);
+    }
+    static Map<String,CanvasEditorAdapter.ImageData> imageData(ContentEditSession session){
         var result=new HashMap<String,CanvasEditorAdapter.ImageData>();
         for(var resource:session.resources())if(resource.kind()==ResourceKind.IMAGE)try(var in=session.open(resource)){
             if(in==null)continue;byte[] bytes=in.readNBytes((int)QBankImageImporter.MAX_BYTES+1);

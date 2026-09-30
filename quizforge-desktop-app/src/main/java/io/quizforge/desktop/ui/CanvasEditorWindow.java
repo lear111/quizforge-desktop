@@ -17,7 +17,7 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 
-/** Experimental Word-like shell; the Canvas engine and QBank adapter remain separate. */
+/** Native Canvas document editor; Save stages the complete document as a package resource. */
 final class CanvasEditorWindow {
     private final Stage stage=new Stage();
     private final ContentEditSession session;
@@ -59,7 +59,7 @@ final class CanvasEditorWindow {
             var resource=session.stage(file.toPath());bridge.insertImage(resource);error.setText("");
         }catch(RuntimeException failed){showError(failed.getMessage());}
     }
-    private void save(){try{result=session.save(bridge.getContent());stage.close();}catch(RuntimeException failed){showError(failed.getMessage());}}
+    private void save(){try{result=session.save(bridge.getContent());stage.close();}catch(RuntimeException failed){showError("保存失败："+failed.getMessage());}}
     private void cancel(){result=session.cancel();stage.close();}
     private void showError(String message){error.setText(message==null?"编辑失败":message);}
 }

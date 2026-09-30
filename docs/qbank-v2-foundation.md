@@ -1,5 +1,27 @@
 # QBank v2: logical format and ZIP package
 
+## Current Canvas native document storage
+
+Canvas editing now saves its native `getValue()` JSON (`version`, `data`, `options`)
+as a `DOCUMENT` resource with media type `application/vnd.quizforge.canvas+json`
+and locator `resources/res_canvas_<sha256>.canvas.json`. Question content uses
+`kind: DOCUMENT`, `resourceId`, and a derived `text` summary for search/accessibility.
+The native document is authoritative; it is not converted back to RichDocument.
+Images imported or pasted into Canvas are embedded as data URLs inside this document.
+Fonts, colors, line breaks, tables, math and image dimensions retain Canvas semantics.
+The existing package writer hashes the actual document bytes and writes them atomically.
+
+Browse and edit previews use Canvas in readonly mode, without the toolbar, paper margins
+or surrounding editor workspace. Editing loads the same file in edit mode. Existing TEXT
+and RICH assets are imported only when opened in Canvas and become native documents on
+explicit Save; no workspace-wide migration or background rewrite occurs. Existing RICH
+content remains readable with its previous representation. Save stages pending resources;
+Cancel does not change the owner. Shared document resources are retained until no content
+references them. No Practice/History database schema change or audio/video feature is added.
+
+The earlier foundation-editor sections below describe the previous Tiptap/RichDocument
+implementation and its limited image widths; those limits do not apply to native Canvas files.
+
 The current `.qbank` is a ZIP-compatible package. Only `schemaVersion: "2.0"` is
 accepted. There is no plain JSON or v1 reader, fallback, or production migration.
 Existing user workspaces are never rewritten. The logical domain now also supports

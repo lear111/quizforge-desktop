@@ -1,5 +1,6 @@
 import './editor.css';
-import Editor from '@hufe921/canvas-editor';
+import Editor, {createDomFromElementList, getElementListByHTML, getTextFromElementList} from '@hufe921/canvas-editor';
+import {installCanvasFontCompatibility} from './canvas-webview-compat';
 import undo from './icons/undo.svg?raw';
 import redo from './icons/redo.svg?raw';
 import format from './icons/format.svg?raw';
@@ -25,9 +26,13 @@ import table from './icons/table.svg?raw';
 import latex from './icons/latex.svg?raw';
 
 const PAPER_WIDTH = 816;
+const MIN_ZOOM = 0.75;
+const MAX_ZOOM = 1.5;
 const CONTENT_WIDTH = Number(new URLSearchParams(window.location.hash.slice(1)).get('contentWidth')
   || new URLSearchParams(window.location.search).get('contentWidth')) || 672;
 const SIDE_MARGIN = (PAPER_WIDTH - CONTENT_WIDTH) / 2;
+const PREVIEW = (new URLSearchParams(window.location.hash.slice(1)).get('readonly')
+  || new URLSearchParams(window.location.search).get('readonly')) === '1';
 // Preserve the Canvas engine, draft and Java bridge API across module updates.
 const state = window.__quizforgeCanvasState || (window.__quizforgeCanvasState = {editor: null, changed: 0, fault: ''});
 let editor = state.editor;
@@ -43,19 +48,84 @@ function wireKeyboard() {
   }
   state.keyboardHandler = event => {
     if (!event.target.classList || !event.target.classList.contains('ce-inputarea')) return;
-    if (event.key && event.key !== 'Unidentified') return;
     const names = {8:'Backspace',9:'Tab',13:'Enter',16:'Shift',17:'Control',18:'Alt',27:'Escape',
       33:'PageUp',34:'PageDown',35:'End',36:'Home',37:'ArrowLeft',38:'ArrowUp',39:'ArrowRight',40:'ArrowDown',
       45:'Insert',46:'Delete',91:'Meta',93:'ContextMenu'};
-    let key = names[event.keyCode];
-    if (!key && event.keyIdentifier && /^U\+[0-9A-F]{4,6}$/i.test(event.keyIdentifier))
-      key = String.fromCodePoint(parseInt(event.keyIdentifier.slice(2), 16));
+    let key = event.key && event.key !== 'Unidentified' ? event.key : names[event.keyCode];
     if (!key && event.keyCode >= 65 && event.keyCode <= 90)
       key = String.fromCharCode(event.keyCode);
-    if (key) Object.defineProperty(event, 'key', {value: key, configurable: true});
+    if (!key && event.keyIdentifier && /^U\+[0-9A-F]{4,6}$/i.test(event.keyIdentifier))
+      key = String.fromCodePoint(parseInt(event.keyIdentifier.slice(2), 16));
+    if (key && key !== event.key) Object.defineProperty(event, 'key', {value: key, configurable: true});
+    const shortcut = key && key.toLowerCase();
+    if (event.type === 'keydown' && (event.ctrlKey || event.metaKey) && !event.altKey
+        && ['c','x','v'].includes(shortcut) && hasNativeClipboard()) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      try {
+        if (shortcut === 'v') pasteNativeClipboard(event.shiftKey);
+        else {
+          const selected = editor.command.getRangeContext();
+          if (copyNativeClipboard() && shortcut === 'x' && selected && !selected.isCollapsed)
+            editor.command.executeBackspace();
+        }
+      } catch (error) { window.quizforgeHost.clipboardError('剪贴板操作失败：' + error.message); }
+    }
   };
   document.addEventListener('keydown', state.keyboardHandler, true);
   document.addEventListener('keyup', state.keyboardHandler, true);
+}
+
+function hasNativeClipboard() {
+  return window.quizforgeHost && window.quizforgeHost.readClipboard && window.quizforgeHost.writeClipboard;
+}
+
+function copyNativeClipboard() {
+  const range = editor.command.getRangeContext();
+  const elements = range && (range.isCollapsed ? editor.command.getRangeRow() : range.selectionElementList);
+  if (!elements || !elements.length) return false;
+  const clone = JSON.parse(JSON.stringify(elements));
+  const dom = createDomFromElementList(clone, editor.command.getOptions());
+  const text = getTextFromElementList(clone);
+  const html = dom.innerHTML;
+  if (!window.quizforgeHost.writeClipboard(text, html)) return false;
+  state.clipboard = {text, html, elements: clone};
+  document.querySelector('.ce-inputarea').focus();
+  return true;
+}
+
+function pasteNativeClipboard(plainText = false) {
+  // Use Canvas commands so its readonly and disabled-range checks still apply.
+  const clipboard = JSON.parse(window.quizforgeHost.readClipboard());
+  let elements;
+  if (!plainText && state.clipboard && clipboard.text === state.clipboard.text && clipboard.html === state.clipboard.html)
+    elements = JSON.parse(JSON.stringify(state.clipboard.elements));
+  else if (!plainText && clipboard.image) {
+    window.canvasEditor.insertImage(JSON.stringify(clipboard.image));return;
+  }
+  else if (!plainText && clipboard.html) {
+    // External clipboard HTML is content, never executable markup or a remote image import.
+    const dom = new DOMParser().parseFromString(clipboard.html, 'text/html');
+    if ([...dom.querySelectorAll('img')].some(node => !/^data:image\/(png|jpeg);base64,/i.test(node.getAttribute('src') || '')))
+      throw new Error('图片未包含在剪贴板中，请复制图片本身或使用“插入图片”。');
+    dom.querySelectorAll('script,style,iframe,object,embed,video,audio,link,meta').forEach(node => node.remove());
+    dom.body.querySelectorAll('*').forEach(node => {
+      [...node.attributes].forEach(attr => { if (/^on/i.test(attr.name)) node.removeAttribute(attr.name); });
+    });
+    elements = getElementListByHTML(dom.body.innerHTML, {innerWidth: CONTENT_WIDTH});
+  } else if (clipboard.text) elements = [{value: clipboard.text.replace(/\r\n?/g, '\n')}];
+  if (elements && elements.length) editor.command.executeInsertElementList(elements);
+  document.querySelector('.ce-inputarea').focus();
+}
+
+function wireClipboard() {
+  editor.override.copy = () => {
+    if (!hasNativeClipboard()) return {preventDefault: false};
+    copyNativeClipboard();return {preventDefault: true};
+  };
+  editor.override.paste = () => {
+    if (!hasNativeClipboard()) return {preventDefault: false};
+    pasteNativeClipboard();return {preventDefault: true};
+  };
 }
 
 function wireToolbar() {
@@ -89,17 +159,46 @@ function wireToolbar() {
 
 function initialize() {
   try {
+    installCanvasFontCompatibility();
+    if (PREVIEW) document.documentElement.classList.add('preview');
+    // Also wrap an existing editor during HMR without replacing its document.
+    const paper = document.getElementById('paper');
+    if (!document.getElementById('paper-stage')) {
+      const stage = document.createElement('div');
+      stage.id = 'paper-stage';
+      paper.before(stage);
+      stage.append(paper);
+    }
     if (!editor) editor = new Editor(document.getElementById('paper'), { main: [{ value: '' }] }, {
       mode: 'edit', pageMode: 'continuity', width: PAPER_WIDTH, height: 640,
       margins: [72, SIDE_MARGIN, 72, SIDE_MARGIN], marginIndicatorSize: 0,
       defaultFont: 'Arial', defaultSize: 16, scrollContainerSelector: '#workspace',
       pageNumber: { disabled: true }, header: { disabled: true }, footer: { disabled: true },
-      watermark: { disabled: true }, ruler: { disabled: true }
+      watermark: { disabled: true }, ruler: { disabled: true }, magnifier: { disabled: true },
+      ...(PREVIEW ? previewOptions() : {})
     });
     state.editor = editor;
-    editor.listener.contentChange = () => { state.changed++; };
+    if (PREVIEW) editor.command.executeUpdateOptions(previewOptions());
+    editor.listener.contentChange = () => { state.changed++; reportHeight(); };
+    if (state.heightObserver) state.heightObserver.disconnect();
+    if (PREVIEW) {
+      // Images and fonts may finish layout after the initial document load.
+      state.heightObserver = new ResizeObserver(reportHeight);
+      state.heightObserver.observe(paper);
+    }
+    editor.listener.pageScaleChange = scale => {
+      const bounded = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, scale));
+      if (!PREVIEW && bounded !== scale) editor.command.executePageScale(bounded);
+      else syncPaperLayout(true);
+    };
+    editor.listener.pageSizeChange = () => syncPaperLayout();
+    if (!PREVIEW) editor.command.executePageScale(Math.max(MIN_ZOOM,
+      Math.min(MAX_ZOOM, editor.command.getOptions().scale)));
+    syncPaperLayout(true);
     wireKeyboard();
+    wireClipboard();
     wireToolbar();
+    wireZoom();
     editor.listener.rangeStyleChange = style => {
       for (const name of ['bold','italic','underline']) {
         document.querySelector(`[data-command="${name}"]`).classList.toggle('selected',!!style[name]);
@@ -123,15 +222,97 @@ function initialize() {
   if (window.quizforgeHost && window.quizforgeHost.editorReady) window.quizforgeHost.editorReady();
 }
 
+function previewOptions() {
+  return {mode:'readonly',width:CONTENT_WIDTH,height:1,margins:[0,0,0,0],pageMode:'continuity',scale:1,
+    header:{disabled:true},footer:{disabled:true},pageNumber:{disabled:true},watermark:{disabled:true},ruler:{disabled:true},magnifier:{disabled:true},shortcutDisableKeys:['pageScale']};
+}
+function wireZoom() {
+  const workspace = document.getElementById('workspace');
+  if (state.zoomHandler) workspace.removeEventListener('wheel', state.zoomHandler, true);
+  state.zoomHandler = event => {
+    if (PREVIEW) {
+      if (event.ctrlKey || event.shiftKey || event.deltaX) event.preventDefault();
+      return;
+    }
+    if (!event.ctrlKey || !event.deltaY) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const scale = editor.command.getOptions().scale;
+    editor.command.executePageScale(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM,
+      Math.round((scale + (event.deltaY < 0 ? 0.05 : -0.05)) * 100) / 100)));
+  };
+  workspace.addEventListener('wheel', state.zoomHandler, {capture:true, passive:false});
+}
+function focusDocument() {
+  if (!PREVIEW) {
+    const scale = editor.command.getOptions().scale;
+    editor.command.executePageScale(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, scale)));
+    editor.command.executeSetRange(0,0);
+    document.querySelector('.ce-inputarea').focus();
+  }
+  syncPaperLayout(true);
+  reportHeight();
+}
+function syncPaperLayout(center = false) {
+  const paper = document.getElementById('paper');
+  // Canvas owns scale and page geometry; its wrapper already includes zoom.
+  // Do not apply a second CSS transform or change the document's font sizes.
+  const width = parseFloat(paper.firstElementChild.style.width);
+  paper.style.width = `${width}px`;
+  document.getElementById('paper-stage').style.width = `${width + 48}px`;
+  if (PREVIEW) {
+    for (const viewport of [document.documentElement, document.body, document.getElementById('workspace')])
+      viewport.scrollLeft = viewport.scrollTop = 0;
+  }
+  if (center && !PREVIEW) {
+    const workspace = document.getElementById('workspace');
+    workspace.scrollLeft = Math.max(0, (workspace.scrollWidth - workspace.clientWidth) / 2);
+  }
+}
+function reportHeight() {
+  if (!PREVIEW) return;
+  requestAnimationFrame(() => {
+    if (window.quizforgeHost && window.quizforgeHost.contentHeight)
+      window.quizforgeHost.contentHeight(document.getElementById('paper').scrollHeight);
+  });
+}
+function insertNativeImage(image) {
+  if (PREVIEW || editor.command.getOptions().mode === 'readonly') return;
+  // Paste and file insertion use the current Canvas selection. A cancelled file
+  // chooser must never leave a saved selection that a later paste can replace.
+  delete state.imageRange;
+  if (!Number.isFinite(image.width) || !Number.isFinite(image.height) || image.width <= 0 || image.height <= 0
+      || typeof image.value !== 'string' || !image.value.startsWith('data:image/'))
+    throw new Error('图片数据无法读取，原内容未修改。');
+  const range = editor.command.getRange();
+  if (range.startIndex < 0 || range.endIndex < 0) throw new Error('请先选择图片插入位置。');
+  const width = Math.min(image.width, CONTENT_WIDTH);
+  editor.command.executeInsertElementList([{...image,type:'image',width,
+    height:Math.max(1,Math.round(image.height*width/image.width)),imgDisplay:image.imgDisplay || 'block'}]);
+  document.querySelector('.ce-inputarea').focus();
+}
+
 window.canvasEditor = Object.assign(window.canvasEditor || {}, {
   ready: () => !!editor,
   error: () => state.fault,
   changed: () => state.changed,
   configuration: () => JSON.stringify({ paperWidth: PAPER_WIDTH, margin: SIDE_MARGIN, contentWidth: CONTENT_WIDTH, pageMode: 'continuity' }),
-  load: json => { editor.command.executeSetValue(JSON.parse(json)); },
+  load: json => {
+    if (PREVIEW) editor.command.executeUpdateOptions(previewOptions());
+    editor.command.executeSetValue(JSON.parse(json));focusDocument();
+  },
+  loadDocument: json => {
+    const document = JSON.parse(json);
+    editor.command.executeUpdateOptions({...document.options,mode:PREVIEW?'readonly':'edit',magnifier:{disabled:true},...(PREVIEW?previewOptions():{})});
+    editor.command.executeSetValue(document.data);focusDocument();
+  },
+  document: () => JSON.stringify(editor.command.getValue()),
+  text: () => editor.command.getText().main,
+  empty: () => !editor.command.getText().main.trim()
+    && !JSON.stringify(editor.command.getValue().data.main).match(/"type":"(image|latex|table)"/),
   value: () => JSON.stringify(editor.command.getValue().data),
   mode: value => { editor.command.executeMode(value); },
-  insertImage: json => { editor.command.executeImage(JSON.parse(json)); },
+  insertImage: json => { insertNativeImage(JSON.parse(json)); },
   insertElement: json => { editor.command.executeInsertElementList(JSON.parse(json)); },
   command: (name, value) => {
     const commands = {
@@ -153,7 +334,11 @@ window.canvasEditor = Object.assign(window.canvasEditor || {}, {
     if (name === 'latex') return editor.command.executeInsertElementList([{ type: 'latex', value: value }]);
     return false;
   },
-  destroy: () => { if (editor) editor.destroy(); editor = state.editor = null; document.documentElement.dataset.editorReady = 'false'; }
+  destroy: () => {
+    if (state.heightObserver) state.heightObserver.disconnect();
+    if (editor) editor.destroy(); editor = state.editor = null;
+    document.documentElement.dataset.editorReady = 'false';
+  }
 });
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, {once: true});
 else initialize();

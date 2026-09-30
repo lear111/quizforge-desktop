@@ -7,6 +7,7 @@ public final class QuestionContentData {
     private QuestionContentData() { }
     public static Map<String,Object> encode(QuestionContent content) {
         if (content instanceof TextContent text) return Map.of("kind","TEXT","text",text.text());
+        if (content instanceof DocumentContent doc) return Map.of("kind","DOCUMENT","resourceId",doc.resourceId(),"text",doc.text());
         var rich=(RichContent)content;
         return Map.of("kind","RICH","document",Map.of("blocks",rich.document().blocks().stream().map(QuestionContentData::block).toList()));
     }
@@ -42,6 +43,7 @@ public final class QuestionContentData {
     public static QuestionContent decode(Object value) {
         var data=map(value);
         if("TEXT".equals(data.get("kind"))) return new TextContent((String)data.get("text"));
+        if("DOCUMENT".equals(data.get("kind"))) return new DocumentContent((String)data.get("resourceId"),(String)data.get("text"));
         if(!"RICH".equals(data.get("kind"))) throw new IllegalStateException("Invalid content snapshot");
         return new RichContent(new RichDocument(list(map(data.get("document")).get("blocks")).stream().map(QuestionContentData::decodeBlock).toList()));
     }
@@ -76,6 +78,7 @@ public final class QuestionContentData {
     public static String plainText(QuestionContent content) {
         if(content==null) return "";
         if(content instanceof TextContent t) return t.text();
+        if(content instanceof DocumentContent doc) return doc.text();
         return ((RichContent)content).document().blocks().stream().map(QuestionContentData::blockText)
                 .collect(java.util.stream.Collectors.joining("\n"));
     }
@@ -103,6 +106,9 @@ public final class QuestionContentData {
         Set<String> result=new HashSet<>();
         if(content instanceof RichContent rich) for(var b:rich.document().blocks()) collectBlockImages(b,result);
         return Set.copyOf(result);
+    }
+    public static Set<String> resourceIds(QuestionContent content) {
+        return content instanceof DocumentContent doc ? Set.of(doc.resourceId()) : imageIds(content);
     }
     private static void collectBlockImages(BlockNode b,Set<String> ids) {
         if(b instanceof BlockImageNode i) ids.add(i.resourceId());

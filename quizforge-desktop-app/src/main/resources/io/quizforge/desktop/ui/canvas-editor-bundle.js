@@ -21346,6 +21346,53 @@ endobj
   // src/editor.js
   init_canvas_editor();
 
+  // src/canvas-webview-compat.js
+  function installCanvasFontCompatibility() {
+    if (window.__quizforgeCanvasFontCompatibility) return;
+    const prototype = CanvasRenderingContext2D.prototype;
+    const font = Object.getOwnPropertyDescriptor(prototype, "font");
+    const probe = document.createElement("canvas").getContext("2d");
+    probe.font = "bold 16px Arial";
+    if (/\b(bold|[6-9]00)\b/.test(probe.font)) return;
+    const states = /* @__PURE__ */ new WeakMap();
+    const validator = document.createElement("span").style;
+    const save = prototype.save;
+    const restore = prototype.restore;
+    function state2(context) {
+      let entry = states.get(context);
+      if (!entry) {
+        entry = { font: font.get.call(context), stack: [] };
+        states.set(context, entry);
+      }
+      return entry;
+    }
+    Object.defineProperty(prototype, "font", {
+      ...font,
+      get() {
+        return state2(this).font;
+      },
+      set(value) {
+        font.set.call(this, value);
+        validator.font = "";
+        validator.font = String(value);
+        if (validator.font) {
+          state2(this).font = /^\d/.test(String(value)) ? "normal " + value : String(value);
+        }
+      }
+    });
+    prototype.save = function() {
+      const entry = state2(this);
+      save.call(this);
+      entry.stack.push(entry.font);
+    };
+    prototype.restore = function() {
+      restore.call(this);
+      const entry = state2(this);
+      if (entry.stack.length) entry.font = entry.stack.pop();
+    };
+    window.__quizforgeCanvasFontCompatibility = true;
+  }
+
   // raw-svg:C:\Users\wangg\OneDrive\Desktop\QuizForge\quizforge_V2\quizforge-desktop-app\canvas-editor-web\src\icons\undo.svg
   var undo_default = '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M6 2.763v7.544l-4.29-3.73zM13 14v-3a4 4 0 00-4-4H6V6h3a5 5 0 015 5v3h-1z" fill="#3D4757"/></svg>';
 
@@ -21417,8 +21464,11 @@ endobj
 
   // src/editor.js
   var PAPER_WIDTH = 816;
+  var MIN_ZOOM = 0.75;
+  var MAX_ZOOM = 1.5;
   var CONTENT_WIDTH = Number(new URLSearchParams(window.location.hash.slice(1)).get("contentWidth") || new URLSearchParams(window.location.search).get("contentWidth")) || 672;
   var SIDE_MARGIN = (PAPER_WIDTH - CONTENT_WIDTH) / 2;
+  var PREVIEW = (new URLSearchParams(window.location.hash.slice(1)).get("readonly") || new URLSearchParams(window.location.search).get("readonly")) === "1";
   var state = window.__quizforgeCanvasState || (window.__quizforgeCanvasState = { editor: null, changed: 0, fault: "" });
   var editor = state.editor;
   var icons = {
@@ -21453,7 +21503,6 @@ endobj
     }
     state.keyboardHandler = (event) => {
       if (!event.target.classList || !event.target.classList.contains("ce-inputarea")) return;
-      if (event.key && event.key !== "Unidentified") return;
       const names = {
         8: "Backspace",
         9: "Tab",
@@ -21475,15 +21524,81 @@ endobj
         91: "Meta",
         93: "ContextMenu"
       };
-      let key = names[event.keyCode];
-      if (!key && event.keyIdentifier && /^U\+[0-9A-F]{4,6}$/i.test(event.keyIdentifier))
-        key = String.fromCodePoint(parseInt(event.keyIdentifier.slice(2), 16));
+      let key = event.key && event.key !== "Unidentified" ? event.key : names[event.keyCode];
       if (!key && event.keyCode >= 65 && event.keyCode <= 90)
         key = String.fromCharCode(event.keyCode);
-      if (key) Object.defineProperty(event, "key", { value: key, configurable: true });
+      if (!key && event.keyIdentifier && /^U\+[0-9A-F]{4,6}$/i.test(event.keyIdentifier))
+        key = String.fromCodePoint(parseInt(event.keyIdentifier.slice(2), 16));
+      if (key && key !== event.key) Object.defineProperty(event, "key", { value: key, configurable: true });
+      const shortcut = key && key.toLowerCase();
+      if (event.type === "keydown" && (event.ctrlKey || event.metaKey) && !event.altKey && ["c", "x", "v"].includes(shortcut) && hasNativeClipboard()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        try {
+          if (shortcut === "v") pasteNativeClipboard(event.shiftKey);
+          else {
+            const selected = editor.command.getRangeContext();
+            if (copyNativeClipboard() && shortcut === "x" && selected && !selected.isCollapsed)
+              editor.command.executeBackspace();
+          }
+        } catch (error) {
+          window.quizforgeHost.clipboardError("\u526A\u8D34\u677F\u64CD\u4F5C\u5931\u8D25\uFF1A" + error.message);
+        }
+      }
     };
     document.addEventListener("keydown", state.keyboardHandler, true);
     document.addEventListener("keyup", state.keyboardHandler, true);
+  }
+  function hasNativeClipboard() {
+    return window.quizforgeHost && window.quizforgeHost.readClipboard && window.quizforgeHost.writeClipboard;
+  }
+  function copyNativeClipboard() {
+    const range = editor.command.getRangeContext();
+    const elements = range && (range.isCollapsed ? editor.command.getRangeRow() : range.selectionElementList);
+    if (!elements || !elements.length) return false;
+    const clone = JSON.parse(JSON.stringify(elements));
+    const dom = Pn(clone, editor.command.getOptions());
+    const text = Ln(clone);
+    const html = dom.innerHTML;
+    if (!window.quizforgeHost.writeClipboard(text, html)) return false;
+    state.clipboard = { text, html, elements: clone };
+    document.querySelector(".ce-inputarea").focus();
+    return true;
+  }
+  function pasteNativeClipboard(plainText = false) {
+    const clipboard = JSON.parse(window.quizforgeHost.readClipboard());
+    let elements;
+    if (!plainText && state.clipboard && clipboard.text === state.clipboard.text && clipboard.html === state.clipboard.html)
+      elements = JSON.parse(JSON.stringify(state.clipboard.elements));
+    else if (!plainText && clipboard.image) {
+      window.canvasEditor.insertImage(JSON.stringify(clipboard.image));
+      return;
+    } else if (!plainText && clipboard.html) {
+      const dom = new DOMParser().parseFromString(clipboard.html, "text/html");
+      if ([...dom.querySelectorAll("img")].some((node) => !/^data:image\/(png|jpeg);base64,/i.test(node.getAttribute("src") || "")))
+        throw new Error("\u56FE\u7247\u672A\u5305\u542B\u5728\u526A\u8D34\u677F\u4E2D\uFF0C\u8BF7\u590D\u5236\u56FE\u7247\u672C\u8EAB\u6216\u4F7F\u7528\u201C\u63D2\u5165\u56FE\u7247\u201D\u3002");
+      dom.querySelectorAll("script,style,iframe,object,embed,video,audio,link,meta").forEach((node) => node.remove());
+      dom.body.querySelectorAll("*").forEach((node) => {
+        [...node.attributes].forEach((attr) => {
+          if (/^on/i.test(attr.name)) node.removeAttribute(attr.name);
+        });
+      });
+      elements = In(dom.body.innerHTML, { innerWidth: CONTENT_WIDTH });
+    } else if (clipboard.text) elements = [{ value: clipboard.text.replace(/\r\n?/g, "\n") }];
+    if (elements && elements.length) editor.command.executeInsertElementList(elements);
+    document.querySelector(".ce-inputarea").focus();
+  }
+  function wireClipboard() {
+    editor.override.copy = () => {
+      if (!hasNativeClipboard()) return { preventDefault: false };
+      copyNativeClipboard();
+      return { preventDefault: true };
+    };
+    editor.override.paste = () => {
+      if (!hasNativeClipboard()) return { preventDefault: false };
+      pasteNativeClipboard();
+      return { preventDefault: true };
+    };
   }
   function wireToolbar() {
     const toolbar = document.getElementById("toolbar");
@@ -21515,6 +21630,15 @@ endobj
   }
   function initialize() {
     try {
+      installCanvasFontCompatibility();
+      if (PREVIEW) document.documentElement.classList.add("preview");
+      const paper = document.getElementById("paper");
+      if (!document.getElementById("paper-stage")) {
+        const stage = document.createElement("div");
+        stage.id = "paper-stage";
+        paper.before(stage);
+        stage.append(paper);
+      }
       if (!editor) editor = new Zs(document.getElementById("paper"), { main: [{ value: "" }] }, {
         mode: "edit",
         pageMode: "continuity",
@@ -21529,14 +21653,36 @@ endobj
         header: { disabled: true },
         footer: { disabled: true },
         watermark: { disabled: true },
-        ruler: { disabled: true }
+        ruler: { disabled: true },
+        magnifier: { disabled: true },
+        ...PREVIEW ? previewOptions() : {}
       });
       state.editor = editor;
+      if (PREVIEW) editor.command.executeUpdateOptions(previewOptions());
       editor.listener.contentChange = () => {
         state.changed++;
+        reportHeight();
       };
+      if (state.heightObserver) state.heightObserver.disconnect();
+      if (PREVIEW) {
+        state.heightObserver = new ResizeObserver(reportHeight);
+        state.heightObserver.observe(paper);
+      }
+      editor.listener.pageScaleChange = (scale) => {
+        const bounded = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, scale));
+        if (!PREVIEW && bounded !== scale) editor.command.executePageScale(bounded);
+        else syncPaperLayout(true);
+      };
+      editor.listener.pageSizeChange = () => syncPaperLayout();
+      if (!PREVIEW) editor.command.executePageScale(Math.max(
+        MIN_ZOOM,
+        Math.min(MAX_ZOOM, editor.command.getOptions().scale)
+      ));
+      syncPaperLayout(true);
       wireKeyboard();
+      wireClipboard();
       wireToolbar();
+      wireZoom();
       editor.listener.rangeStyleChange = (style) => {
         for (const name of ["bold", "italic", "underline"]) {
           document.querySelector(`[data-command="${name}"]`).classList.toggle("selected", !!style[name]);
@@ -21557,20 +21703,115 @@ endobj
     }
     if (window.quizforgeHost && window.quizforgeHost.editorReady) window.quizforgeHost.editorReady();
   }
+  function previewOptions() {
+    return {
+      mode: "readonly",
+      width: CONTENT_WIDTH,
+      height: 1,
+      margins: [0, 0, 0, 0],
+      pageMode: "continuity",
+      scale: 1,
+      header: { disabled: true },
+      footer: { disabled: true },
+      pageNumber: { disabled: true },
+      watermark: { disabled: true },
+      ruler: { disabled: true },
+      magnifier: { disabled: true },
+      shortcutDisableKeys: ["pageScale"]
+    };
+  }
+  function wireZoom() {
+    const workspace = document.getElementById("workspace");
+    if (state.zoomHandler) workspace.removeEventListener("wheel", state.zoomHandler, true);
+    state.zoomHandler = (event) => {
+      if (PREVIEW) {
+        if (event.ctrlKey || event.shiftKey || event.deltaX) event.preventDefault();
+        return;
+      }
+      if (!event.ctrlKey || !event.deltaY) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const scale = editor.command.getOptions().scale;
+      editor.command.executePageScale(Math.max(MIN_ZOOM, Math.min(
+        MAX_ZOOM,
+        Math.round((scale + (event.deltaY < 0 ? 0.05 : -0.05)) * 100) / 100
+      )));
+    };
+    workspace.addEventListener("wheel", state.zoomHandler, { capture: true, passive: false });
+  }
+  function focusDocument() {
+    if (!PREVIEW) {
+      const scale = editor.command.getOptions().scale;
+      editor.command.executePageScale(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, scale)));
+      editor.command.executeSetRange(0, 0);
+      document.querySelector(".ce-inputarea").focus();
+    }
+    syncPaperLayout(true);
+    reportHeight();
+  }
+  function syncPaperLayout(center = false) {
+    const paper = document.getElementById("paper");
+    const width = parseFloat(paper.firstElementChild.style.width);
+    paper.style.width = `${width}px`;
+    document.getElementById("paper-stage").style.width = `${width + 48}px`;
+    if (PREVIEW) {
+      for (const viewport of [document.documentElement, document.body, document.getElementById("workspace")])
+        viewport.scrollLeft = viewport.scrollTop = 0;
+    }
+    if (center && !PREVIEW) {
+      const workspace = document.getElementById("workspace");
+      workspace.scrollLeft = Math.max(0, (workspace.scrollWidth - workspace.clientWidth) / 2);
+    }
+  }
+  function reportHeight() {
+    if (!PREVIEW) return;
+    requestAnimationFrame(() => {
+      if (window.quizforgeHost && window.quizforgeHost.contentHeight)
+        window.quizforgeHost.contentHeight(document.getElementById("paper").scrollHeight);
+    });
+  }
+  function insertNativeImage(image) {
+    if (PREVIEW || editor.command.getOptions().mode === "readonly") return;
+    delete state.imageRange;
+    if (!Number.isFinite(image.width) || !Number.isFinite(image.height) || image.width <= 0 || image.height <= 0 || typeof image.value !== "string" || !image.value.startsWith("data:image/"))
+      throw new Error("\u56FE\u7247\u6570\u636E\u65E0\u6CD5\u8BFB\u53D6\uFF0C\u539F\u5185\u5BB9\u672A\u4FEE\u6539\u3002");
+    const range = editor.command.getRange();
+    if (range.startIndex < 0 || range.endIndex < 0) throw new Error("\u8BF7\u5148\u9009\u62E9\u56FE\u7247\u63D2\u5165\u4F4D\u7F6E\u3002");
+    const width = Math.min(image.width, CONTENT_WIDTH);
+    editor.command.executeInsertElementList([{
+      ...image,
+      type: "image",
+      width,
+      height: Math.max(1, Math.round(image.height * width / image.width)),
+      imgDisplay: image.imgDisplay || "block"
+    }]);
+    document.querySelector(".ce-inputarea").focus();
+  }
   window.canvasEditor = Object.assign(window.canvasEditor || {}, {
     ready: () => !!editor,
     error: () => state.fault,
     changed: () => state.changed,
     configuration: () => JSON.stringify({ paperWidth: PAPER_WIDTH, margin: SIDE_MARGIN, contentWidth: CONTENT_WIDTH, pageMode: "continuity" }),
     load: (json) => {
+      if (PREVIEW) editor.command.executeUpdateOptions(previewOptions());
       editor.command.executeSetValue(JSON.parse(json));
+      focusDocument();
     },
+    loadDocument: (json) => {
+      const document2 = JSON.parse(json);
+      editor.command.executeUpdateOptions({ ...document2.options, mode: PREVIEW ? "readonly" : "edit", magnifier: { disabled: true }, ...PREVIEW ? previewOptions() : {} });
+      editor.command.executeSetValue(document2.data);
+      focusDocument();
+    },
+    document: () => JSON.stringify(editor.command.getValue()),
+    text: () => editor.command.getText().main,
+    empty: () => !editor.command.getText().main.trim() && !JSON.stringify(editor.command.getValue().data.main).match(/"type":"(image|latex|table)"/),
     value: () => JSON.stringify(editor.command.getValue().data),
     mode: (value) => {
       editor.command.executeMode(value);
     },
     insertImage: (json) => {
-      editor.command.executeImage(JSON.parse(json));
+      insertNativeImage(JSON.parse(json));
     },
     insertElement: (json) => {
       editor.command.executeInsertElementList(JSON.parse(json));
@@ -21603,6 +21844,7 @@ endobj
       return false;
     },
     destroy: () => {
+      if (state.heightObserver) state.heightObserver.disconnect();
       if (editor) editor.destroy();
       editor = state.editor = null;
       document.documentElement.dataset.editorReady = "false";

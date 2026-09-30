@@ -109,8 +109,13 @@ final class FilePane extends BorderPane {
         if (mode == FileMode.EDIT && (bankEditor != null && bankEditor.dirty()
                 || markdownEditor != null && markdownEditor.dirty())) {
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                    "Unsaved changes will be discarded.", ButtonType.CANCEL, ButtonType.OK);
-            confirm.setHeaderText("Leave edit mode?");
+                    "题库修改尚未保存。确定返回将放弃修改；如需保留，请取消并先保存题库。", ButtonType.CANCEL, ButtonType.OK);
+            confirm.setTitle("返回浏览");
+            confirm.setHeaderText("存在未保存的修改");
+            if(getScene()!=null && getScene().getWindow()!=null) {
+                confirm.initOwner(getScene().getWindow());
+                confirm.initModality(javafx.stage.Modality.WINDOW_MODAL);
+            }
             UiTheme.apply(confirm);
             if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
             open(workspace, current.file().entry().relativePath());

@@ -51,8 +51,16 @@
         },
         {
           "$ref": "#/$defs/rich"
+        },
+        {
+          "$ref": "#/$defs/nativeDocument"
         }
       ]
+    },
+    "nativeDocument": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "kind": { "const": "DOCUMENT" }, "resourceId": { "type": "string", "pattern": "^res_[A-Za-z0-9_-]+$" }, "text": { "type": "string" } },
+      "required": ["kind", "resourceId", "text"]
     },
     "text": {
       "type": "object",
@@ -602,12 +610,13 @@
         "kind": {
           "enum": [
             "IMAGE",
-            "AUDIO"
+            "AUDIO",
+            "DOCUMENT"
           ]
         },
         "mediaType": {
           "type": "string",
-          "pattern": "^(image|audio)/[A-Za-z0-9.+-]+$"
+          "pattern": "^(image|audio|application)/[A-Za-z0-9.+-]+$"
         },
         "locator": {
           "type": "string",

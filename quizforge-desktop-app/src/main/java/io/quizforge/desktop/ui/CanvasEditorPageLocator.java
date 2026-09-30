@@ -36,7 +36,8 @@ final class CanvasEditorPageLocator {
     }
 
     boolean isEditorUrl(String location) {
-        try { return URI.create(editorUrl()).equals(URI.create(location)); }
+        try { return URI.create(editorUrl()).equals(URI.create(location)) || URI.create(previewUrl()).equals(URI.create(location)); }
         catch (IllegalArgumentException invalid) { return false; }
     }
+    String previewUrl() { return editorUrl()+"&readonly=1"; }
 }

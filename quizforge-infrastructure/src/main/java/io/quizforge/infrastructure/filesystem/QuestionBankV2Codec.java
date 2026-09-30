@@ -50,7 +50,8 @@ public final class QuestionBankV2Codec implements QuestionBankFileCodec {
 
     @JsonTypeInfo(use=JsonTypeInfo.Id.NAME,property="kind")
     @JsonSubTypes({@JsonSubTypes.Type(value=TextContent.class,name="TEXT"),
-            @JsonSubTypes.Type(value=RichContent.class,name="RICH")})
+            @JsonSubTypes.Type(value=RichContent.class,name="RICH"),
+            @JsonSubTypes.Type(value=DocumentContent.class,name="DOCUMENT")})
     private interface ContentTypes { }
     @JsonTypeInfo(use=JsonTypeInfo.Id.NAME,property="type")
     @JsonSubTypes({@JsonSubTypes.Type(value=ParagraphNode.class,name="PARAGRAPH"),

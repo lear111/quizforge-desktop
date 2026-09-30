@@ -105,46 +105,52 @@ input[type=color] {
 #workspace {
   height: calc(100vh - 84px);
   overflow: auto;
-  padding: 30px 0 0;
   box-sizing: border-box;
-  background:
-    linear-gradient(
-      to right,
-      #f2f4f7 0,
-      #f2f4f7 calc(50% - 408px),
-      #fff calc(50% - 408px),
-      #fff calc(50% + 408px),
-      #f2f4f7 calc(50% + 408px));
+  background: #f2f4f7;
+}
+#paper-stage {
+  min-width: 100%;
+  box-sizing: border-box;
+  padding: 30px 24px 40px;
 }
 #paper {
   width: 816px;
   margin: 0 auto;
-  box-shadow:
-    -1px 0 #dce0e6,
-    1px 0 #dce0e6,
-    0 -1px #dce0e6;
+  box-shadow: 0 0 0 1px #dce0e6;
   background: white;
-  min-height: calc(100vh - 114px);
 }
-#paper canvas {
+#paper .ce-page-container canvas {
   display: block;
 }
-#workspace::after {
-  content: "";
-  display: block;
-  width: 816px;
-  height: 120px;
-  margin: 0 auto;
-  background: white;
-  box-shadow: -1px 0 #dce0e6, 1px 0 #dce0e6;
+#paper .ce-magnifier {
+  display: none !important;
 }
-@media (max-width: 850px) {
-  #workspace {
-    background: #f2f4f7;
-  }
-  #paper,
-  #workspace::after {
-    margin-left: 17px;
-    margin-right: 17px;
-  }
+.preview,
+.preview body {
+  height: auto;
+  overflow: hidden;
+  overflow: clip;
+  background: transparent;
+}
+.preview #toolbar {
+  display: none;
+}
+.preview #workspace {
+  height: auto;
+  overflow: hidden;
+  overflow: clip;
+  padding: 0;
+  background: transparent;
+}
+.preview #paper-stage {
+  width: auto !important;
+  min-width: 0;
+  padding: 0;
+}
+.preview #paper {
+  width: 672px;
+  margin: 0;
+  min-height: 0;
+  box-shadow: none;
+  background: transparent;
 }
