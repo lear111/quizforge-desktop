@@ -50,6 +50,7 @@ final class QuestionOutlineView extends VBox {
             String title = switch (type) {
                 case "SINGLE_CHOICE" -> "单选题";
                 case "MULTIPLE_CHOICE" -> "多选题";
+                case "ESSAY" -> "作文题";
                 default -> throw new IllegalArgumentException("Unsupported question type: " + type);
             };
             FlowPane numbers = new FlowPane();
@@ -94,14 +95,16 @@ final class QuestionOutlineView extends VBox {
         cells.forEach((index, cell) -> {
             Integer practiceIndex = practiceIndexes.get(questions.get(index).id());
             String state = practiceIndex != null && session.state(practiceIndex) == QuestionBankPracticeSession.State.SUBMITTED
-                    ? session.correct(practiceIndex) ? "correct" : "incorrect" : "unsubmitted";
+                    ? "ESSAY".equals(questions.get(index).type()) ? "unscored"
+                            : session.correct(practiceIndex) ? "correct" : "incorrect" : "unsubmitted";
             boolean current = index == selected;
-            cell.getStyleClass().removeAll("unsubmitted", "correct", "incorrect", "current");
+            cell.getStyleClass().removeAll("unsubmitted", "correct", "incorrect", "unscored", "current");
             cell.getStyleClass().add(state);
             if (current) cell.getStyleClass().add("current");
             String description = "第 " + (index + 1) + " 题 · " + switch (state) {
                 case "correct" -> "回答正确";
                 case "incorrect" -> "回答错误";
+                case "unscored" -> "已提交，未评分";
                 default -> "未提交";
             } + (current ? " · 当前题目" : "");
             cell.setAccessibleText(description);

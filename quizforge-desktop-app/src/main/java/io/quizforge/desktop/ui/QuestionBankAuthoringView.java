@@ -12,7 +12,7 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 
-/** Essay responses stay local to this page; supported choices use the persistent practice view. */
+/** Mixed question types share a durable ACTIVE round and their own answer controls. */
 final class QuestionBankAuthoringView extends SplitPane {
     private final BorderPane readerColumn=new BorderPane();
     private final VBox outline=new VBox(10);
@@ -38,7 +38,13 @@ final class QuestionBankAuthoringView extends SplitPane {
             public void changed(javafx.beans.value.ObservableValue<? extends Number> o,Number before,Number value){
                 if(value.doubleValue()>500){setDividerPositions((value.doubleValue()-260)/value.doubleValue());widthProperty().removeListener(this);}
             }
-        });render();
+        });
+        if(practiceLoader!=null){
+            ensurePractice();
+            String current=practice.session().current().id();
+            for(int i=0;i<bank.questions().size();i++)if(bank.questions().get(i).id().equals(current)){index=i;break;}
+        }
+        render();
     }
     static boolean containsEssay(QuestionBank bank){return bank.questions().stream().anyMatch(q->"ESSAY".equals(q.type()));}
     static boolean hasPracticeChoices(QuestionBank bank){return bank.questions().stream().anyMatch(QuestionText::supports);}
@@ -67,6 +73,10 @@ final class QuestionBankAuthoringView extends SplitPane {
         }
         showingSummary=false;
         var current=bank.questions().get(index);
+        if(practice!=null){
+            int selected=practiceIndex(current.id());
+            if(selected>=0 && (practice.session().finished() || practice.session().index()!=selected))practice.goTo(selected);
+        }
         if(practiceLoader!=null && QuestionText.supports(current)){
             ensurePractice();
             int selected=practiceIndex(current.id());
@@ -98,15 +108,16 @@ final class QuestionBankAuthoringView extends SplitPane {
                 UiTheme.label((char)('A'+i)+"  "+QuestionText.option(choice.options().get(i)),"question-option"));
         var previous=QuestionCardLayout.navigation("arrow-left","上一题",()->show(index-1));previous.setId("authoring-previous-question");previous.setDisable(index==0);
         boolean last=index==bank.questions().size()-1;
-        var next=QuestionCardLayout.navigation("arrow",last && hasPracticeChoices(bank)?"查看本次练习":"下一题",this::next);
-        next.setId("authoring-next-question");next.setDisable(last && (practiceLoader==null || !hasPracticeChoices(bank)));
+        var next=QuestionCardLayout.navigation("arrow",last && practiceLoader!=null?"查看本次练习":"下一题",this::next);
+        next.setId("authoring-next-question");next.setDisable(last && practiceLoader==null);
         var stage=new VBox(QuestionCardLayout.row(previous,card,next));QuestionCardLayout.configure(stage);readerColumn.setCenter(QuestionCardLayout.scroll(stage));refreshOutline();
     }
     @SuppressWarnings("unchecked")
     private EssayAnswerPane essayResponse(Question question){
         var answers=(java.util.Map<String,EssayAnswerPane>)getProperties().computeIfAbsent(
                 "quizforge.essay.pageAnswers",ignored->new java.util.HashMap<String,EssayAnswerPane>());
-        return answers.computeIfAbsent(question.id(),ignored->new EssayAnswerPane(question,bank.resources(),resources));
+        var pane=answers.computeIfAbsent(question.id(),ignored->new EssayAnswerPane(question,bank.resources(),resources,practice,this::refreshOutline));
+        pane.restore();return pane;
     }
     private void ensurePractice(){if(practice==null)practice=practiceLoader.get();}
     private int practiceIndex(String id){
@@ -116,7 +127,7 @@ final class QuestionBankAuthoringView extends SplitPane {
     }
     private void next(){
         if(index<bank.questions().size()-1){show(index+1);return;}
-        if(practiceLoader==null || !hasPracticeChoices(bank))return;
+        if(practiceLoader==null)return;
         ensurePractice();practice.goTo(practice.session().bank().questions().size()-1);practice.next();render();
     }
     private void practiceChanged(){
@@ -145,10 +156,10 @@ final class QuestionBankAuthoringView extends SplitPane {
             for(int i=0;i<bank.questions().size();i++)if(type.equals(bank.questions().get(i).type())){
                 final int target=i;Button button=new Button(Integer.toString(i+1));button.setId("authoring-question-"+(i+1));
                 button.getStyleClass().add("question-number-cell");
-                if(practice!=null && QuestionText.supports(bank.questions().get(i))){
+                if(practice!=null){
                     int selected=practiceIndex(bank.questions().get(i).id());
                     boolean submitted=selected>=0 && practice.session().state(selected)==QuestionBankPracticeSession.State.SUBMITTED;
-                    button.getStyleClass().add(submitted?practice.session().correct(selected)?"correct":"incorrect":"unsubmitted");
+                    button.getStyleClass().add(submitted?"ESSAY".equals(type)?"unscored":practice.session().correct(selected)?"correct":"incorrect":"unsubmitted");
                 }
                 if(i==index && (editorJump!=null || practice==null || !practice.session().finished()))button.getStyleClass().add("current");
                 button.setOnAction(e->show(target));grid.getChildren().add(button);

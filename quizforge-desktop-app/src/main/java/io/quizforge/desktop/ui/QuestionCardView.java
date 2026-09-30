@@ -38,6 +38,7 @@ final class QuestionCardView extends VBox {
         String typeName = switch (question.type()) {
             case "SINGLE_CHOICE" -> "单选题";
             case "MULTIPLE_CHOICE" -> "多选题";
+            case "ESSAY" -> "作文题";
             default -> throw new IllegalArgumentException("Unsupported question type: " + question.type());
         };
         Label type = UiTheme.label(typeName, "question-type-badge");
@@ -153,7 +154,7 @@ final class QuestionCardView extends VBox {
     }
 
     private void details(VBox box, boolean correctAnswer, boolean analysis, Node sources) {
-        if (correctAnswer) box.getChildren().add(UiTheme.label(
+        if (correctAnswer && !"ESSAY".equals(question.type())) box.getChildren().add(UiTheme.label(
                 "正确答案：" + question.answerLabels(question.correctAnswer()), "field-label"));
         if (analysis && !question.analysis().isBlank()) {
             Label explanation = UiTheme.label(question.analysis(), "question-analysis");

@@ -20,6 +20,8 @@ final class CanvasEditorBridge {
     private QuestionContent initial;
     private JSObject api;
     private boolean closed;
+    private boolean loading;
+    private String savedValue;
     private final boolean preview;
 
     CanvasEditorBridge(QuestionContent initial,ContentEditSession session,Consumer<String> errors,Runnable chooseImage) {
@@ -79,11 +81,18 @@ final class CanvasEditorBridge {
     }
     WebView view(){return web;}
     boolean ready(){return api!=null && !closed;}
+    void onContentChanged(Runnable listener){host.onChange(()->{if(ready() && !loading && !preview)listener.run();});}
+    boolean hasChanges(){return ready() && savedValue!=null && !savedValue.equals(call("value"));}
+    void checkpoint(){savedValue=(String)call("value");}
     void loadContent(QuestionContent content){
         initial=Objects.requireNonNull(content);requireReady();
-        if(content instanceof DocumentContent document)call("loadDocument",session.document(document));
-        else call("load",CanvasEditorAdapter.toCanvasJson(content,imageData()));
-        if(preview)call("mode","readonly");
+        loading=true;
+        try{
+            if(content instanceof DocumentContent document)call("loadDocument",session.document(document));
+            else call("load",CanvasEditorAdapter.toCanvasJson(content,imageData()));
+            if(preview)call("mode","readonly");
+            checkpoint();
+        }finally{loading=false;}
     }
     QuestionContent getContent(){
         requireReady();

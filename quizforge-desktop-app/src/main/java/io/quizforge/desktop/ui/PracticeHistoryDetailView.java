@@ -97,6 +97,7 @@ final class PracticeHistoryDetailView extends BorderPane {
             return;
         }
         var row = detail.questions().get(questionIndex);
+        boolean essay = "ESSAY".equals(row.questionType());
         var content = QuestionPresentationMapper.history(row);
         VBox context = new VBox(8);
         context.getStyleClass().add("history-question-context");
@@ -106,7 +107,7 @@ final class PracticeHistoryDetailView extends BorderPane {
         context.getChildren().add(finalState);
 
         if (row.draftAnswer() != null) {
-            Label draft = UiTheme.label("未提交选择：" + content.answerLabels(
+            Label draft = UiTheme.label(essay ? "未提交草稿" : "未提交选择：" + content.answerLabels(
                     QuestionPresentationMapper.answerIds(row.draftAnswer())), "history-draft");
             draft.setId("history-draft");
             context.getChildren().add(draft);
@@ -118,7 +119,7 @@ final class PracticeHistoryDetailView extends BorderPane {
             noAttempt.setId("history-no-attempt");
             context.getChildren().add(noAttempt);
             card = QuestionCardView.readOnly(content, questionIndex, detail.questions().size(), "history-",
-                    row.draftAnswer() == null ? Set.of() : QuestionPresentationMapper.answerIds(row.draftAnswer()), sourceList);
+                    essay || row.draftAnswer() == null ? Set.of() : QuestionPresentationMapper.answerIds(row.draftAnswer()), sourceList);
         } else {
             var attempt = row.attempts().get(attemptIndex);
             Label attemptHeader = UiTheme.label("第 " + (attemptIndex + 1) + " / " + row.attempts().size()
@@ -136,9 +137,19 @@ final class PracticeHistoryDetailView extends BorderPane {
             FlowPane attempts = new FlowPane(16, 8, previousAttempt, nextAttempt);
             attempts.getStyleClass().add("history-attempt-navigation");
             context.getChildren().add(attempts);
-            card = QuestionCardView.result(QuestionPresentationMapper.historyResult(row, attempt),
-                    questionIndex, detail.questions().size(), "history-", sourceList);
-            card.resultLabel().setId("history-attempt-result");
+            if(essay){
+                card=QuestionCardView.readOnly(content,questionIndex,detail.questions().size(),"history-",Set.of(),sourceList);
+                var result=UiTheme.label("已提交 · 未评分","muted");result.setId("history-attempt-result");card.getChildren().add(result);
+            }else{
+                card = QuestionCardView.result(QuestionPresentationMapper.historyResult(row, attempt),
+                        questionIndex, detail.questions().size(), "history-", sourceList);
+                card.resultLabel().setId("history-attempt-result");
+            }
+        }
+        if(essay){
+            var answer=attemptIndex<0?row.draftAnswer():row.attempts().get(attemptIndex).answer();
+            if(answer!=null)card.getChildren().addAll(UiTheme.label("作答","essay-section-title"),
+                    EssayAnswerPane.renderSavedAnswer(answer,"history-essay-answer-"));
         }
         Button previous = QuestionCardLayout.navigation("arrow-left", "上一题", () -> showQuestion(questionIndex - 1));
         previous.setId("history-previous-question");

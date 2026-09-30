@@ -1,7 +1,9 @@
 package io.quizforge.desktop.ui;
 
 import javafx.beans.binding.Bindings;
+import javafx.beans.value.ChangeListener;
 import javafx.css.PseudoClass;
+import javafx.geometry.Bounds;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -27,11 +29,62 @@ final class QuestionCardLayout {
 
     static HBox row(Node previous, VBox card, Node next) {
         HBox.setHgrow(card, Priority.ALWAYS);
-        HBox row = new HBox(14, previous, card, next);
+        HBox row = new NavigationRow(previous, card, next);
         row.getStyleClass().add("question-navigation");
         row.setMinWidth(0);
         row.setAlignment(Pos.CENTER);
         return row;
+    }
+
+    /** Pin navigation to the visible reader, while the card remains in the scroll content. */
+    private static final class NavigationRow extends HBox {
+        private final Node previous;
+        private final Node next;
+        private ScrollPane scroll;
+        private final ChangeListener<Bounds> viewportChanged = (o, before, after) -> positionNavigation();
+
+        NavigationRow(Node previous, VBox card, Node next) {
+            super(14, previous, card, next);
+            this.previous = previous;this.next = next;
+            localToSceneTransformProperty().addListener((o, before, after) -> positionNavigation());
+            sceneProperty().addListener((o, before, after) -> {
+                if (after == null) observeScroll(null);
+                else javafx.application.Platform.runLater(this::positionNavigation);
+            });
+        }
+
+        @Override protected void layoutChildren() {
+            super.layoutChildren();
+            positionNavigation();
+        }
+
+        private void observeScroll(ScrollPane current) {
+            if (scroll == current) return;
+            if (scroll != null) scroll.viewportBoundsProperty().removeListener(viewportChanged);
+            scroll = current;
+            if (scroll != null) scroll.viewportBoundsProperty().addListener(viewportChanged);
+        }
+
+        private void positionNavigation() {
+            Node viewport = null;ScrollPane current = null;
+            for (Node parent = getParent();parent != null;parent = parent.getParent()) {
+                if (parent.getStyleClass().contains("viewport")) viewport = parent;
+                if (parent instanceof ScrollPane pane) { current = pane;break; }
+            }
+            observeScroll(getScene() == null ? null : current);
+            if (scroll == null || viewport == null) {
+                previous.setTranslateY(0);next.setTranslateY(0);return;
+            }
+            double centerY = sceneToLocal(viewport.localToScene(0,
+                    viewport.getLayoutBounds().getHeight() / 2)).getY();
+            pin(previous, centerY);pin(next, centerY);
+        }
+
+        private void pin(Node node, double centerY) {
+            if (node instanceof Button && node.getStyleClass().contains("question-navigation-button"))
+                node.setTranslateY(centerY - node.getLayoutY() - node.getLayoutBounds().getMinY()
+                        - node.getLayoutBounds().getHeight() / 2);
+        }
     }
 
     static Button navigation(String icon, String description, Runnable action) {

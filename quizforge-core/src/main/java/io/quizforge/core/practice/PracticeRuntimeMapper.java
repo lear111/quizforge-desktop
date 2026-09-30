@@ -15,6 +15,7 @@ public final class PracticeRuntimeMapper {
             throw new IllegalStateException("Practice snapshot does not match the bank");
         Map<Integer, Set<String>> selections = new HashMap<>();
         Map<Integer, Boolean> submitted = new HashMap<>();
+        Map<Integer, QuestionBankPracticeSession.State> contentStates = new HashMap<>();
         int current = -1;
         var mapper = new PracticeQuestionSnapshotMapper();
         for (int index = 0; index < snapshot.questions().size(); index++) {
@@ -24,6 +25,16 @@ public final class PracticeRuntimeMapper {
             if (!question.questionId().equals(fileQuestion.id()) || !question.snapshot().equals(mapper.map(fileQuestion)))
                 throw new IllegalStateException("Practice snapshot has a different revision");
             if (question.questionId().equals(snapshot.session().currentQuestionId())) current = index;
+            if ("ESSAY".equals(question.snapshot().questionType())) {
+                if (question.practiceState() == PracticeSessionQuestion.State.SUBMITTED && row.attempts().isEmpty())
+                    throw new IllegalStateException("Submitted essay attempt is missing");
+                EssayPracticeAnswer.from(question.draftAnswer());
+                row.attempts().forEach(attempt -> EssayPracticeAnswer.from(attempt.answer()));
+                contentStates.put(index, question.practiceState() == PracticeSessionQuestion.State.SUBMITTED
+                        ? QuestionBankPracticeSession.State.SUBMITTED : question.draftAnswer() == null
+                                ? QuestionBankPracticeSession.State.UNANSWERED : QuestionBankPracticeSession.State.SELECTED);
+                continue;
+            }
             switch (question.practiceState()) {
                 case UNANSWERED -> { }
                 case DRAFT -> selections.put(index, optionIds(question.draftAnswer()));
@@ -45,7 +56,7 @@ public final class PracticeRuntimeMapper {
         if (current < 0 && snapshot.session().currentView() == PracticeSession.View.SUMMARY)
             current = runtime.bank().questions().size() - 1;
         if (current < 0) throw new IllegalStateException("Current question is missing");
-        runtime.restoreState(current, selections, submitted, snapshot.session().currentView() == PracticeSession.View.SUMMARY);
+        runtime.restoreState(current, selections, submitted, snapshot.session().currentView() == PracticeSession.View.SUMMARY, contentStates);
     }
 
     static Set<String> optionIds(PracticePayload payload) {

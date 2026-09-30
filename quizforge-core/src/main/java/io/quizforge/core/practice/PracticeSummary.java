@@ -12,18 +12,21 @@ public record PracticeSummary(int totalCount, int submittedCount, int correctCou
     public static PracticeSummary fromQuestions(java.util.List<ActivePracticeSnapshot.Question> questions) {
         int correct = 0;
         int incorrect = 0;
+        int unscored = 0;
         for (var row : questions) {
             if (row.sessionQuestion().practiceState() != PracticeSessionQuestion.State.SUBMITTED) continue;
             if (row.attempts().isEmpty()) throw new IllegalStateException("Submitted attempt is missing");
             switch (row.attempts().getLast().result()) {
                 case CORRECT -> correct++;
                 case INCORRECT -> incorrect++;
-                case UNSCORED -> throw new IllegalStateException("Choice answer must be scored");
+                case UNSCORED -> unscored++;
             }
         }
-        int submitted = correct + incorrect;
+        int submitted = correct + incorrect + unscored;
         return new PracticeSummary(questions.size(), submitted, correct, incorrect,
-                questions.size() - submitted, submitted == 0 ? OptionalInt.empty()
-                        : OptionalInt.of((int) Math.round(100.0 * correct / submitted)));
+                questions.size() - submitted, correct + incorrect == 0 ? OptionalInt.empty()
+                        : OptionalInt.of((int) Math.round(100.0 * correct / (correct + incorrect))));
     }
+
+    public int unscoredCount() { return submittedCount - correctCount - incorrectCount; }
 }

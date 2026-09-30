@@ -31,10 +31,10 @@ public final class SqliteWorkspacePracticeRuntimeProvider implements PracticeRun
 
     @Override public PersistentPracticeRuntime open(WorkspaceId workspace, QuestionBank bank) {
         new QuestionBankValidator().validate(bank);
-        var choices = bank.questions().stream().filter(QuestionText::supports).toList();
+        var choices = bank.questions().stream().filter(q -> QuestionText.supports(q)
+                || "ESSAY".equals(q.type()) && q.stimulusRefs().isEmpty()).toList();
         if (choices.isEmpty()) throw new IllegalArgumentException("This bank has no supported practice questions");
-        // Keep the original asset and full-file logical revision. Only supported choice
-        // questions enter the existing practice snapshots; essays remain author previews.
+        // Choices and essays share one ACTIVE round and the full-file logical revision.
         var practiceBank = choices.size() == bank.questions().size() ? bank
                 : new QuestionBank(bank.assetId(), bank.title(), bank.schemaVersion(),
                         bank.stimuli(), choices, bank.resources());

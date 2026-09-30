@@ -31,6 +31,7 @@ final class HistoryQuestionOutlineView extends VBox {
             String title = switch (type) {
                 case "SINGLE_CHOICE" -> "单选题";
                 case "MULTIPLE_CHOICE" -> "多选题";
+                case "ESSAY" -> "作文题";
                 default -> throw new IllegalArgumentException("Unsupported history question type: " + type);
             };
             FlowPane numbers = new FlowPane();
@@ -64,15 +65,16 @@ final class HistoryQuestionOutlineView extends VBox {
                 state = switch (question.attempts().getLast().result()) {
                     case CORRECT -> "correct";
                     case INCORRECT -> "incorrect";
-                    case UNSCORED -> "unsubmitted";
+                    case UNSCORED -> "unscored";
                 };
             }
-            cell.getStyleClass().removeAll("unsubmitted", "correct", "incorrect", "current");
+            cell.getStyleClass().removeAll("unsubmitted", "correct", "incorrect", "unscored", "current");
             cell.getStyleClass().add(state);
             if (index == currentIndex) cell.getStyleClass().add("current");
             String description = "第 " + (index + 1) + " 题 · " + switch (state) {
                 case "correct" -> "回答正确";
                 case "incorrect" -> "回答错误";
+                case "unscored" -> "已提交，未评分";
                 default -> "未完成";
             } + (index == currentIndex ? " · 当前题目" : "");
             cell.setAccessibleText(description);

@@ -35,7 +35,10 @@ public final class PracticeSessionService {
             Instant now = clock.instant();
             PracticeSession session = repositories.sessions().findActiveByQuestionBankAssetId(bank.assetId())
                     .orElseGet(() -> create(repositories, bank, contentId, now));
-            if (!session.questionBankContentId().equals(contentId)) {
+            var persistedIds = repositories.questions().findBySessionId(session.id()).stream()
+                    .map(PracticeSessionQuestion::questionId).toList();
+            if (!session.questionBankContentId().equals(contentId)
+                    || !persistedIds.equals(bank.questions().stream().map(Question::id).toList())) {
                 synchronize(repositories, session, bank, contentId, now);
             } else {
                 repositories.sessions().touch(session.id(), now);
@@ -83,9 +86,53 @@ public final class PracticeSessionService {
         });
     }
 
+    public ActivePracticeSnapshot saveEssayDraft(String sessionId, String expectedContentId, String questionId,
+            EssayPracticeAnswer answer) {
+        java.util.Objects.requireNonNull(answer);
+        return transactions.execute(repositories -> {
+            requireCurrent(repositories, sessionId, expectedContentId, questionId);
+            var question = requireQuestion(repositories, sessionId, questionId);
+            if (!"ESSAY".equals(question.snapshot().questionType()))
+                throw new IllegalArgumentException("Essay answer requires an essay question");
+            if (question.practiceState() == PracticeSessionQuestion.State.SUBMITTED)
+                throw new IllegalStateException("Answer already submitted; retry before editing");
+            boolean revision = question.practiceState() == PracticeSessionQuestion.State.REVISING;
+            boolean retry = question.practiceState() == PracticeSessionQuestion.State.RETRYING;
+            var state = revision ? PracticeSessionQuestion.State.REVISING : retry ? PracticeSessionQuestion.State.RETRYING
+                    : answer.empty() ? PracticeSessionQuestion.State.UNANSWERED : PracticeSessionQuestion.State.DRAFT;
+            var payload = answer.empty() ? null : answer.payload();
+            if (state == question.practiceState() && java.util.Objects.equals(payload, question.draftAnswer()))
+                return restore(repositories, sessionId);
+            Instant now = clock.instant();
+            repositories.questions().updateDraft(sessionId, questionId, payload, state, now);
+            repositories.sessions().touch(sessionId, now);
+            return restore(repositories, sessionId);
+        });
+    }
+
     public ActivePracticeSnapshot submitAnswer(String sessionId, String expectedContentId, String questionId) {
         return transactions.execute(repositories -> {
             requireCurrent(repositories, sessionId, expectedContentId, questionId);
+            var current = requireQuestion(repositories, sessionId, questionId);
+            if ("ESSAY".equals(current.snapshot().questionType())) {
+                if (current.practiceState() == PracticeSessionQuestion.State.SUBMITTED)
+                    throw new IllegalStateException("Answer already submitted");
+                var answer = EssayPracticeAnswer.from(current.draftAnswer());
+                if (answer.empty()) throw new IllegalStateException("Write an answer first");
+                boolean revision = current.practiceState() == PracticeSessionQuestion.State.REVISING;
+                boolean retry = current.practiceState() == PracticeSessionQuestion.State.RETRYING;
+                var attempts = repositories.attempts().listBySessionQuestion(current.id());
+                if ((revision || retry) ? attempts.isEmpty() : !attempts.isEmpty())
+                    throw new IllegalStateException("Practice attempt state is inconsistent");
+                Instant now = clock.instant();
+                repositories.attempts().append(new QuestionAttempt(id("pa_"), current.id(),
+                        repositories.attempts().nextAttemptNo(current.id()), revision ? QuestionAttempt.Mode.REVISION
+                                : retry ? QuestionAttempt.Mode.RETRY : QuestionAttempt.Mode.INITIAL,
+                        answer.payload(), QuestionAttempt.Result.UNSCORED, null, null, now));
+                repositories.questions().updateDraft(sessionId, questionId, null, PracticeSessionQuestion.State.SUBMITTED, now);
+                repositories.sessions().touch(sessionId, now);
+                return restore(repositories, sessionId);
+            }
             var question = requireAnswerable(repositories, sessionId, questionId);
             if (question.draftAnswer() == null)
                 throw new IllegalStateException("Select an answer first");

@@ -21662,6 +21662,11 @@ endobj
       editor.listener.contentChange = () => {
         state.changed++;
         reportHeight();
+        const fingerprint = JSON.stringify(editor.command.getValue().data);
+        if (fingerprint === state.answerFingerprint) return;
+        state.answerFingerprint = fingerprint;
+        if (!PREVIEW && window.quizforgeHost && window.quizforgeHost.contentChanged)
+          window.quizforgeHost.contentChanged();
       };
       if (state.heightObserver) state.heightObserver.disconnect();
       if (PREVIEW) {
@@ -21796,12 +21801,14 @@ endobj
       if (PREVIEW) editor.command.executeUpdateOptions(previewOptions());
       editor.command.executeSetValue(JSON.parse(json));
       focusDocument();
+      state.answerFingerprint = JSON.stringify(editor.command.getValue().data);
     },
     loadDocument: (json) => {
       const document2 = JSON.parse(json);
       editor.command.executeUpdateOptions({ ...document2.options, mode: PREVIEW ? "readonly" : "edit", magnifier: { disabled: true }, ...PREVIEW ? previewOptions() : {} });
       editor.command.executeSetValue(document2.data);
       focusDocument();
+      state.answerFingerprint = JSON.stringify(editor.command.getValue().data);
     },
     document: () => JSON.stringify(editor.command.getValue()),
     text: () => editor.command.getText().main,

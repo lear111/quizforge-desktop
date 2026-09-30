@@ -24,6 +24,22 @@ public final class PersistentPracticeRuntime {
     public String sessionId() { return sessionId; }
     public PracticeSummary summary() { return PracticeSummary.from(snapshot); }
 
+    public ActivePracticeSnapshot.Question questionState(String questionId) {
+        return snapshot.questions().stream().filter(row -> row.sessionQuestion().questionId().equals(questionId))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("Unknown practice question"));
+    }
+
+    public EssayPracticeAnswer essayAnswer(String questionId) {
+        var row = questionState(questionId);
+        var answer = row.sessionQuestion().practiceState() == PracticeSessionQuestion.State.SUBMITTED
+                ? row.attempts().getLast().answer() : row.sessionQuestion().draftAnswer();
+        return EssayPracticeAnswer.from(answer);
+    }
+
+    public void saveEssayDraft(String questionId, EssayPracticeAnswer answer) {
+        hydrate(service.saveEssayDraft(sessionId, contentId, questionId, answer));
+    }
+
     private void hydrate(ActivePracticeSnapshot state) {
         mapper.hydrate(session, state);
         snapshot = state;

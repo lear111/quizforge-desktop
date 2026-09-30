@@ -95,6 +95,7 @@ final class PracticeHistoryView extends VBox {
                 UiTheme.label("未完成 " + summary.unfinishedCount(), "history-card-meta"));
         card.setId("history-card-" + entry.sessionId());
         card.getStyleClass().add("history-card");
+        if(summary.unscoredCount()>0)card.getChildren().add(UiTheme.label("未评分 "+summary.unscoredCount(),"history-card-meta"));
         card.setOnMouseClicked(event -> {
             if (event.getButton() == MouseButton.PRIMARY) openDetail.accept(entry.sessionId());
         });

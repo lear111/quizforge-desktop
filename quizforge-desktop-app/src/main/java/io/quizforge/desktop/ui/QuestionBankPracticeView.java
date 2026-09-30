@@ -123,8 +123,8 @@ final class QuestionBankPracticeView extends VBox {
     private void command(Runnable action) {
         try {
             action.run();
-            render();
             if (onChanged != null) onChanged.run();
+            if (session.finished() || !"ESSAY".equals(session.current().type())) render();
         } catch (RuntimeException failure) {
             // The runtime is only hydrated after commit; repaint restores the persisted selection.
             render();
@@ -147,6 +147,7 @@ final class QuestionBankPracticeView extends VBox {
                 summaryStatus("错误", summary.incorrectCount(), "incorrect", "summary-incorrect-count"),
                 summaryStatus("未作答", summary.unfinishedCount(), "unanswered", "summary-unanswered-count"));
         legend.getStyleClass().add("practice-summary-status-list");
+        if(summary.unscoredCount()>0)legend.getChildren().add(summaryStatus("未评分",summary.unscoredCount(),"unanswered","summary-unscored-count"));
         FlowPane results = new FlowPane(28, 20, summaryRing(summary, percentage), legend);
         results.getStyleClass().add("practice-summary-results");
         results.setMinWidth(0);
@@ -205,7 +206,7 @@ final class QuestionBankPracticeView extends VBox {
             double start = 90;
             start = addSummarySegment(segments, start, summary.correctCount(), summary.totalCount(), "correct");
             start = addSummarySegment(segments, start, summary.incorrectCount(), summary.totalCount(), "incorrect");
-            addSummarySegment(segments, start, summary.unfinishedCount(), summary.totalCount(), "unanswered");
+            addSummarySegment(segments, start, summary.unfinishedCount()+summary.unscoredCount(), summary.totalCount(), "unanswered");
         }
         StackPane ring = new StackPane(segments, percentage);
         ring.setMinSize(132, 132);

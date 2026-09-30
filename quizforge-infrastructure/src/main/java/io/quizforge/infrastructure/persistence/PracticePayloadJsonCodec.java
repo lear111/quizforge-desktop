@@ -10,7 +10,9 @@ import io.quizforge.core.practice.PracticePayload;
 
 /** Persistence encoding only; deliberately independent of the .qbank file contract. */
 final class PracticePayloadJsonCodec {
-    private final ObjectMapper json = new ObjectMapper()
+    private final ObjectMapper json = new ObjectMapper(com.fasterxml.jackson.core.JsonFactory.builder()
+            .streamReadConstraints(com.fasterxml.jackson.core.StreamReadConstraints.builder()
+                    .maxStringLength(io.quizforge.core.practice.EssayPracticeAnswer.MAX_DOCUMENT_CHARACTERS).build()).build())
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)

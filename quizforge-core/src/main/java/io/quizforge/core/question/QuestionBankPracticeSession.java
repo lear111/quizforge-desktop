@@ -13,6 +13,7 @@ public final class QuestionBankPracticeSession {
     private final QuestionBank bank;
     private final Map<Integer, Set<String>> selections = new HashMap<>();
     private final Map<Integer, Boolean> submitted = new HashMap<>();
+    private final Map<Integer, State> contentStates = new HashMap<>();
     private int index;
     private boolean finished;
 
@@ -32,6 +33,7 @@ public final class QuestionBankPracticeSession {
     /** Read-only inspection of any question, without changing the current position. */
     public State state(int questionIndex) {
         bank.questions().get(questionIndex); // Keep the same index bounds as the question list.
+        if (contentStates.containsKey(questionIndex)) return contentStates.get(questionIndex);
         if (submitted.containsKey(questionIndex)) return State.SUBMITTED;
         return selections.getOrDefault(questionIndex, Set.of()).isEmpty() ? State.UNANSWERED : State.SELECTED;
     }
@@ -40,6 +42,7 @@ public final class QuestionBankPracticeSession {
     }
     public boolean correct(int questionIndex) {
         if (state(questionIndex) != State.SUBMITTED) throw new IllegalStateException("Answer has not been submitted");
+        if (!submitted.containsKey(questionIndex)) throw new IllegalStateException("Answer has not been scored");
         return submitted.get(questionIndex);
     }
 
@@ -63,6 +66,11 @@ public final class QuestionBankPracticeSession {
     /** Direct hydration, never replayed clicks or submissions. Validate before replacing state. */
     public void restoreState(int currentIndex, Map<Integer, Set<String>> restoredSelections,
             Map<Integer, Boolean> restoredSubmitted, boolean summary) {
+        restoreState(currentIndex, restoredSelections, restoredSubmitted, summary, Map.of());
+    }
+
+    public void restoreState(int currentIndex, Map<Integer, Set<String>> restoredSelections,
+            Map<Integer, Boolean> restoredSubmitted, boolean summary, Map<Integer, State> restoredContentStates) {
         bank.questions().get(currentIndex);
         Map<Integer, Set<String>> validated = new HashMap<>();
         restoredSelections.forEach((questionIndex, values) -> {
@@ -80,6 +88,7 @@ public final class QuestionBankPracticeSession {
         });
         selections.clear(); selections.putAll(validated);
         submitted.clear(); submitted.putAll(restoredSubmitted);
+        contentStates.clear(); contentStates.putAll(restoredContentStates);
         index = currentIndex;
         finished = summary;
     }

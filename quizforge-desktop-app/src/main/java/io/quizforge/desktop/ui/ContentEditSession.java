@@ -78,4 +78,7 @@ final class ContentEditSession {
         return new ContentEditResult(true,content,added,removed);
     }
     ContentEditResult cancel() {staged.clear();return ContentEditResult.cancelled();}
+    void retainResources(QuestionContent content) {
+        var used=QuestionContentData.resourceIds(content);staged.keySet().removeIf(id->!used.contains(id));
+    }
 }

@@ -28,6 +28,44 @@ class CanvasEditorWebViewTest {
         assertTrue(started.await(20, TimeUnit.SECONDS));
     }
 
+    @Test void answerChangesAutosaveWithoutSaveClickAndBackFlushesFinalChange() throws Exception {
+        var loaded=new CountDownLatch(1);var automatic=new CountDownLatch(1);var finished=new CountDownLatch(1);
+        var failure=new AtomicReference<Throwable>();var window=new AtomicReference<CanvasEditorWindow>();
+        var latest=new AtomicReference<String>();var saves=new AtomicInteger();
+        Platform.runLater(()->{
+            window.set(new CanvasEditorWindow(null,"编辑作答",new TextContent("Original"),List.of(),resource->null));
+            window.get().saveDraftsTo(result->{
+                latest.set(window.get().session().document((DocumentContent)result.content()));saves.incrementAndGet();automatic.countDown();
+            });
+            window.get().stage().setOpacity(0);window.get().stage().show();
+            window.get().bridge().view().getEngine().getLoadWorker().stateProperty().addListener((o,a,b)->{
+                if(b==Worker.State.SUCCEEDED || b==Worker.State.FAILED)loaded.countDown();
+            });
+        });
+        assertTrue(loaded.await(30,TimeUnit.SECONDS));
+        Platform.runLater(()->{
+            try{
+                assertTrue(window.get().bridge().ready());assertEquals(0,saves.get(),"Loading is not an answer edit");
+                window.get().bridge().view().getEngine().executeScript("window.canvasEditor.insertElement('[{\"value\":\" Auto draft\"}]')");
+            }catch(Throwable error){failure.set(error);automatic.countDown();}
+        });
+        assertTrue(automatic.await(10,TimeUnit.SECONDS));
+        Platform.runLater(()->{
+            try{
+                if(failure.get()!=null)throw new AssertionError(failure.get());
+                assertTrue(latest.get().contains("Auto draft"));assertTrue(window.get().stage().isShowing());
+                int prior=saves.get();
+                window.get().bridge().view().getEngine().executeScript("window.canvasEditor.insertElement('[{\"value\":\" Final change\"}]')");
+                ((javafx.scene.control.Button)window.get().stage().getScene().lookup("#canvas-editor-back")).fire();
+                assertFalse(window.get().stage().isShowing());assertTrue(saves.get()>prior);
+                assertTrue(latest.get().contains("Final change"));
+            }catch(Throwable error){failure.set(error);}
+            finally{window.get().stage().close();finished.countDown();}
+        });
+        assertTrue(finished.await(20,TimeUnit.SECONDS));
+        if(failure.get()!=null)throw new AssertionError("Answer autosave failed",failure.get());
+    }
+
     @Test void zoomKeepsPaperAndTextTogetherAndBothEdgesReachable() throws Exception {
         var loaded = new CountDownLatch(1);var finished = new CountDownLatch(1);
         var web = new AtomicReference<WebView>();var stage = new AtomicReference<Stage>();

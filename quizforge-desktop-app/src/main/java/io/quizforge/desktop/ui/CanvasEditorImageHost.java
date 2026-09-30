@@ -16,6 +16,7 @@ public final class CanvasEditorImageHost {
     private final Supplier<String> clipboardReader;
     private final BiPredicate<String,String> clipboardWriter;
     private java.util.function.DoubleConsumer heightListener;
+    private Runnable changeListener;
 
     public CanvasEditorImageHost(Runnable chooseImage) {
         this(chooseImage, () -> {});
@@ -59,4 +60,6 @@ public final class CanvasEditorImageHost {
     public void clipboardError(String message) { if(errors!=null)errors.accept(message); }
     void onHeight(java.util.function.DoubleConsumer listener) { heightListener=listener; }
     public void contentHeight(double height) { if(heightListener!=null && Double.isFinite(height))heightListener.accept(height); }
+    void onChange(Runnable listener) { changeListener=listener; }
+    public void contentChanged() { if(changeListener!=null)changeListener.run(); }
 }

@@ -10,6 +10,16 @@ public final class PracticeQuestionSnapshotMapper {
     public PracticeSessionQuestion.Snapshot map(Question question) {
         if (!question.stimulusRefs().isEmpty())
             throw new UnsupportedOperationException("The current practice snapshot does not support shared stimuli");
+        if ("ESSAY".equals(question.type())) {
+            return new PracticeSessionQuestion.Snapshot(question.type(), QuestionContentData.plainText(question.prompt()),
+                    new PracticePayload(java.util.List.of()), new PracticePayload(Map.of(
+                            "correctOptionIds", java.util.List.of(),
+                            "prompt", QuestionContentData.encode(question.prompt()),
+                            "referenceAnswer", question.essayAnswerSpec().referenceAnswer() == null ? Map.of()
+                                    : QuestionContentData.encode(question.essayAnswerSpec().referenceAnswer()))),
+                    QuestionContentData.plainText(question.analysis()),
+                    new PracticePayload(question.sourceRefs().stream().map(this::sourceRef).toList()));
+        }
         var options = question.choicePayload().options().stream()
                 .map(option -> Map.of("id", option.id(), "content", QuestionText.option(option))).toList();
         // Choice answers are sets; list permutation alone does not change the correct answer.
