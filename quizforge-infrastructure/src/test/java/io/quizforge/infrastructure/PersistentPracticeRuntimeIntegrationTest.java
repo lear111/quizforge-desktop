@@ -580,6 +580,48 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertFalse(Files.exists(paths.workspaceRoot(one.id()).resolve(".quizforge/workspaces")));
     }
 
+    @Test void mixedBankKeepsChoiceAttemptsAndFullRevisionWithoutEssaySnapshots() throws Exception {
+        var paths = new WorkspacePathResolver(new QuizForgeDataDirectory(temp.resolve("mixed-workspace")));
+        var workspace = new Workspace(WorkspaceId.newId(), "Mixed", NOW, NOW);
+        paths.create(workspace);
+        var provider = new SqliteWorkspacePracticeRuntimeProvider(paths, codec, Clock.fixed(NOW, ZoneOffset.UTC));
+        var original = provider.open(workspace.id(), bank);
+        original.select("opt_a"); original.submit();
+        var essay = io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst();
+        var mixed = new QuestionBank(bank.assetId(), bank.title(), List.of(),
+                List.of(essay, bank.questions().get(0), bank.questions().get(1)), List.of());
+        var db = new SqliteDatabase(paths.workspaceRoot(workspace.id()).resolve(".quizforge/quizforge.db"));
+        var questions = new SqlitePracticeSessionQuestionRepository(db);
+        var attempts = new SqliteQuestionAttemptRepository(db);
+        var priorRows = questions.findBySessionId(original.sessionId());
+        var priorAttempts = attempts.listBySessionQuestion(priorRows.getFirst().id());
+        var restored = provider.open(workspace.id(), mixed);
+        assertEquals(original.sessionId(), restored.sessionId());
+        assertEquals(QuestionBankPracticeSession.State.SUBMITTED, restored.session().state());
+        assertEquals(priorRows, questions.findBySessionId(restored.sessionId()));
+        assertEquals(priorAttempts, attempts.listBySessionQuestion(priorRows.getFirst().id()));
+        assertEquals(codec.contentId(mixed), new SqlitePracticeSessionRepository(db)
+                .findById(restored.sessionId()).orElseThrow().questionBankContentId());
+        assertEquals(List.of("q_one", "q_two"), restored.session().bank().questions().stream().map(Question::id).toList());
+        restored.goTo(1); restored.select("opt_d"); restored.select("opt_e");
+        var editedEssay = io.quizforge.infrastructure.testing.EssayTestBanks.essay(essay.id(),
+                new TextContent("Edited essay only"), essay.essayPayload(), null);
+        var edited = new QuestionBank(bank.assetId(), bank.title(), List.of(),
+                List.of(editedEssay, bank.questions().get(0), bank.questions().get(1)), List.of());
+        var afterEdit = provider.open(workspace.id(), edited);
+        assertEquals(Set.of("opt_d", "opt_e"), afterEdit.session().selected());
+        assertEquals(priorAttempts, attempts.listBySessionQuestion(priorRows.getFirst().id()));
+        afterEdit.submit(); afterEdit.next();
+        assertEquals(2, afterEdit.summary().totalCount()); assertEquals(2, afterEdit.summary().correctCount());
+        String archivedId = afterEdit.sessionId(); afterEdit.restart();
+        var history = provider.history(workspace.id()).loadArchivedSessionDetail(bank.assetId(), archivedId);
+        assertEquals(List.of("SINGLE_CHOICE", "MULTIPLE_CHOICE"), history.questions().stream()
+                .map(PracticeHistoryDetail.Question::questionType).toList());
+        assertEquals(priorAttempts, attempts.listBySessionQuestion(priorRows.getFirst().id()));
+        assertThrows(IllegalArgumentException.class, () -> provider.open(workspace.id(),
+                io.quizforge.infrastructure.testing.EssayTestBanks.bank()));
+    }
+
     private PracticeSession session() { return new SqlitePracticeSessionRepository(database).findById(runtime.sessionId()).orElseThrow(); }
     private PracticeSessionQuestion question(String id) { return new SqlitePracticeSessionQuestionRepository(database).findBySessionIdAndQuestionId(runtime.sessionId(), id).orElseThrow(); }
     private List<QuestionAttempt> attempts(String id) { return new SqliteQuestionAttemptRepository(database).listBySessionQuestion(question(id).id()); }

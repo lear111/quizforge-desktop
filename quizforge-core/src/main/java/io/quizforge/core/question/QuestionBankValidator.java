@@ -32,7 +32,8 @@ public final class QuestionBankValidator {
         for (var question : bank.questions()) {
             if (!id(question.id(), "q_") || !questionIds.add(question.id())) fail("Invalid question id");
             boolean single = "SINGLE_CHOICE".equals(question.type()), multiple = "MULTIPLE_CHOICE".equals(question.type());
-            if (!single && !multiple) fail("Unsupported question type: " + question.type());
+            boolean essay = "ESSAY".equals(question.type());
+            if (!single && !multiple && !essay) fail("Unsupported question type: " + question.type());
             Set<String> usedStimuli = new HashSet<>();
             for (String ref : question.stimulusRefs())
                 if (!stimuli.contains(ref) || !usedStimuli.add(ref)) fail("Invalid stimulusRef");
@@ -40,6 +41,12 @@ public final class QuestionBankValidator {
             if (question.analysis() != null) content(question.analysis(), false, resources);
             if (question.scoreSpec() == null || question.scoreSpec().defaultMaxScore() == null
                     || question.scoreSpec().defaultMaxScore().signum() <= 0) fail("defaultMaxScore must be positive");
+            if (essay) {
+                if (!(question.payload() instanceof EssayPayload) || !(question.answerSpec() instanceof EssayAnswerSpec))
+                    fail("ESSAY requires EssayPayload and EssayAnswerSpec");
+                if (question.essayAnswerSpec().referenceAnswer() != null)
+                    content(question.essayAnswerSpec().referenceAnswer(), false, resources);
+            } else {
             if (!(question.payload() instanceof ChoicePayload) || !(question.answerSpec() instanceof ChoiceAnswerSpec))
                 fail("Choice requires ChoicePayload and ChoiceAnswerSpec");
             Set<String> options = new HashSet<>();
@@ -52,6 +59,7 @@ public final class QuestionBankValidator {
             if (options.size() < 2 || correct.size() != answers.size() || !options.containsAll(correct)
                     || single && correct.size() != 1 || multiple && (correct.size() < 2 || correct.size() >= options.size()))
                 fail("Invalid correctOptionIds");
+            }
             Set<String> refs = new HashSet<>();
             for (var ref : question.sourceRefs()) {
                 if (!id(ref.documentAssetId(), "doc_") || ref.documentContentId() == null
@@ -84,16 +92,26 @@ public final class QuestionBankValidator {
         } else if (content instanceof RichContent rich) {
             if (nonblank && rich.document().blocks().stream().noneMatch(this::meaningful))
                 fail("Rich content cannot be blank");
-            for (var block : rich.document().blocks()) {
-                if (block instanceof ParagraphNode p) inline(p.children(), resources);
-                else if (block instanceof BlockImageNode i) image(i.resourceId(), resources);
-                else if (block instanceof BlockMathNode m && blank(m.tex())) fail("Math TeX is required");
-            }
+            for (var block : rich.document().blocks()) block(block,resources);
         } else fail("Unsupported content kind");
+    }
+    private void block(BlockNode node,Map<String,QBankResource> resources) {
+        if(node instanceof ParagraphNode p) inline(p.children(),resources);
+        else if(node instanceof HeadingNode h) inline(h.children(),resources);
+        else if(node instanceof BulletListNode l) l.items().forEach(i->item(i,resources));
+        else if(node instanceof OrderedListNode l) l.items().forEach(i->item(i,resources));
+        else if(node instanceof BlockQuoteNode q) q.blocks().forEach(b->block(b,resources));
+        else if(node instanceof BlockImageNode i) image(i.resourceId(),resources);
+        else if(node instanceof BlockMathNode m && blank(m.tex())) fail("Math TeX is required");
+    }
+    private void item(ListItemNode item,Map<String,QBankResource> resources) {
+        if(item.blocks().isEmpty())fail("List item cannot be empty");
+        item.blocks().forEach(b->block(b,resources));
     }
     private void inline(List<InlineNode> nodes, Map<String,QBankResource> resources) {
         for (var node : nodes) {
-            if (node instanceof InlineTextNode t && t.text() == null) fail("Inline text cannot be null");
+            if (node instanceof InlineTextNode t && (t.text() == null
+                    || new java.util.HashSet<>(t.marks()).size()!=t.marks().size())) fail("Invalid inline text marks");
             else if (node instanceof InlineImageNode i) image(i.resourceId(), resources);
             else if (node instanceof InlineMathNode m && blank(m.tex())) fail("Math TeX is required");
             else if (node instanceof LinkNode link) {
@@ -108,6 +126,10 @@ public final class QuestionBankValidator {
     private boolean meaningful(BlockNode node) {
         return switch (node) {
             case ParagraphNode paragraph -> paragraph.children().stream().anyMatch(this::meaningful);
+            case HeadingNode heading -> heading.children().stream().anyMatch(this::meaningful);
+            case BulletListNode list -> list.items().stream().anyMatch(i->i.blocks().stream().anyMatch(this::meaningful));
+            case OrderedListNode list -> list.items().stream().anyMatch(i->i.blocks().stream().anyMatch(this::meaningful));
+            case BlockQuoteNode quote -> quote.blocks().stream().anyMatch(this::meaningful);
             case BlockImageNode image -> true;
             case BlockMathNode math -> !blank(math.tex());
         };

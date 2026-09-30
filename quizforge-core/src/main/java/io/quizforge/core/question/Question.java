@@ -18,6 +18,14 @@ public record Question(String id, String type, List<String> stimulusRefs, Questi
         if (payload instanceof ChoicePayload choice) return choice;
         throw new UnsupportedOperationException("Unsupported question payload");
     }
+    public EssayPayload essayPayload() {
+        if (payload instanceof EssayPayload essay) return essay;
+        throw new UnsupportedOperationException("Not an essay payload");
+    }
+    public EssayAnswerSpec essayAnswerSpec() {
+        if (answerSpec instanceof EssayAnswerSpec essay) return essay;
+        throw new UnsupportedOperationException("Not an essay answer specification");
+    }
     public ChoiceAnswerSpec choiceAnswerSpec() {
         if (answerSpec instanceof ChoiceAnswerSpec choice) return choice;
         throw new UnsupportedOperationException("Unsupported question answer specification");

@@ -48,8 +48,12 @@ optional = (
     (q + ("evaluationSpec",), {"criteria": []}),
     (q + ("evaluationSpec", "evaluatorGuidance"), "Guidance"),
     (q + ("prompt", "document", "blocks", 0, "children", 3, "alt"), "Inline image"),
+    (q + ("prompt", "document", "blocks", 0, "alignment"), "CENTER"),
+    (q + ("prompt", "document", "blocks", 0, "children", 0, "marks"), ["BOLD"]),
     (q + ("prompt", "document", "blocks", 1, "alt"), "Block image"),
     (q + ("prompt", "document", "blocks", 1, "caption"), "Caption"),
+    (q + ("prompt", "document", "blocks", 1, "widthPercent"), 50),
+    (q + ("prompt", "document", "blocks", 1, "alignment"), "RIGHT"),
     (q + ("sourceRefs", 0, "documentTitle"), "Document"),
     (q + ("sourceRefs", 0, "sectionTitle"), "Section"),
 )
@@ -64,7 +68,7 @@ for path, value in optional:
             parent[key] = None if mode == "null" else value
         validator.validate(candidate)
         cases += 1
-    for wrong_value in ([], 42, 1.25, True):
+    for wrong_value in (([1], 42, 1.25, True) if path[-1] == "marks" else ([], 42, 1.25, True)):
         invalid = deepcopy(fixture)
         parent, key = parent_at(invalid, path)
         parent[key] = wrong_value
@@ -85,6 +89,9 @@ expected_optional = {
     ("evaluation", "evaluatorGuidance"), ("inlineImage", "alt"),
     ("blockImage", "alt"), ("blockImage", "caption"),
     ("source", "documentTitle"), ("source", "sectionTitle"),
+    ("essayPayload", "placeholder"), ("essayAnswer", "referenceAnswer"),
+    ("paragraph", "alignment"), ("heading", "alignment"),
+    ("inlineText", "marks"), ("blockImage", "widthPercent"), ("blockImage", "alignment"),
 }
 actual_optional = {
     (name, field)
@@ -93,4 +100,31 @@ actual_optional = {
     if field not in definition.get("required", [])
 }
 assert actual_optional == expected_optional, "Audit optional fields when the model changes"
-print(f"PASS: Draft 2020-12 schema, 2 examples, {cases} optional/required-null cases, all 8 optional fields")
+essay = deepcopy(fixture)
+essay_question = essay["questions"][0]
+essay_question.update(type="ESSAY", stimulusRefs=[], payload={"kind": "ESSAY"}, answerSpec={"kind": "ESSAY"})
+validator.validate(essay)
+for field, value in (("placeholder", "Write here"),
+                     ("referenceAnswer", {"kind": "TEXT", "text": "Sample"})):
+    owner = "answerSpec" if field == "referenceAnswer" else "payload"
+    for tested in (None, value):
+        candidate = deepcopy(essay)
+        candidate["questions"][0][owner][field] = tested
+        validator.validate(candidate)
+        cases += 1
+    for wrong in ([], True, 1.5):
+        invalid = deepcopy(essay)
+        invalid["questions"][0][owner][field] = wrong
+        assert not validator.is_valid(invalid), f"Invalid essay optional accepted: {field}"
+        cases += 1
+for field, wrong in (("minWords", 160), ("maxWords", 200)):
+    invalid = deepcopy(essay)
+    invalid["questions"][0]["payload"][field] = wrong
+    assert not validator.is_valid(invalid)
+    cases += 1
+for wrong_type in ("SINGLE_CHOICE", "MULTIPLE_CHOICE"):
+    invalid = deepcopy(essay)
+    invalid["questions"][0]["type"] = wrong_type
+    assert not validator.is_valid(invalid), "Question type and payload must agree"
+    cases += 1
+print(f"PASS: Draft 2020-12 schema, 2 packages and essay fixture, {cases} contract cases, all {len(expected_optional)} optional fields")

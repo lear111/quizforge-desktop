@@ -1,4 +1,6 @@
 target/
+quizforge-desktop-app/canvas-editor-web/node_modules/
+quizforge-desktop-app/rich-editor-web/node_modules/
 .idea/
 *.iml
 .vscode/

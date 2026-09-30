@@ -45,12 +45,16 @@ public final class LocalQuestionBankFileStorage implements QuestionBankFileStora
 
     @Override
     public StagedFile stageReplace(WorkspaceId workspaceId, String relativePath, QuestionBank bank) {
+        return stageReplace(workspaceId,relativePath,bank,io.quizforge.core.port.QuestionResourceInput.NONE);
+    }
+    @Override public StagedFile stageReplace(WorkspaceId workspaceId, String relativePath, QuestionBank bank,
+            io.quizforge.core.port.QuestionResourceInput resources) {
         Path root = paths.workspaceRoot(workspaceId);
         Path target = checked(root, relativePath);
         if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(target)) {
             throw failure("replace missing QuestionBank", null);
         }
-        try { return stage(target.getParent(), target, root, bank, true); }
+        try { return stage(target.getParent(), target, root, bank, true, resources); }
         catch (IOException error) { throw failure("stage QuestionBank replacement", error); }
     }
 
@@ -63,11 +67,18 @@ public final class LocalQuestionBankFileStorage implements QuestionBankFileStora
 
     private StagedFile stage(Path folder, Path target, Path root, QuestionBank bank,
             boolean replace) throws IOException {
+        return stage(folder,target,root,bank,replace,io.quizforge.core.port.QuestionResourceInput.NONE);
+    }
+    private StagedFile stage(Path folder, Path target, Path root, QuestionBank bank,
+            boolean replace, io.quizforge.core.port.QuestionResourceInput resources) throws IOException {
         Path candidate = Files.createTempFile(folder, ".qf-bank-", ".tmp");
         try {
             if (replace) {
                 try (var existing = new QBankPackageReader().open(target)) {
-                    new QBankPackageWriter().write(candidate, bank, existing);
+                    new QBankPackageWriter().write(candidate, bank, resource -> {
+                        var supplied=resources.open(resource);
+                        return supplied==null ? existing.open(resource) : supplied;
+                    });
                 }
             } else new QBankPackageWriter().write(candidate, bank);
             return new Pending(candidate, target, root.relativize(target).toString().replace('\\', '/'), replace);

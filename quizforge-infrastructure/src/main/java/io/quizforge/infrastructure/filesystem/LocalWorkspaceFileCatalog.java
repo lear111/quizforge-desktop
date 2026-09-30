@@ -106,6 +106,19 @@ public final class LocalWorkspaceFileCatalog implements WorkspaceFileCatalog {
     @Override public QuestionBank readBank(WorkspaceId workspaceId, String relativePath) {
         return new QBankPackageReader().read(checked(paths.workspaceRoot(workspaceId), relativePath));
     }
+    @Override public java.io.InputStream openResource(WorkspaceId workspaceId, String relativePath, QBankResource resource)
+            throws java.io.IOException {
+        var loaded=new QBankPackageReader().open(checked(paths.workspaceRoot(workspaceId),relativePath));
+        try {
+            if(loaded.bank().resources().stream().noneMatch(resource::equals))
+                throw new java.io.IOException("Resource no longer matches the recorded revision");
+            return new java.io.FilterInputStream(loaded.open(resource)) {
+                @Override public void close() throws java.io.IOException {
+                    try { super.close(); } finally { loaded.close(); }
+                }
+            };
+        } catch(java.io.IOException | RuntimeException error) { loaded.close(); throw error; }
+    }
 
     private WorkspaceFileEntry describe(Path root, Path file) {
         String relative = relative(root, file);

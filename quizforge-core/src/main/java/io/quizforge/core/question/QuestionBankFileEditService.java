@@ -64,6 +64,10 @@ public final class QuestionBankFileEditService {
 
     public Asset save(WorkspaceId workspace, String path, String expectedContentId,
             String expectedDraftContentId, QuestionBank edited) {
+        return save(workspace,path,expectedContentId,expectedDraftContentId,edited,io.quizforge.core.port.QuestionResourceInput.NONE);
+    }
+    public Asset save(WorkspaceId workspace, String path, String expectedContentId,
+            String expectedDraftContentId, QuestionBank edited, io.quizforge.core.port.QuestionResourceInput resources) {
         workspaces.getWorkspace(workspace);
         if (path == null || !path.toLowerCase(java.util.Locale.ROOT).endsWith(".qbank"))
             throw new IllegalArgumentException("Only .qbank files can be edited here");
@@ -77,7 +81,7 @@ public final class QuestionBankFileEditService {
                 : !codec.contentId(current).equals(expectedContentId))
             throw new IllegalStateException("QuestionBank changed externally. Please reload before saving.");
         validateNewRefs(workspace, current, edited);
-        try (QuestionBankFileStorage.StagedFile staged = files.stageReplace(workspace, path, saved)) {
+        try (QuestionBankFileStorage.StagedFile staged = files.stageReplace(workspace, path, saved, resources)) {
             staged.publish();
             try {
                 Asset registered = scanner.scan(workspace).stream()

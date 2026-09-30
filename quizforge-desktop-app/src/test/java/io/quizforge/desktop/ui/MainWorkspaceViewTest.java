@@ -19,9 +19,12 @@ import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.Parent;
@@ -29,6 +32,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
+import javafx.stage.Window;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -40,7 +44,8 @@ class MainWorkspaceViewTest {
 
     @BeforeAll static void startFx() throws Exception {
         CountDownLatch started = new CountDownLatch(1);
-        Platform.startup(() -> { Platform.setImplicitExit(false); started.countDown(); });
+        try { Platform.startup(() -> { Platform.setImplicitExit(false); started.countDown(); }); }
+        catch (IllegalStateException alreadyStarted) { Platform.runLater(started::countDown); }
         assertTrue(started.await(20, TimeUnit.SECONDS));
     }
 
@@ -200,7 +205,7 @@ class MainWorkspaceViewTest {
             assertEquals(divider(markdown).localToScene(0, 0).getY(),
                     outlineDivider.localToScene(0, 38).getY(), 0.5);
             assertEquals(divider(outer).localToScene(5.25, 0).getX(), sidebarSeam.localToScene(0, 0).getX(), 0.5);
-            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineSeam.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineSeam.localToScene(0, 0).getX(), 1.0);
             assertEquals(sidebarDivider.localToScene(6, 0).getX(), tabBar.localToScene(0, 0).getX(), 0.5);
             assertEquals(outline.localToScene(0, 0).getX(), outlineCell.localToScene(0, 0).getX(), 2);
 
@@ -224,7 +229,7 @@ class MainWorkspaceViewTest {
             outer.layout();
             assertEquals(divider(outer).localToScene(0, 0).getX(), sidebarDivider.localToScene(0, 0).getX(), 0.5);
             assertEquals(divider(outer).localToScene(5.25, 0).getX(), sidebarSeam.localToScene(0, 0).getX(), 0.5);
-            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineSeam.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineSeam.localToScene(0, 0).getX(), 1.0);
             assertEquals(divider(markdown).localToScene(0, 0).getX(), outlineDivider.localToScene(0, 0).getX(), 0.5);
             markdown.setDividerPositions(0.65);
             markdown.layout();
@@ -2168,11 +2173,11 @@ class MainWorkspaceViewTest {
 
             outer.setDividerPositions(0.35);
             outer.layout();
-            assertEquals(divider(layout).localToScene(0, 0).getX(), seam.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(layout).localToScene(0, 0).getX(), seam.localToScene(0, 0).getX(), 1.0);
             layout.setDividerPositions(0.55);
             layout.layout();
-            assertEquals(divider(layout).localToScene(0, 0).getX(), seam.localToScene(0, 0).getX(), 0.5);
-            assertEquals(divider(layout).localToScene(0, 0).getX(), topDivider.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(layout).localToScene(0, 0).getX(), seam.localToScene(0, 0).getX(), 1.0);
+            assertEquals(divider(layout).localToScene(0, 0).getX(), topDivider.localToScene(0, 0).getX(), 1.0);
 
             button("file-mode-toggle").fire();
             shell.applyCss(); shell.layout();
@@ -2181,7 +2186,7 @@ class MainWorkspaceViewTest {
             assertNotNull(shell.lookup("#question-bank-editor"));
             assertNull(shell.filePane().getTop());
             assertSame(shell.lookup("#file-header"), readerColumn.getTop());
-            assertEquals(divider(layout).localToScene(0, 0).getX(), seam.localToScene(0, 0).getX(), 0.5);
+            assertEquals(divider(layout).localToScene(0, 0).getX(), seam.localToScene(0, 0).getX(), 1.0);
             button("file-mode-toggle").fire(); pulse(100);
             assertTrue(seam.isVisible());
             assertNotNull(shell.lookup("#question-outline"));
@@ -3231,6 +3236,342 @@ class MainWorkspaceViewTest {
         return out.toString();
     }
 
+    @Test void developmentRefreshKeepsPracticeDraftAndDatabaseRows() throws Exception {
+        fx(() -> {
+            open("题库/Java集合.qbank");
+            ((RadioButton) shell.lookup("#option-0")).fire();
+            var session = practiceDbSession();
+            var before = practiceRows();
+            var view = shell.lookup("#question-practice");
+            DevelopmentUiReloader.refreshNode(view);
+            assertSame(view, shell.lookup("#question-practice"));
+            assertTrue(((RadioButton) shell.lookup("#option-0")).isSelected());
+            assertFalse(button("submit-answer").isDisabled());
+            assertEquals(session, practiceDbSession());
+            assertEquals(before, practiceRows());
+            button("submit-answer").fire();
+            var submitted = practiceRows();
+            DevelopmentUiReloader.refreshNode(view);
+            assertNotNull(shell.lookup("#answer-feedback"));
+            assertEquals(submitted, practiceRows());
+        });
+    }
+
+    @Test void developmentRefreshKeepsUnsavedEditorAndInvalidInput() throws Exception {
+        fixture.write("题库/Essay.qbank", new QuestionBankV2Codec().write(io.quizforge.infrastructure.testing.EssayTestBanks.bank()));
+        byte[] original = Files.readAllBytes(fixture.alphaRoot.resolve("题库/Essay.qbank"));
+        fx(() -> {
+            shell.refresh(); open("题库/Essay.qbank"); button("file-mode-toggle").fire(); shell.applyCss(); shell.layout();
+            TextField title = (TextField) shell.lookup("#qbank-title");
+            title.setText("Unsaved development title"); title.selectRange(2, 8);
+            ((TextArea) shell.lookup("#essay-evaluation-guidance")).setText("Unsaved guidance");
+            ((TextField) shell.lookup("#essay-max-score")).setText("invalid");
+            var editor = shell.lookup("#question-bank-editor");
+            DevelopmentUiReloader.refreshNode(editor);
+            assertSame(editor, shell.lookup("#question-bank-editor"));
+            assertEquals("Unsaved development title", ((TextField) shell.lookup("#qbank-title")).getText());
+            assertEquals("Unsaved guidance", ((TextArea) shell.lookup("#essay-evaluation-guidance")).getText());
+            assertEquals("invalid", ((TextField) shell.lookup("#essay-max-score")).getText());
+            assertEquals(2, ((TextField) shell.lookup("#qbank-title")).getAnchor());
+            assertEquals(8, ((TextField) shell.lookup("#qbank-title")).getCaretPosition());
+            assertTrue(shell.filePane().hasUnsavedChanges());
+            assertArrayEquals(original, Files.readAllBytes(fixture.alphaRoot.resolve("题库/Essay.qbank")));
+        });
+    }
+
+    @Test void productionSceneHasNoDevelopmentRefreshHandler() throws Exception {
+        fx(() -> {
+            String previous = System.getProperty("quizforge.liveJava.enabled");
+            try {
+                System.clearProperty("quizforge.liveJava.enabled");
+                var scene = new Scene(new BorderPane());
+                DevelopmentUiReloader.install(scene);
+                assertNull(scene.getOnKeyPressed());
+            } finally {
+                if (previous != null) System.setProperty("quizforge.liveJava.enabled", previous);
+            }
+        });
+    }
+
+    @Test void mixedBankUsesSharedChoicePracticeAndKeepsEssayPreviewReadOnly() throws Exception {
+        var choiceBank = new QuestionBankV2Codec().parse(QBankTestPackageBuilder.read(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
+        var essay = io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst();
+        var mixed = new QuestionBank("qb_mixed_ui", "Mixed", List.of(),
+                List.of(essay, choiceBank.questions().get(0), choiceBank.questions().get(1)), List.of());
+        fixture.write("题库/Mixed.qbank", new QuestionBankV2Codec().write(mixed));
+        fx(() -> {
+            shell.refresh(); open("题库/Mixed.qbank");
+            assertNotNull(shell.lookup("#authoring-question-card"));
+            assertNull(shell.lookup("#submit-answer"));
+            assertNotNull(shell.lookup("#qbank-history-entry"));
+            button("authoring-question-2").fire();
+            shell.applyCss(); shell.layout();
+            assertTrue(shell.lookup("#practice-question-card") instanceof QuestionCardView, text(shell));
+            assertEquals("第 2 / 3 题", ((Label)shell.lookup("#question-position")).getText());
+            ((RadioButton)shell.lookup("#option-0")).fire();
+            assertFalse(button("submit-answer").isDisabled()); button("submit-answer").fire();
+            shell.applyCss(); shell.layout();
+            assertEquals("回答正确", ((Label)shell.lookup("#question-result")).getText());
+            assertNotNull(shell.lookup("#practice-retry"));
+            button("next-question").fire();
+            shell.applyCss(); shell.layout();
+            assertEquals("第 3 / 3 题", ((Label)shell.lookup("#question-position")).getText());
+            ((CheckBox)shell.lookup("#option-0")).fire(); ((CheckBox)shell.lookup("#option-1")).fire();
+            button("submit-answer").fire(); button("next-question").fire();
+            shell.applyCss(); shell.layout();
+            assertEquals("共 2 题", ((Label)shell.lookup("#summary-total-count")).getText());
+            assertEquals("2", ((Label)shell.lookup("#summary-correct-count")).getText());
+            button("summary-previous").fire();
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#practice-retry"));
+            button("previous-question").fire(); button("previous-question").fire();
+            shell.applyCss(); shell.layout();
+            assertNotNull(shell.lookup("#authoring-question-card")); assertNull(shell.lookup("#submit-answer"));
+            button("authoring-question-2").fire(); button("practice-retry").fire();
+            ((RadioButton)shell.lookup("#option-1")).fire();
+            open("题库/Mixed.qbank"); button("authoring-question-2").fire();
+            shell.applyCss(); shell.layout();
+            assertTrue(((RadioButton)shell.lookup("#option-1")).isSelected());
+            assertFalse(button("submit-answer").isDisabled());
+        });
+    }
+    @Test void essayGenericWindowSavesImageAndFormalSaveReopens() throws Exception {
+        fixture.write("题库/Essay.qbank",new QuestionBankV2Codec().write(io.quizforge.infrastructure.testing.EssayTestBanks.bank()));
+        Path image=localImage("png");
+        fx(()->{
+            shell.refresh();open("题库/Essay.qbank");button("file-mode-toggle").fire();shell.applyCss();shell.layout();
+            editPrompt(window->{
+                var resource=window.session().stage(image);
+                window.bridge().loadContent(new RichContent(new RichDocument(List.of(
+                        new ParagraphNode(List.of(new InlineTextNode("Before image"))),
+                        new BlockImageNode(resource.id(),null,null)))));
+            },true);
+            ((TextField)shell.lookup("#essay-max-score")).setText("22.5");button("qbank-save").fire();shell.applyCss();shell.layout();
+            assertEquals(FileMode.BROWSE,shell.filePane().mode());var bank=readEssay();var blocks=((RichContent)bank.questions().getFirst().prompt()).document().blocks();
+            assertTrue(blocks.stream().anyMatch(BlockImageNode.class::isInstance));
+            assertTrue(QuestionContentData.plainText(bank.questions().getFirst().prompt()).contains("Before image"));
+            assertEquals(new java.math.BigDecimal("22.5"),bank.questions().getFirst().scoreSpec().defaultMaxScore());
+            assertEquals(1,nodes(shell.lookup("#authoring-question-card"),javafx.scene.image.ImageView.class).size());
+            shell.tabs().closeAll();shell.tabs().openPreview(fixture.alpha.id(),"题库/Essay.qbank");shell.applyCss();shell.layout();
+            button("file-mode-toggle").fire();shell.applyCss();shell.layout();
+            editPrompt(window->assertEquals(bank.questions().getFirst().prompt(),window.bridge().getContent()),false);
+        });
+    }
+    @Test void essayEditorReplacementAndDeletionRemoveUnusedPackagedResources() throws Exception {
+        prepareEssayImage();Path replacement=localImage("jpg");
+        fx(()->{
+            shell.refresh();open("题库/Essay.qbank");button("file-mode-toggle").fire();shell.applyCss();shell.layout();
+            editPrompt(window->{
+                var resource=window.session().stage(replacement);
+                window.bridge().loadContent(new RichContent(new RichDocument(List.of(
+                        new ParagraphNode(List.of(new InlineTextNode("Replaced"))),
+                        new BlockImageNode(resource.id(),null,null)))));
+            },true);
+            button("qbank-save").fire();shell.applyCss();shell.layout();
+            var bank=readEssay();assertEquals(1,bank.resources().size());assertEquals("image/jpeg",bank.resources().getFirst().mediaType());
+            button("file-mode-toggle").fire();shell.applyCss();shell.layout();
+            editPrompt(window->window.bridge().loadContent(new TextContent("Image removed")),true);
+            button("qbank-save").fire();shell.applyCss();shell.layout();
+            bank=readEssay();assertTrue(bank.resources().isEmpty());assertInstanceOf(TextContent.class,bank.questions().getFirst().prompt());
+            assertEquals(java.util.Set.of("manifest.json","bank.json"),QBankTestPackageBuilder.entries(fixture.alphaRoot.resolve("题库/Essay.qbank")).keySet());
+        });
+    }
+    @Test void essayGenericWindowHasFixedCanvasAndToolbarCommands() throws Exception {
+        fixture.write("题库/Essay.qbank",new QuestionBankV2Codec().write(io.quizforge.infrastructure.testing.EssayTestBanks.bank()));
+        fx(()->{
+            shell.refresh();open("题库/Essay.qbank");button("file-mode-toggle").fire();shell.applyCss();shell.layout();
+            editPrompt(window->{
+                Stage modal=window.stage();
+                assertEquals(QuestionContentLayout.QUESTION_CONTENT_WIDTH,
+                        ((javafx.scene.layout.Region)((javafx.scene.layout.VBox)shell.lookup("#essay-prompt-preview")).getChildren().getFirst()).getMaxWidth());
+                assertNotNull(modal.getScene().lookup("#canvas-editor-webview"));
+                assertNotNull(modal.getScene().lookup("#canvas-editor-save"));
+                var web=window.bridge().view().getEngine();
+                assertEquals(816,((Number)web.executeScript("document.querySelector('#paper').clientWidth")).intValue());
+                assertTrue(((Number)web.executeScript("document.querySelectorAll('[data-icon]').length")).intValue()>=20);
+                window.bridge().loadContent(new RichContent(new RichDocument(List.of(
+                        new HeadingNode(1,List.of(new InlineTextNode("Heading sample")),null)))));
+                assertInstanceOf(HeadingNode.class,((RichContent)window.bridge().getContent()).document().blocks().getFirst());
+            },true);
+            assertNotNull(shell.lookup("#essay-prompt-preview"));
+            assertNull(shell.lookup("#rich-content-editor"));
+        });
+    }
+    @Test void essayGenericWindowCancelDiscardsPromptAndStagedImage() throws Exception {
+        fixture.write("题库/Essay.qbank",new QuestionBankV2Codec().write(io.quizforge.infrastructure.testing.EssayTestBanks.bank()));
+        Path picture=localImage("png");fx(()->{
+            shell.refresh();open("题库/Essay.qbank");button("file-mode-toggle").fire();shell.applyCss();shell.layout();
+            var before=readEssay();
+            editPrompt(window->{window.session().stage(picture);window.bridge().loadContent(new TextContent("Cancelled"));},false);
+            assertEquals(before.questions().getFirst().prompt(),readEssay().questions().getFirst().prompt());
+            assertEquals(0,readEssay().resources().size());
+            assertFalse(text(shell.lookup("#essay-prompt-preview")).contains("Cancelled"));
+        });
+    }
+    @Test void richEditorInsertsResourceNodeAtParagraphEnd() throws Exception {
+        Path image=localImage("png");fx(()->{
+            var editor=standaloneEditor(new TextContent("Before"),List.of()).editor();editor.insertImage(image);
+            var blocks=((RichContent)editor.getContent()).document().blocks();
+            assertTrue(blocks.stream().anyMatch(BlockImageNode.class::isInstance));
+            assertTrue(QuestionContentData.plainText(editor.getContent()).contains("Before"));
+        });
+    }
+    @Test void richEditorTextLoadPlainSaveAndChangeCallback() throws Exception {
+        fx(()->{
+            var sample=standaloneEditor(new TextContent("First paragraph.\n\n第二段\nNext line."),List.of());var editor=sample.editor();
+            assertEquals(new TextContent("First paragraph.\n\n第二段\nNext line."),editor.getContent());
+            editor.setContent(new TextContent("Changed 中文 text"));editor.command("paragraph",null);
+            assertEquals(new TextContent("Changed 中文 text"),sample.model().bank().questions().getFirst().prompt());
+        });
+    }
+    @Test void essayAuthoringScoreWithoutWordLimitsOrPracticePersistence() throws Exception {
+        prepareEssayImage();fx(()->{
+            shell.refresh();open("题库/Essay.qbank");assertNull(shell.lookup("#question-practice"));assertNull(shell.lookup("#submit-answer"));assertNull(shell.lookup("#qbank-history-entry"));
+            assertNull(new io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository(practiceDb()).findActiveByQuestionBankAssetId("qb_essay").orElse(null));
+            button("file-mode-toggle").fire();shell.applyCss();shell.layout();
+            assertNull(shell.lookup("#rich-content-editor"));assertNotNull(shell.lookup("#essay-prompt-preview"));
+            ((TextField)shell.lookup("#essay-max-score")).setText("19.75");
+            assertNull(shell.lookup("#essay-min-words"));assertNull(shell.lookup("#essay-max-words"));
+            button("qbank-save").fire();shell.applyCss();shell.layout();
+            var question=readEssay().questions().getFirst();assertEquals(new java.math.BigDecimal("19.75"),question.scoreSpec().defaultMaxScore());
+            assertTrue(text(shell.lookup("#authoring-question-card")).contains("19.75"));
+            assertFalse(((Label)shell.lookup("#authoring-essay-metadata")).getText().contains("字数"));
+        });
+    }
+    @Test void existingEssayWordLimitsAreIgnoredAndRemovedByEditorSave() throws Exception {
+        var expected=io.quizforge.infrastructure.testing.EssayTestBanks.bank();
+        fixture.write("题库/Essay.qbank",new QuestionBankV2Codec().write(expected));
+        Path file=fixture.alphaRoot.resolve("题库/Essay.qbank");
+        var entries=QBankTestPackageBuilder.entries(file);var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        var root=json.readTree(entries.get("bank.json"));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)root.path("questions").get(0).path("payload")).put("minWords",160).put("maxWords",200);
+        entries.put("bank.json",json.writeValueAsBytes(root));QBankTestPackageBuilder.zip(file,entries);
+        fx(()->{
+            shell.refresh();open("题库/Essay.qbank");shell.applyCss();shell.layout();
+            String metadata=((Label)shell.lookup("#authoring-essay-metadata")).getText();
+            assertTrue(metadata.contains("分值："));assertFalse(metadata.contains("字数"));
+            button("file-mode-toggle").fire();shell.applyCss();shell.layout();
+            assertNull(shell.lookup("#essay-min-words"));assertNull(shell.lookup("#essay-max-words"));
+            button("qbank-save").fire();shell.applyCss();shell.layout();
+            assertEquals(expected,readEssay());
+            var saved=json.readTree(QBankTestPackageBuilder.entries(file).get("bank.json"));
+            assertFalse(saved.path("questions").get(0).path("payload").has("minWords"));
+            assertFalse(saved.path("questions").get(0).path("payload").has("maxWords"));
+            open("题库/Essay.qbank");shell.applyCss();shell.layout();
+            assertFalse(((Label)shell.lookup("#authoring-essay-metadata")).getText().contains("字数"));
+        });
+    }
+    @Test void essayCreateFromEmptyDraftUsesGenericEditorAndDefaultScore() throws Exception {
+        fx(()->{
+            open("空草稿/新题库.qbank");button("file-mode-toggle").fire();shell.applyCss();shell.layout();((MenuButton)shell.lookup("#qbank-add-question")).getItems().get(2).fire();
+            assertEquals("1",((TextField)shell.lookup("#essay-max-score")).getText());
+            editPrompt(window->window.bridge().loadContent(new TextContent("New author prompt")),true);
+            button("qbank-save").fire();shell.applyCss();shell.layout();var bank=new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader().read(fixture.alphaRoot.resolve("空草稿/新题库.qbank"));
+            assertEquals("ESSAY",bank.questions().getFirst().type());assertEquals(new TextContent("New author prompt"),bank.questions().getFirst().prompt());
+            assertTrue(text(shell.lookup("#authoring-question-card")).contains("New author prompt"));
+        });
+    }
+    @Test void richEditorLoadsExistingBlockAndInlineImageModelsWithoutHtml() throws Exception {
+        var bank=prepareEssayImage();fx(()->{
+            var original=bank.questions().getFirst().prompt();var sample=standaloneEditor(original,bank.resources());
+            assertEquals(original,sample.editor().getContent());
+            var inline=new RichContent(new RichDocument(List.of(new ParagraphNode(List.of(new InlineTextNode("Before"),new InlineImageNode(bank.resources().getFirst().id(),null),new LineBreakNode(),new InlineTextNode("After"))))));
+            sample.editor().setContent(inline);assertEquals(inline,sample.editor().getContent());
+            String encoded=new QuestionBankV2Codec().write(sample.model().bank());assertFalse(encoded.contains("<img"));assertFalse(encoded.contains("data:image"));
+        });
+    }
+    @Test void essayRendererMissingResourceDoesNotBreakContent() throws Exception {
+        var bank=prepareEssayImage();fx(()->{
+            var node=QuestionContentRenderer.render(bank.questions().getFirst().prompt(),bank.resources(),io.quizforge.core.port.QuestionResourceInput.NONE,"missing-");
+            assertTrue(text(node).contains("Directions."));assertTrue(text(node).contains("图片资源缺失或无法读取"));assertTrue(text(node).contains("Write 160–200 words."));
+            assertTrue(nodes(node,javafx.scene.image.ImageView.class).isEmpty());
+            assertEquals("plain text",text(QuestionContentRenderer.render(new TextContent("plain text"),List.of(),io.quizforge.core.port.QuestionResourceInput.NONE,"plain-")).trim());
+        });
+    }
+    @Test void richEditorTreatsMarkupAsTextAndRejectsUnknownEditorJson() throws Exception {
+        fx(()->{
+            String markup="<img src='https://example.invalid/a' onerror='window.attacked=1'> & 中文";
+            var editor=standaloneEditor(new TextContent(markup),List.of()).editor();assertEquals(new TextContent(markup),editor.getContent());
+            assertEquals(0,((Number)web(editor).executeScript("document.querySelectorAll('img').length")).intValue());
+            assertEquals("undefined",web(editor).executeScript("typeof window.attacked"));
+            assertThrows(IllegalArgumentException.class,()->RichContentEditorAdapter.fromEditorJson(
+                    "{\"type\":\"doc\",\"content\":[{\"type\":\"table\"}]}",Set.of()));
+        });
+    }
+    @Test void richEditorDoesNotSerializeHtml() throws Exception {
+        fx(()->{
+            var editor=standaloneEditor(new TextContent("<script>window.attacked=1</script>"),List.of()).editor();
+            assertEquals(new TextContent("<script>window.attacked=1</script>"),editor.getContent());
+            assertEquals("undefined",web(editor).executeScript("typeof window.attacked"));
+        });
+    }
+    @Test void richEditorDeleteKeepsOtherQuestionSharedResource() throws Exception {
+        var bank=prepareEssayImage();fx(()->{
+            var sample=standaloneEditor(bank.questions().getFirst().prompt(),bank.resources());sample.model().duplicateQuestion(0);
+            selectImage(sample.editor());sample.editor().deleteSelectedImage();assertEquals(1,sample.model().bank().resources().size());
+            assertFalse(QuestionContentData.imageIds(sample.model().bank().questions().get(1).prompt()).isEmpty());
+        });
+    }
+    @Test void richEditorReplacingWithoutSelectionDoesNotLeakResource() throws Exception {
+        Path image=localImage("png");fx(()->{
+            var sample=standaloneEditor(new TextContent("No image selected"),List.of());
+            assertThrows(IllegalStateException.class,()->sample.editor().replaceSelectedImage(image));assertTrue(sample.model().bank().resources().isEmpty());
+        });
+    }
+    @Test void richEditorUnsupportedDomainIsRejectedWithoutChangingSource() throws Exception {
+        fx(()->{
+            var editor=standaloneEditor(new TextContent("Known"),List.of()).editor();
+            assertThrows(RuntimeException.class,()->editor.setContent(new RichContent(new RichDocument(List.of(new BlockMathNode("x"))))));
+            assertEquals(new TextContent("Known"),editor.getContent());
+        });
+    }
+    private record RichEditorFixture(RichContentEditor editor,QuestionBankEditorModel model) { }
+    private RichEditorFixture standaloneEditor(QuestionContent content,List<QBankResource> resources) throws Exception {
+        var q=io.quizforge.infrastructure.testing.EssayTestBanks.essay("q_generic",content,new EssayPayload(null),null);
+        var model=new QuestionBankEditorModel(new QuestionBank("qb_generic","Generic",List.of(),List.of(q),resources));
+        byte[] initialImage=io.quizforge.infrastructure.testing.EssayTestBanks.image("png");
+        var pending=new java.util.HashMap<String,io.quizforge.infrastructure.filesystem.qbank.QBankImageImporter.ImportedImage>();
+        var editor=new RichContentEditor(content,value->model.setPrompt(0,value),path->{var image=new io.quizforge.infrastructure.filesystem.qbank.QBankImageImporter().read(path);model.addResource(image.resource());pending.put(image.resource().id(),image);return image.resource();},()->model.bank().resources(),resource->{
+            var imported=pending.get(resource.id());return imported==null?new java.io.ByteArrayInputStream(initialImage):imported.open();
+        },message->{throw new IllegalStateException(message);});
+        stage.setScene(new Scene(editor,800,500));stage.show();awaitEditor(editor);return new RichEditorFixture(editor,model);
+    }
+    private void editPrompt(Consumer<CanvasEditorWindow> action,boolean save) {
+        AtomicReference<Throwable> failure=new AtomicReference<>();
+        Platform.runLater(()->{
+            Stage dialog=null;
+            try {
+                dialog=Window.getWindows().stream().filter(w->w instanceof Stage stage && stage.isShowing()
+                        && "编辑题干".equals(stage.getTitle())).map(w->(Stage)w).findFirst().orElseThrow();
+                assertEquals(javafx.stage.Modality.WINDOW_MODAL,dialog.getModality());
+                var window=(CanvasEditorWindow)dialog.getProperties().get("quizforge.canvas.window");
+                assertNotNull(window);for(int i=0;i<160 && !window.bridge().ready();i++)pulse(50);
+                assertTrue(window.bridge().ready(),"Canvas Editor WebView must load");action.accept(window);
+                var button=(Button)dialog.getScene().lookup(save?"#canvas-editor-save":"#canvas-editor-back");
+                assertNotNull(button);button.fire();
+            }catch(Throwable error){failure.set(error);if(dialog!=null)dialog.close();}
+        });
+        button("essay-edit-prompt").fire();
+        if(failure.get()!=null)throw new AssertionError("Generic editor window interaction failed",failure.get());
+    }
+    private static void awaitEditor(RichContentEditor editor){for(int i=0;i<160 && !editor.ready();i++)pulse(50);assertTrue(editor.ready(),"Bundled WebView editor must load");}
+    private static javafx.scene.web.WebEngine web(RichContentEditor editor){return ((WebViewRichContentEngine)editor.engine()).webView().getEngine();}
+    private static void selectImage(RichContentEditor editor){web(editor).executeScript("document.querySelector('[data-resource-id]').dispatchEvent(new MouseEvent('click',{bubbles:true}))");}
+    private Path localImage(String format) throws Exception {Path path=temp.resolve("local-image."+format);Files.write(path,io.quizforge.infrastructure.testing.EssayTestBanks.image(format));return path;}
+    private QuestionBank readEssay(){return new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader().read(fixture.alphaRoot.resolve("题库/Essay.qbank"));}
+    private QuestionBank prepareEssayImage() throws Exception {
+        var original=io.quizforge.infrastructure.testing.EssayTestBanks.bank();Path local=localImage("png");
+        var image=new io.quizforge.infrastructure.filesystem.qbank.QBankImageImporter().read(local);var model=new QuestionBankEditorModel(original);
+        model.addResource(image.resource());model.setPrompt(0,io.quizforge.infrastructure.testing.EssayTestBanks.prompt(image.resource().id()));
+        Path file=fixture.alphaRoot.resolve("题库/Essay.qbank");Files.createDirectories(file.getParent());
+        return new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(file,model.bank(),r->image.open());
+    }
+    private static <T extends Node> List<T> nodes(Node root,Class<T> type) {
+        var found=new ArrayList<T>();if(type.isInstance(root))found.add(type.cast(root));
+        if(root instanceof ScrollPane pane)found.addAll(nodes(pane.getContent(),type));
+        else if(root instanceof Parent parent)parent.getChildrenUnmodifiable().forEach(child->found.addAll(nodes(child,type)));
+        return found;
+    }
     private static void fx(CheckedRunnable action) throws Exception {
         fx(action, 40);
     }

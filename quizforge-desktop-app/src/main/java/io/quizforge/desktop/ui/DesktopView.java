@@ -70,6 +70,7 @@ public final class DesktopView {
                 settingsDialog::show, shell::refreshAndOpen);
         Scene scene = new Scene(shell, 1180, 780);
         UiTheme.apply(scene);
+        DevelopmentUiReloader.install(scene);
         if (UiTheme.liveCssEnabled()) stage.setTitle(stage.getTitle() + " · CSS Live");
         Runnable stopLiveCss = LiveCssReloader.start(scene);
         stage.setMinWidth(800);

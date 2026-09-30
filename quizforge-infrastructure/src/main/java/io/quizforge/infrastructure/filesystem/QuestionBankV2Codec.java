@@ -31,11 +31,13 @@ public final class QuestionBankV2Codec implements QuestionBankFileCodec {
             .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
             .enable(DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS)
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
             .configure(com.fasterxml.jackson.databind.cfg.JsonNodeFeature.STRIP_TRAILING_BIGDECIMAL_ZEROES, false)
             .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
             .setSerializationInclusion(JsonInclude.Include.NON_NULL)
             .addMixIn(QuestionContent.class,ContentTypes.class)
             .addMixIn(BlockNode.class,BlockTypes.class).addMixIn(InlineNode.class,InlineTypes.class)
+            .addMixIn(InlineTextNode.class,TextNodeProperties.class)
             .addMixIn(QuestionPayload.class,PayloadTypes.class).addMixIn(QuestionAnswerSpec.class,AnswerTypes.class);
     private final QuestionBankValidator validator = new QuestionBankValidator();
 
@@ -52,6 +54,10 @@ public final class QuestionBankV2Codec implements QuestionBankFileCodec {
     private interface ContentTypes { }
     @JsonTypeInfo(use=JsonTypeInfo.Id.NAME,property="type")
     @JsonSubTypes({@JsonSubTypes.Type(value=ParagraphNode.class,name="PARAGRAPH"),
+            @JsonSubTypes.Type(value=HeadingNode.class,name="HEADING"),
+            @JsonSubTypes.Type(value=BulletListNode.class,name="BULLET_LIST"),
+            @JsonSubTypes.Type(value=OrderedListNode.class,name="ORDERED_LIST"),
+            @JsonSubTypes.Type(value=BlockQuoteNode.class,name="BLOCK_QUOTE"),
             @JsonSubTypes.Type(value=BlockImageNode.class,name="IMAGE"),
             @JsonSubTypes.Type(value=BlockMathNode.class,name="MATH")})
     private interface BlockTypes { }
@@ -62,11 +68,16 @@ public final class QuestionBankV2Codec implements QuestionBankFileCodec {
             @JsonSubTypes.Type(value=LineBreakNode.class,name="LINE_BREAK"),
             @JsonSubTypes.Type(value=LinkNode.class,name="LINK")})
     private interface InlineTypes { }
+    private interface TextNodeProperties {
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) java.util.List<TextMark> marks();
+    }
     @JsonTypeInfo(use=JsonTypeInfo.Id.NAME,property="kind")
-    @JsonSubTypes(@JsonSubTypes.Type(value=ChoicePayload.class,name="CHOICE"))
+    @JsonSubTypes({@JsonSubTypes.Type(value=ChoicePayload.class,name="CHOICE"),
+            @JsonSubTypes.Type(value=EssayPayload.class,name="ESSAY")})
     private interface PayloadTypes { }
     @JsonTypeInfo(use=JsonTypeInfo.Id.NAME,property="kind")
-    @JsonSubTypes(@JsonSubTypes.Type(value=ChoiceAnswerSpec.class,name="CHOICE"))
+    @JsonSubTypes({@JsonSubTypes.Type(value=ChoiceAnswerSpec.class,name="CHOICE"),
+            @JsonSubTypes.Type(value=EssayAnswerSpec.class,name="ESSAY")})
     private interface AnswerTypes { }
 
     @Override public String write(QuestionBank bank) {
@@ -82,6 +93,13 @@ public final class QuestionBankV2Codec implements QuestionBankFileCodec {
             JsonNode root = json.readTree(source);
             if (!(root instanceof ObjectNode) || !"2.0".equals(root.path("schemaVersion").asText()))
                 throw invalid("Only QBank schemaVersion 2.0 is supported",null);
+            // Removed ESSAY settings are inert input metadata, never part of the canonical model.
+            // Existing v2 packages remain readable; their next save drops these properties.
+            for (JsonNode q : root.path("questions")) {
+                if ("ESSAY".equals(q.path("type").asText()) && q.path("payload") instanceof ObjectNode payload
+                        && "ESSAY".equals(payload.path("kind").asText()))
+                    payload.remove(java.util.List.of("minWords", "maxWords"));
+            }
             for (JsonNode q : root.path("questions")) for (JsonNode ref : q.path("sourceRefs")) {
                 if (!(ref instanceof ObjectNode object) || object.has("address") || object.has("sectionId")
                         || object.has("nodeId") || !object.path("anchorName").isTextual()

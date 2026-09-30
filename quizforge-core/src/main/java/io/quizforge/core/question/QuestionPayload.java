@@ -1,3 +1,3 @@
 package io.quizforge.core.question;
 
-public sealed interface QuestionPayload permits ChoicePayload { }
+public sealed interface QuestionPayload permits ChoicePayload, EssayPayload { }

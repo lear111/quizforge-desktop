@@ -1,0 +1,14 @@
+html,body{margin:0;height:100%;background:#f2f4f7;font:13px Arial,sans-serif;color:#303844}
+#toolbar{height:84px;box-sizing:border-box;background:#f8f9fb;border-bottom:1px solid #dfe3e9;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:6px 18px;position:relative;z-index:5}
+.menu-row{display:flex;align-items:center;gap:3px;min-height:28px;white-space:nowrap}
+.divider{width:1px;height:20px;margin:0 8px;background:#cfd2d8}
+button.tool{appearance:none;background:transparent;border:0;border-radius:3px;width:29px;height:28px;padding:5px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+button.tool:hover,button.tool:focus{background:#e9ecf2;outline:none}button.tool:active{background:#dce3ef}
+button.tool.selected{background:#dfe8fa;color:#3156a6}
+button.tool i{width:17px;height:17px;background-size:contain;background-position:center;background-repeat:no-repeat}
+button.tool svg{width:17px;height:17px;display:block;flex:none}
+select{border:1px solid transparent;background:transparent;border-radius:3px;height:27px;color:#38414b;font:12px Arial,sans-serif;cursor:pointer}select:hover,select:focus{background:white;border-color:#d8dfe8}
+.font{width:115px}.size{width:60px}.heading{width:94px}input[type=color]{height:24px;width:27px;border:0;background:transparent;cursor:pointer;padding:1px}
+#workspace{height:calc(100vh - 84px);overflow:auto;padding:30px 0 0;box-sizing:border-box;background:linear-gradient(to right,#f2f4f7 0,#f2f4f7 calc(50% - 408px),#fff calc(50% - 408px),#fff calc(50% + 408px),#f2f4f7 calc(50% + 408px))}
+#paper{width:816px;margin:0 auto;box-shadow:-1px 0 #dce0e6,1px 0 #dce0e6,0 -1px #dce0e6;background:white;min-height:calc(100vh - 114px)}
+#paper canvas{display:block}#workspace::after{content:"";display:block;width:816px;height:120px;margin:0 auto;background:white;box-shadow:-1px 0 #dce0e6,1px 0 #dce0e6}@media(max-width:850px){#workspace{background:#f2f4f7}#paper,#workspace::after{margin-left:17px;margin-right:17px}}

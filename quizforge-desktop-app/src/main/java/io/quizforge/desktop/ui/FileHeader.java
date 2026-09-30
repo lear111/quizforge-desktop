@@ -22,7 +22,9 @@ final class FileHeader extends HBox {
         name.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(name, Priority.ALWAYS);
         getChildren().add(name);
-        if (file.kind() == io.quizforge.core.workspace.WorkspaceFileKind.QUESTION_BANK) {
+        if (file.kind() == io.quizforge.core.workspace.WorkspaceFileKind.QUESTION_BANK
+                && (file.file().questionBank()==null || !QuestionBankAuthoringView.containsEssay(file.file().questionBank())
+                    || QuestionBankAuthoringView.hasPracticeChoices(file.file().questionBank()))) {
             historyButton = UiTheme.iconButton("clock", "历史记录", history);
             historyButton.setId("qbank-history-entry");
             getChildren().add(historyButton);
@@ -30,7 +32,9 @@ final class FileHeader extends HBox {
         mode = UiTheme.iconButton("book", "切换到编辑模式", toggle);
         mode.setId("file-mode-toggle");
         mode.setDisable(file.file().questionBank() != null
-                && !io.quizforge.core.question.QuestionText.supports(file.file().questionBank()));
+                && !(QuestionBankAuthoringView.containsEssay(file.file().questionBank())
+                    ? QuestionBankAuthoringView.supportsEditing(file.file().questionBank())
+                    : io.quizforge.core.question.QuestionText.supports(file.file().questionBank())));
         if (file.supportsMode()) getChildren().add(mode);
         if (file.offersAi()) {
             Button spark = UiTheme.iconButton("spark", "使用 AI 生成内容", ai);

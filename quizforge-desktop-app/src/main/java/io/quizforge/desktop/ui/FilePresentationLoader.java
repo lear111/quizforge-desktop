@@ -47,6 +47,9 @@ final class FilePresentationLoader {
         }
         return new FilePresentation(file, false, false);
     }
+    io.quizforge.core.port.QuestionResourceInput resources(WorkspaceId workspace,String path) {
+        return resource->catalog.openResource(workspace,path,resource);
+    }
 
     private FilePresentation documentDraft(OpenedWorkspaceFile original, String source) throws Exception {
         String issue = original.entry().issue();

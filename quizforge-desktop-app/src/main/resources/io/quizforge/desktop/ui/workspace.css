@@ -604,7 +604,7 @@
 .markdown-outline-anchor-icon { -fx-font-size: 12px; -fx-text-fill: #857694; -fx-padding: 0 5 0 0; }
 .markdown-outline-orphan { -fx-opacity: 0.48; }
 .question-reader { -fx-pref-width: 860; -fx-max-width: 860; -fx-padding: 28 16; -fx-spacing: 14; }
-.practice-question-card, .shared-question-card {
+.practice-question-card, .shared-question-card, #authoring-question-card {
     -fx-pref-width: 720; -fx-max-width: 720;
     -fx-background-color: #fffefb; -fx-background-radius: 12;
     -fx-border-color: #ded8ce; -fx-border-width: 1; -fx-border-radius: 12;
@@ -657,7 +657,8 @@
 .practice-summary-status.unanswered .practice-summary-status-count { -fx-text-fill: #89847c; }
 .question-reader:compact { -fx-padding: 20 8; }
 .question-reader:compact .practice-question-card,
-.question-reader:compact .shared-question-card { -fx-padding: 16; }
+.question-reader:compact .shared-question-card,
+.question-reader:compact #authoring-question-card { -fx-padding: 16; }
 .practice-view:compact .practice-summary-status-list { -fx-pref-width: 140; -fx-max-width: 140; }
 .question-reader:compact .question-navigation { -fx-spacing: 8; }
 .question-reader:compact .button.question-navigation-button,
@@ -697,3 +698,44 @@
 .history-attempt-header { -fx-font-size: 13px; -fx-text-fill: #756e65; }
 .history-draft { -fx-text-fill: #756e65; -fx-padding: 10 12; -fx-background-color: #eeece7; }
 .history-attempt-navigation { -fx-alignment: center-left; }
+.question-rich-paragraph { -fx-font-size: 16px; -fx-line-spacing: 5px; }
+.question-rich-paragraph Text { -fx-fill: -fx-text-base-color; }
+.authoring-essay-text { -fx-font-size: 16px; -fx-line-spacing: 5px; }
+.essay-answer-card { -fx-spacing: 22; }
+.essay-answer-box {
+    -fx-min-height: 220; -fx-padding: 14 16 20 16;
+    -fx-background-color: #fcfbf8; -fx-background-radius: 8;
+    -fx-border-color: #d8d1df; -fx-border-width: 1; -fx-border-radius: 8;
+}
+.essay-answer-empty { -fx-text-fill: #a39aa9; -fx-font-size: 14px; -fx-padding: 12 0; }
+.button.essay-answer-edit { -fx-background-color: transparent; -fx-border-color: transparent; -fx-text-fill: #7862ac; -fx-padding: 4 6; }
+.button.essay-answer-edit:hover { -fx-background-color: #ece6f3; }
+.button.essay-submit { -fx-min-height: 40; -fx-padding: 9 18; -fx-font-size: 14px; -fx-font-weight: bold; }
+.essay-answer-card .question-stem { -fx-border-width: 0; }
+.qbank-editor.essay-editor { -fx-padding: 22 32 48 32; }
+.qbank-editor.essay-editor .editor-document-title { -fx-font-size: 18px; -fx-padding: 0 0 8 0; }
+.essay-editor .qbank-edit-navigation { -fx-spacing: 8; -fx-padding: 0 0 14 0; }
+.essay-editor .essay-score-input { -fx-min-width: 50; -fx-pref-width: 58; -fx-max-width: 68; -fx-padding: 4 5; }
+.essay-toolbar-action, .essay-section-edit {
+    -fx-background-color: transparent; -fx-border-color: transparent;
+    -fx-text-fill: #756688; -fx-font-size: 12px; -fx-padding: 5 7; -fx-cursor: hand;
+}
+.essay-toolbar-action:hover, .essay-section-edit:hover { -fx-background-color: #ece7f1; -fx-background-radius: 4; }
+.essay-content-section { -fx-padding: 6 0 22 0; -fx-border-color: #e7e1d8; -fx-border-width: 0 0 1 0; }
+.essay-section-title { -fx-font-size: 12px; -fx-text-fill: #766f65; }
+.essay-content-preview { -fx-min-height: 135; -fx-padding: 10 0 6 0; }
+.essay-preview-empty { -fx-text-fill: #aaa195; -fx-font-size: 13px; }
+.essay-editor .essay-guidance-input { -fx-min-height: 125; }
+.essay-more-settings > .title { -fx-background-color: transparent; -fx-padding: 5 0; }
+.essay-more-settings > .content { -fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 12 0; }
+.essay-more-settings { -fx-text-fill: #948a7d; -fx-font-size: 12px; }
+.question-image { -fx-padding: 8px 0; }
+#rich-editor-window { -fx-background-color: #faf9f6; }
+#rich-editor-toolbar { -fx-background-color: #f7f6f3; -fx-border-color: #e3ded5; -fx-border-width: 0 0 1 0; }
+#rich-editor-toolbar .button { -fx-background-color: transparent; -fx-padding: 6 9; }
+#rich-editor-toolbar .button:hover { -fx-background-color: #ece7f3; }
+#rich-editor-footer { -fx-background-color: #faf9f6; -fx-border-color: #e3ded5; -fx-border-width: 1 0 0 0; }
+#rich-editor-save { -fx-background-color: #8068ad; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 17; }
+#rich-editor-save:hover { -fx-background-color: #715899; }
+#rich-content-editor { -fx-background-color: white; -fx-border-color: #ded8ce; -fx-border-width: 1; }
+.missing-resource { -fx-padding: 16px; -fx-background-color: rgba(127,127,127,0.08); -fx-border-color: rgba(127,127,127,0.24); -fx-border-style: dashed; }

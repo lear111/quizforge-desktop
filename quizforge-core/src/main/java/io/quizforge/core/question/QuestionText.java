@@ -12,9 +12,12 @@ public final class QuestionText {
     public static String analysis(Question question) { return read(question.analysis()); }
     public static String option(ChoiceOption option) { return read(option.content()); }
     public static boolean supports(QuestionBank bank) {
-        return bank.questions().stream().allMatch(question -> question.prompt() instanceof TextContent
+        return bank.questions().stream().allMatch(QuestionText::supports);
+    }
+    public static boolean supports(Question question) {
+        return question.payload() instanceof ChoicePayload && question.prompt() instanceof TextContent
                 && question.stimulusRefs().isEmpty()
                 && (question.analysis() == null || question.analysis() instanceof TextContent)
-                && question.choicePayload().options().stream().allMatch(option -> option.content() instanceof TextContent));
+                && question.choicePayload().options().stream().allMatch(option -> option.content() instanceof TextContent);
     }
 }

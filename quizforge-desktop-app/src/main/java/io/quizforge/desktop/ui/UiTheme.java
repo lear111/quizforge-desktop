@@ -117,6 +117,7 @@ final class UiTheme {
             case "qbank" -> "M3 2 L17 2 L17 18 L3 18 Z M7 7 Q7 4 10 4 Q14 4 13 7 L10 10 L10 12 M10 15 L10 15.2";
             case "chevron" -> "M5 8 L10 13 L15 8";
             case "check" -> "M3 10 L8 15 L17 5";
+            case "edit" -> "M3 13 L13 3 L17 7 L7 17 L2 18 Z M11 5 L15 9";
             case "refresh" -> "M17 7 A7 7 0 1 0 17 13 M17 2 L17 7 L12 7";
             case "grid" -> "M2 2 L8 2 L8 8 L2 8 Z M12 2 L18 2 L18 8 L12 8 Z M2 12 L8 12 L8 18 L2 18 Z M12 12 L18 12 L18 18 L12 18 Z";
             case "clock" -> "M10 2 A8 8 0 1 1 9.99 2 M10 5 L10 10 L14 12";

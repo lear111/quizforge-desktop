@@ -30,16 +30,27 @@ import javafx.scene.shape.StrokeLineCap;
 
 /** One question at a time; answer state never alters the .qbank file. */
 final class QuestionBankPracticeView extends VBox {
+    /** Mixed-bank navigation retains original question numbers and author-preview pages. */
+    record Navigation(int index, int total, boolean previousDisabled, boolean last,
+            Runnable previous, Runnable next) { }
     private final PersistentPracticeRuntime runtime;
     private final QuestionBankPracticeSession session;
     private final Function<List<SourceRef>, QuestionSourceListView> sources;
     private final QuestionOutlineView outline;
+    private final Navigation navigation;
+    private final Runnable onChanged;
     private QuestionSourceListView sourceRows;
     private BooleanSupplier restartConfirmation = this::confirmRestart;
 
     QuestionBankPracticeView(PersistentPracticeRuntime runtime,
             Function<List<SourceRef>, QuestionSourceListView> sources) {
+        this(runtime, sources, null, null);
+    }
+    QuestionBankPracticeView(PersistentPracticeRuntime runtime,
+            Function<List<SourceRef>, QuestionSourceListView> sources, Navigation navigation, Runnable onChanged) {
         this.runtime = runtime;
+        this.navigation = navigation;
+        this.onChanged = onChanged;
         session = runtime.session();
         this.sources = sources;
         outline = new QuestionOutlineView(session, this::jumpToQuestion);
@@ -55,15 +66,17 @@ final class QuestionBankPracticeView extends VBox {
         getChildren().clear();
         if (session.finished()) { summary(); return; }
         Question question = session.current();
+        int displayIndex = navigation == null ? session.index() : navigation.index();
+        int displayTotal = navigation == null ? session.bank().questions().size() : navigation.total();
         var state = session.state();
         QuestionCardView card;
         if (state == QuestionBankPracticeSession.State.SUBMITTED) {
             if (!question.sourceRefs().isEmpty()) sourceRows = sources.apply(question.sourceRefs());
             card = QuestionCardView.result(QuestionPresentationMapper.practiceResult(session),
-                    session.index(), session.bank().questions().size(), "", sourceRows);
+                    displayIndex, displayTotal, "", sourceRows);
         } else {
-            card = QuestionCardView.answering(QuestionPresentationMapper.practice(session), session.index(),
-                    session.bank().questions().size(), session.selected(), id -> command(() -> runtime.select(id)));
+            card = QuestionCardView.answering(QuestionPresentationMapper.practice(session), displayIndex,
+                    displayTotal, session.selected(), id -> command(() -> runtime.select(id)));
         }
         card.setId("practice-question-card");
         Button submit = UiTheme.button("提交答案", "check", "primary", () -> { });
@@ -87,12 +100,12 @@ final class QuestionBankPracticeView extends VBox {
         card.getChildren().add(actions);
         Button previous = QuestionCardLayout.navigation("arrow-left", "上一题", () -> { });
         previous.setId("previous-question");
-        previous.setDisable(session.index() == 0);
-        previous.setOnAction(event -> command(runtime::previous));
-        boolean last = session.index() == session.bank().questions().size() - 1;
+        previous.setDisable(navigation == null ? session.index() == 0 : navigation.previousDisabled());
+        previous.setOnAction(event -> { if (navigation == null) command(runtime::previous); else navigation.previous().run(); });
+        boolean last = navigation == null ? session.index() == session.bank().questions().size() - 1 : navigation.last();
         Button next = QuestionCardLayout.navigation("arrow", last ? "查看本次练习" : "下一题", () -> { });
         next.setId("next-question");
-        next.setOnAction(event -> command(runtime::next));
+        next.setOnAction(event -> { if (navigation == null) command(runtime::next); else navigation.next().run(); });
         HBox navigation = QuestionCardLayout.row(previous, card, next);
         navigation.setId("practice-navigation");
         getChildren().add(navigation);
@@ -111,6 +124,7 @@ final class QuestionBankPracticeView extends VBox {
         try {
             action.run();
             render();
+            if (onChanged != null) onChanged.run();
         } catch (RuntimeException failure) {
             // The runtime is only hydrated after commit; repaint restores the persisted selection.
             render();

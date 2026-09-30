@@ -1,0 +1,16 @@
+{
+  "name": "quizforge-canvas-editor",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "@hufe921/canvas-editor": "1.0.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "vite": "^7.3.6"
+  }
+}

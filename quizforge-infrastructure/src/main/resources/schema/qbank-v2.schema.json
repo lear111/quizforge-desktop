@@ -111,6 +111,18 @@
         },
         {
           "$ref": "#/$defs/blockMath"
+        },
+        {
+          "$ref": "#/$defs/heading"
+        },
+        {
+          "$ref": "#/$defs/bulletList"
+        },
+        {
+          "$ref": "#/$defs/orderedList"
+        },
+        {
+          "$ref": "#/$defs/blockQuote"
         }
       ]
     },
@@ -126,6 +138,14 @@
           "items": {
             "$ref": "#/$defs/inline"
           }
+        },
+        "alignment": {
+          "enum": [
+            "LEFT",
+            "CENTER",
+            "RIGHT",
+            null
+          ]
         }
       },
       "required": [
@@ -144,10 +164,33 @@
           "type": "string"
         },
         "alt": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "caption": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "widthPercent": {
+          "enum": [
+            25,
+            50,
+            75,
+            100,
+            null
+          ]
+        },
+        "alignment": {
+          "enum": [
+            "LEFT",
+            "CENTER",
+            "RIGHT",
+            null
+          ]
         }
       },
       "required": [
@@ -200,6 +243,18 @@
         },
         "text": {
           "type": "string"
+        },
+        "marks": {
+          "type": ["array", "null"],
+          "items": {
+            "enum": [
+              "BOLD",
+              "ITALIC",
+              "UNDERLINE",
+              "STRIKE"
+            ]
+          },
+          "uniqueItems": true
         }
       },
       "required": [
@@ -218,7 +273,10 @@
           "type": "string"
         },
         "alt": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -297,45 +355,23 @@
       ]
     },
     "payload": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "kind": {
-          "const": "CHOICE"
+      "oneOf": [
+        {
+          "$ref": "#/$defs/choicePayload"
         },
-        "options": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/option"
-          },
-          "minItems": 2
+        {
+          "$ref": "#/$defs/essayPayload"
         }
-      },
-      "required": [
-        "kind",
-        "options"
       ]
     },
     "answer": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "kind": {
-          "const": "CHOICE"
+      "oneOf": [
+        {
+          "$ref": "#/$defs/choiceAnswer"
         },
-        "correctOptionIds": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^opt_[A-Za-z0-9_-]+$"
-          },
-          "minItems": 1,
-          "uniqueItems": true
+        {
+          "$ref": "#/$defs/essayAnswer"
         }
-      },
-      "required": [
-        "kind",
-        "correctOptionIds"
       ]
     },
     "score": {
@@ -385,7 +421,10 @@
           }
         },
         "evaluatorGuidance": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -413,10 +452,16 @@
           "minimum": 1
         },
         "documentTitle": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "sectionTitle": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -437,7 +482,8 @@
         "type": {
           "enum": [
             "SINGLE_CHOICE",
-            "MULTIPLE_CHOICE"
+            "MULTIPLE_CHOICE",
+            "ESSAY"
           ]
         },
         "stimulusRefs": {
@@ -461,14 +507,22 @@
         },
         "evaluationSpec": {
           "anyOf": [
-            { "$ref": "#/$defs/evaluation" },
-            { "type": "null" }
+            {
+              "$ref": "#/$defs/evaluation"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "analysis": {
           "anyOf": [
-            { "$ref": "#/$defs/content" },
-            { "type": "null" }
+            {
+              "$ref": "#/$defs/content"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "sourceRefs": {
@@ -487,6 +541,37 @@
         "answerSpec",
         "scoreSpec",
         "sourceRefs"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "ESSAY"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/essayPayload"
+              },
+              "answerSpec": {
+                "$ref": "#/$defs/essayAnswer"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/choicePayload"
+              },
+              "answerSpec": {
+                "$ref": "#/$defs/choiceAnswer"
+              }
+            }
+          }
+        }
       ]
     },
     "stimulus": {
@@ -539,6 +624,201 @@
         "mediaType",
         "locator",
         "sha256"
+      ]
+    },
+    "choicePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "CHOICE"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/option"
+          },
+          "minItems": 2
+        }
+      },
+      "required": [
+        "kind",
+        "options"
+      ]
+    },
+    "choiceAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "CHOICE"
+        },
+        "correctOptionIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^opt_[A-Za-z0-9_-]+$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind",
+        "correctOptionIds"
+      ]
+    },
+    "essayPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "ESSAY"
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "essayAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "ESSAY"
+        },
+        "referenceAnswer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/content"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "heading": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "HEADING"
+        },
+        "level": {
+          "enum": [
+            1,
+            2,
+            3
+          ]
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inline"
+          }
+        },
+        "alignment": {
+          "enum": [
+            "LEFT",
+            "CENTER",
+            "RIGHT",
+            null
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "level",
+        "children"
+      ]
+    },
+    "listItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        }
+      },
+      "required": [
+        "blocks"
+      ]
+    },
+    "bulletList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "BULLET_LIST"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/listItem"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "items"
+      ]
+    },
+    "orderedList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "ORDERED_LIST"
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/listItem"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "start",
+        "items"
+      ]
+    },
+    "blockQuote": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "BLOCK_QUOTE"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "blocks"
       ]
     }
   }

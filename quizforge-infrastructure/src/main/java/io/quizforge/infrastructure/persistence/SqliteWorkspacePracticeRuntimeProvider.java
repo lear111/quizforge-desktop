@@ -30,8 +30,16 @@ public final class SqliteWorkspacePracticeRuntimeProvider implements PracticeRun
     }
 
     @Override public PersistentPracticeRuntime open(WorkspaceId workspace, QuestionBank bank) {
+        new QuestionBankValidator().validate(bank);
+        var choices = bank.questions().stream().filter(QuestionText::supports).toList();
+        if (choices.isEmpty()) throw new IllegalArgumentException("This bank has no supported practice questions");
+        // Keep the original asset and full-file logical revision. Only supported choice
+        // questions enter the existing practice snapshots; essays remain author previews.
+        var practiceBank = choices.size() == bank.questions().size() ? bank
+                : new QuestionBank(bank.assetId(), bank.title(), bank.schemaVersion(),
+                        bank.stimuli(), choices, bank.resources());
         var service = new PracticeSessionService(new SqlitePracticeTransaction(database(workspace)), clock);
-        return new PersistentPracticeRuntime(service, bank, codec.contentId(bank));
+        return new PersistentPracticeRuntime(service, practiceBank, codec.contentId(bank));
     }
 
     @Override public PracticeHistoryService history(WorkspaceId workspace) {

@@ -1,0 +1,17 @@
+{
+  "name": "quizforge-rich-editor",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "esbuild src/editor.js --bundle --format=iife --target=es2018 --minify --outfile=../src/main/resources/io/quizforge/desktop/ui/tiptap-bundle.js"
+  },
+  "dependencies": {
+    "@tiptap/core": "3.31.3",
+    "@tiptap/pm": "3.31.3",
+    "@tiptap/starter-kit": "3.31.3",
+    "@tiptap/extension-text-align": "3.31.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

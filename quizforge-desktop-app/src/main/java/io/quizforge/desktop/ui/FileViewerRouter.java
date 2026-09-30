@@ -9,6 +9,7 @@ import javafx.scene.layout.BorderPane;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.BiFunction;
 
 /** File kind and mode route independently; no business navigation or metadata panels. */
 final class FileViewerRouter {
@@ -17,17 +18,30 @@ final class FileViewerRouter {
     private final Consumer<MarkdownOutline.Entry> copyLink;
     private final Consumer<String> openLink;
     private final Function<List<SourceRef>, QuestionSourceListView> sources;
-    private final Function<FilePresentation, io.quizforge.core.practice.PersistentPracticeRuntime> practiceRuntime;
+    private final BiFunction<FilePresentation, QuestionBank, io.quizforge.core.practice.PersistentPracticeRuntime> practiceRuntime;
+    private final Function<FilePresentation,io.quizforge.core.port.QuestionResourceInput> resources;
 
     FileViewerRouter(SafeMarkdownPreview.SourceActions sourceActions,
             Consumer<MarkdownOutline.Entry> copyLink, Consumer<String> openLink,
             Function<List<SourceRef>, QuestionSourceListView> sources,
             Function<FilePresentation, io.quizforge.core.practice.PersistentPracticeRuntime> practiceRuntime) {
+        this(sourceActions,copyLink,openLink,sources,practiceRuntime,file->io.quizforge.core.port.QuestionResourceInput.NONE);
+    }
+    FileViewerRouter(SafeMarkdownPreview.SourceActions sourceActions, Consumer<MarkdownOutline.Entry> copyLink,Consumer<String> openLink,
+            Function<List<SourceRef>,QuestionSourceListView> sources,Function<FilePresentation,io.quizforge.core.practice.PersistentPracticeRuntime> practiceRuntime,
+            Function<FilePresentation,io.quizforge.core.port.QuestionResourceInput> resources) {
+        this(sourceActions, copyLink, openLink, sources, (file, bank) -> practiceRuntime.apply(file), resources);
+    }
+    FileViewerRouter(SafeMarkdownPreview.SourceActions sourceActions, Consumer<MarkdownOutline.Entry> copyLink,Consumer<String> openLink,
+            Function<List<SourceRef>,QuestionSourceListView> sources,
+            BiFunction<FilePresentation,QuestionBank,io.quizforge.core.practice.PersistentPracticeRuntime> practiceRuntime,
+            Function<FilePresentation,io.quizforge.core.port.QuestionResourceInput> resources) {
         this.sourceActions = sourceActions;
         this.copyLink = copyLink;
         this.openLink = openLink;
         this.sources = sources;
         this.practiceRuntime = practiceRuntime;
+        this.resources=resources;
     }
 
     Node view(FilePresentation file, FileMode mode) {
@@ -38,6 +52,9 @@ final class FileViewerRouter {
                     : markdown.view(file.file().sourceText(), file.registeredMarkdown(), sourceActions, copyLink, openLink);
             case QUESTION_BANK -> file.empty()
                     ? UiTheme.quietState("该题库暂无题目", "开始编辑，或使用 AI 生成")
+                    : QuestionBankAuthoringView.containsEssay(file.file().questionBank())
+                        ? new QuestionBankAuthoringView(file.file().questionBank(),resources.apply(file),
+                                () -> practiceRuntime.apply(file, file.file().questionBank()), sources)
                     : io.quizforge.core.question.QuestionText.supports(file.file().questionBank()) ? practice(file)
                     : UiTheme.quietState("暂不支持此题库内容", "当前题目界面暂不支持 RICH 内容和共享材料，原始内容已保留在题库文件中。");
             case DIRECTORY -> welcome();
@@ -54,7 +71,7 @@ final class FileViewerRouter {
     Node welcome() { return UiTheme.quietState("打开一个文件", "从左侧文件树中选择，开始阅读或练习。"); }
 
     private Node practice(FilePresentation file) {
-        var practice = new QuestionBankPracticeView(practiceRuntime.apply(file), sources);
+        var practice = new QuestionBankPracticeView(practiceRuntime.apply(file, file.file().questionBank()), sources);
         var scroll = QuestionCardLayout.scroll(practice);
         scroll.getContent().setId("practice-stage");
         scroll.setId("practice-scroll");

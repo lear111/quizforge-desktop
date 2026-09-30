@@ -2,8 +2,8 @@
 
 The current `.qbank` is a ZIP-compatible package. Only `schemaVersion: "2.0"` is
 accepted. There is no plain JSON or v1 reader, fallback, or production migration.
-Existing user workspaces are never rewritten. The Step 1 logical domain remains
-unchanged; the JSON codec serves internal serialization and logical hashing only.
+Existing user workspaces are never rewritten. The logical domain now also supports
+ESSAY; the JSON codec serves internal serialization and logical hashing only.
 
 ## Physical package (Step 2)
 
@@ -65,8 +65,8 @@ QuestionBank(assetId, title, schemaVersion, stimuli, questions, resources)
     │       ├── BlockNode: ParagraphNode, BlockImageNode, BlockMathNode
     │       └── InlineNode: InlineTextNode, InlineImageNode, InlineMathNode,
     │                       LineBreakNode, LinkNode
-    ├── QuestionPayload → ChoicePayload(options: ChoiceOption[])
-    ├── QuestionAnswerSpec → ChoiceAnswerSpec(correctOptionIds)
+    ├── QuestionPayload → ChoicePayload(options: ChoiceOption[]) / EssayPayload
+    ├── QuestionAnswerSpec → ChoiceAnswerSpec(correctOptionIds) / EssayAnswerSpec
     ├── ScoreSpec(defaultMaxScore: BigDecimal)
     ├── EvaluationSpec(criteria, evaluatorGuidance)
     └── SourceRef(documentAssetId, documentContentId, anchorName, occurrence,
@@ -95,7 +95,7 @@ and image resource references, and matching resource kinds. Domain validation on
 checks metadata; package opening additionally verifies binary hashes. Locators are relative logical paths: no drive
 letters, absolute paths, traversal segments, backslashes, or data/base64 URIs.
 
-Only SINGLE_CHOICE and MULTIPLE_CHOICE exist. Single choice requires exactly one
+SINGLE_CHOICE, MULTIPLE_CHOICE and ESSAY are supported. Single choice requires exactly one
 correct option. Multiple choice retains the current rule: at least two correct
 options, with at least one incorrect option. Option IDs remain unique bank-wide.
 Questions may have no source references. Analysis and evaluation are optional.
@@ -103,12 +103,12 @@ TEXT prompts/options cannot be blank; TEXT analysis may be blank or absent.
 
 `ScoreSpec.defaultMaxScore` uses `BigDecimal`, is required and positive. Newly
 created questions default to `BigDecimal.ONE`. Editor mutations preserve score,
-evaluation, stimuli and resource metadata; no new score controls are added.
+evaluation, stimuli and resource metadata. ESSAY editing exposes a decimal score control.
 
 Evaluation criterion weights use `BigDecimal`, are positive, and sum exactly to 1
 when criteria are nonempty. This gives portable normalized relative weights without
 an implicit normalization algorithm or floating point tolerance. Empty criteria
-are valid; no AI or evaluation runtime is introduced.
+are valid. This step does not introduce runtime evaluation.
 
 ## Optional JSON contract (Step 1.1)
 
@@ -130,8 +130,12 @@ no conflicting writer-only rule in the reader validation layer.
 The audited optional properties are `Question.analysis`, `Question.evaluationSpec`,
 `EvaluationSpec.evaluatorGuidance`, `InlineImageNode.alt`, `BlockImageNode.alt`,
 `BlockImageNode.caption`, `SourceRef.documentTitle` and `SourceRef.sectionTitle`.
-LINK has only required href/children; every Resource metadata field is required.
-No optional properties exist on the other current rich nodes, stimuli or scores.
+ESSAY adds optional `placeholder` and `referenceAnswer`.
+The editor foundation adds optional paragraph/heading alignment, block-image
+width/alignment, and inline-text marks. LINK has only required href/children;
+every Resource metadata field is required. No optional properties exist on
+stimuli or scores. The canonical writer omits absent properties, while the
+reader treats explicit null as absent for these new fields as well.
 
 Codec regression tests cover omission, explicit-null normalization, domain/hash
 equality, valued/blank metadata round-trips, invalid optional types and required
@@ -152,12 +156,95 @@ filesystem paths, mtime, ZIP entry layout, and UI state do not participate.
 
 ## Existing consumers and examples
 
-`QuestionText` is the single TEXT adapter for current JavaFX views and persisted
-text practice snapshots. Unsupported RICH content or stimulus references get an explicit placeholder
+`QuestionText` is the TEXT adapter for choice JavaFX views and persisted
+choice practice snapshots. Unsupported choice RICH content or stimulus references get an explicit placeholder
 and cannot enter the TEXT editor; it is never displayed by stringifying JSON.
 Current rendering, submission and history behavior otherwise retain their existing
-contracts. V4 database migration and archived rows are unchanged; no actual score
-award, rich snapshot renderer, stimulus UI or media controls are added.
+contracts. V4 database migration and existing archived rows are unchanged.
+
+## ESSAY and prompt images
+
+`EssayPayload(placeholder?)` and
+`EssayAnswerSpec(referenceAnswer?: QuestionContent)` use the `ESSAY` discriminator.
+Optional missing/null normalization uses the same canonical omission contract
+as the other v2 fields. ESSAY has no word-limit controls, metadata, model fields,
+validation or canonical schema properties. The reader removes only the obsolete
+ESSAY payload properties `minWords` and `maxWords` before domain validation so
+existing v2 packages remain readable; a normal save drops them. They do not
+participate in normalized logical contentId. The schema describes normalized /
+canonical JSON; raw obsolete properties are not schema-valid. User-authored
+prompt text is preserved. This normalization does not introduce a v1 reader or
+plain JSON package fallback; other unknown properties remain errors.
+
+`RichContentEditor` is a generic authoring component; ESSAY prompt is its first
+consumer. An image is a content capability, not a separate question type. The
+component accepts/returns `QuestionContent` through an engine interface; it has
+no ESSAY payload, type, label or control-ID dependency. Choice fields continue
+to use their existing TEXT controls; referenceAnswer still uses a TEXT editor.
+
+The first engine is locally bundled Tiptap/ProseMirror inside JavaFX WebView,
+hosted by a separate `RichContentEditorWindow` Stage. The window is modal to its
+owner and has a toolbar, surrounding workspace, a fixed-width 672 px content
+canvas and Save/Cancel footer. Its content grows vertically without page breaks,
+page numbers or A4 sizing; the outer window scrolls. The main ESSAY Edit page
+shows a natural-height `QuestionContentRenderer` preview and an Edit button.
+`RichContentEditor` and `RichContentEditorWindow` are generic infrastructure;
+ESSAY prompt is the first consumer, and referenceAnswer remains a TEXT control.
+
+The toolbar supports undo/redo, bold/italic/underline/strike/clear, paragraph,
+H1–H3, left/center/right alignment, bullet/ordered lists, quote, link and image.
+The adapter maps between Tiptap JSON and portable RichDocument nodes, including
+the corresponding generic heading, list, quote, mark, link and image semantics.
+Existing InlineImage nodes retain their model shape. Unsupported editor or
+domain nodes are rejected, never silently dropped. The engine can be replaced
+without changing QBank Domain. HTML is UI-only and never saved.
+The checked-in local bundle is rebuilt from the pinned web dependencies with
+`npm ci` and `npm run build` in `quizforge-desktop-app/rich-editor-web`; Desktop
+runtime does not require npm, a dev server or network access.
+
+`QuestionContentNormalizer` centralizes representation selection: TEXT remains
+canonical lightweight representation when content is plain text only. Paragraphs
+use blank-line separators and line breaks use newlines. Marks, headings, lists,
+links, images, alignment and quotes require RICH; removing the final structured
+feature can return TEXT. Opening and saving a plain TEXT prompt does not needlessly
+convert it to RICH.
+
+PNG/JPEG import checks signatures, decodes the image and bounds
+bytes (32 MiB) and pixels (25 million). Each import uses a fresh `res_<uuid>`;
+only resource IDs enter prompt nodes. Newly imported resources remain staged in a
+`ContentEditSession` until Save; Cancel discards them and leaves the owning QBank
+unchanged. The image toolbar supports insertion, replacement, deletion, relative
+width 25/50/75/100% and left/center/right alignment. Formal package saves obtain
+committed pending bytes and retained bytes from the existing package, with writer
+SHA-256 and atomic replacement unchanged. Removing an image removes metadata only
+when no question, option, reference answer, analysis or stimulus still uses it.
+
+The generic `QuestionContentRenderer` maps `QuestionContent` to JavaFX nodes,
+independent of ESSAY. Editor and Renderer share `QuestionContentLayout` values
+for content width, font family/size, line height and paragraph spacing, plus
+matching list and image width/alignment semantics. The Renderer grows to its
+content height; the editor canvas keeps working space. This step uses it in
+author Browse/Preview only; future Practice/History integration is deferred.
+Missing, changed or undecodable package resources produce an explicit placeholder
+while preserving the rest of the card.
+
+The WebView loads only the application's bundled document and JS. CSP denies
+network, frames, objects and external scripts; images use application-provided
+data URLs inside the editor only. Navigation, popups and drops are blocked.
+The minimal Java bridge only reports content height. Saving strictly converts
+the editor JSON through the adapter into portable content, checks allowed fields
+and resource identity, then uses Domain validation and the formal package writer.
+Neither HTML nor image data URLs enter Domain/package JSON.
+
+Banks containing ESSAY use an author preview with type, score and
+prompt. They do not open a practice runtime or offer answer/history controls.
+Existing choice-only Practice/History code and persistence remain at the Step 2
+baseline, and DB schema/migrations are untouched. Previous subjective runtime
+work is retained only in the safety stash, not in this foundation implementation.
+
+English word count is centralized: ASCII letter/digit runs, allowing internal
+apostrophes (straight/curly) and hyphens. Punctuation/whitespace separates words;
+non-ASCII text alone does not count. The utility is retained without Practice integration.
 
 `examples/step7-practice/Java集合练习.qbank` contains actual v2 single/multiple choice
 packages. `examples/qbank-v2/rich-foundation.qbank` contains text + inline formula +
@@ -166,8 +253,8 @@ metadata and an exact 1.5 default score. Its ZIP includes a tiny PNG and PCM WAV
 
 ## Remaining boundaries
 
-Rich/stimulus UI, non-choice types, scoring runtime, and existing user data
-migration remain separate tasks. Historical source-address support must not be
+ESSAY Practice/Self Evaluation/History, stimulus UI, AI evaluation, Math/Audio editing, further question types and existing
+user data migration remain separate tasks. Historical source-address support must not be
 mistaken for permission to reintroduce a QBank v1 reader.
 
 ## Fixed acceptance workspace legacy asset (Step 2 checkpoint)
