@@ -4,8 +4,8 @@ import io.quizforge.core.asset.Asset;
 import io.quizforge.core.asset.AssetType;
 import io.quizforge.core.port.FileDocumentStorage;
 import io.quizforge.core.port.WorkspaceAssetScanner;
-import io.quizforge.core.workspace.WorkspaceId;
-import io.quizforge.core.workspace.WorkspaceService;
+import io.quizforge.core.workspace.model.WorkspaceId;
+import io.quizforge.core.workspace.service.WorkspaceService;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -31,7 +31,7 @@ public final class MarkdownFileEditService {
         Objects.requireNonNull(editedSource, "editedSource");
         if (!openedSource.equals(files.read(workspace, relativePath)))
             throw new IllegalStateException("Markdown changed outside the editor. Reopen it before saving.");
-        try (FileDocumentStorage.StagedFile staged = files.stageReplace(workspace, relativePath, editedSource)) {
+        try (FileDocumentStorage.StagedFile staged = files.stageReplace(workspace, relativePath, editedSource, openedSource)) {
             staged.publish();
             try {
                 if (!editedSource.equals(files.read(workspace, relativePath)))
@@ -40,9 +40,9 @@ public final class MarkdownFileEditService {
                 if (expectedAssetId != null) {
                     Asset asset = assets.stream()
                             .filter(item -> expectedAssetId.equals(item.assetId())
-                                    && item.assetType() == AssetType.STANDARD_DOCUMENT)
+                                    && item.assetType() == AssetType.REGISTERED_MARKDOWN)
                             .findFirst().orElseThrow(() -> new IllegalStateException(
-                                    "Edited StandardDocument is invalid or changed its assetId"));
+                                    "Edited registered Markdown is invalid or changed its assetId"));
                     if (!relativePath.equals(asset.currentPath()))
                         throw new IllegalStateException("Asset Registry does not match saved Markdown");
                 }

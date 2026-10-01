@@ -1,7 +1,7 @@
 package io.quizforge.core.port;
 
 import io.quizforge.core.asset.Asset;
-import io.quizforge.core.workspace.WorkspaceId;
+import io.quizforge.core.workspace.model.WorkspaceId;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;

@@ -15,12 +15,14 @@ import java.util.Optional;
 
 public final class WindowsDpapiCredentialStore implements CredentialStore {
     private final Path secrets;
+    private final Path dataRoot;
 
     public WindowsDpapiCredentialStore(QuizForgeDataDirectory dataDirectory) {
         if (!System.getProperty("os.name").toLowerCase().contains("windows")) {
             throw new IllegalStateException("Windows DPAPI is available only on Windows.");
         }
         try {
+            dataRoot = dataDirectory.root().toRealPath();
             secrets = dataDirectory.root().resolve("secrets");
             Files.createDirectories(secrets);
             if (!secrets.toRealPath().startsWith(dataDirectory.root())) {
@@ -39,18 +41,21 @@ public final class WindowsDpapiCredentialStore implements CredentialStore {
         byte[] plain = secret.getBytes(StandardCharsets.UTF_8);
         Path temporary = null;
         try {
+            Path destination = path(reference);
             byte[] encrypted = Crypt32Util.cryptProtectData(plain);
             temporary = Files.createTempFile(secrets, "credential-", ".tmp");
             Files.write(temporary, encrypted);
-            Files.move(temporary, path(reference), StandardCopyOption.REPLACE_EXISTING);
+            io.quizforge.infrastructure.filesystem.workspace.WorkspacePathGuard.requireInside(dataRoot, destination);
+            Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
         } catch (RuntimeException | IOException e) {
             throw failure("save credential", e);
         } finally {
             Arrays.fill(plain, (byte) 0);
             if (temporary != null) {
                 try {
+                    io.quizforge.infrastructure.filesystem.workspace.WorkspacePathGuard.requireInside(dataRoot, temporary);
                     Files.deleteIfExists(temporary);
-                } catch (IOException ignored) {
+                } catch (IOException | RuntimeException ignored) {
                     // A failed temporary cleanup does not expose plaintext.
                 }
             }
@@ -94,6 +99,8 @@ public final class WindowsDpapiCredentialStore implements CredentialStore {
             throw new IllegalArgumentException("Invalid credential reference.");
         }
         Path file = secrets.resolve(reference + ".dpapi");
+        try { io.quizforge.infrastructure.filesystem.workspace.WorkspacePathGuard.requireInside(dataRoot, file); }
+        catch (RuntimeException error) { throw failure("access credential", error); }
         if (Files.isSymbolicLink(file)) {
             throw failure("access credential", null);
         }

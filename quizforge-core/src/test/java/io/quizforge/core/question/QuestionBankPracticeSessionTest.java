@@ -1,9 +1,17 @@
 package io.quizforge.core.question;
 
-import static org.junit.jupiter.api.Assertions.*;
-
+import io.quizforge.core.practice.QuestionBankPracticeSession;
+import io.quizforge.core.question.content.TextContent;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.source.QuestionSourceDocument;
+import io.quizforge.core.question.source.SourceRef;
+import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.type.objective.choice.ChoiceOption;
+import io.quizforge.core.question.type.objective.choice.ChoicePayload;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 class QuestionBankPracticeSessionTest {
     private static final String REVISION = "qfd:v1:" + "a".repeat(64);

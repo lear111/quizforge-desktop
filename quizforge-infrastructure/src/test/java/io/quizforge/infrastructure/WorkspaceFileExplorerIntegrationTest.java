@@ -1,26 +1,30 @@
 package io.quizforge.infrastructure;
 
-import io.quizforge.core.question.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-import io.quizforge.core.workspace.Workspace;
-import io.quizforge.core.workspace.WorkspaceFileKind;
-import io.quizforge.core.workspace.WorkspaceFileService;
-import io.quizforge.core.workspace.WorkspaceFileType;
-import io.quizforge.core.workspace.WorkspaceFileTree;
-import io.quizforge.core.workspace.WorkspaceService;
-import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
-import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileCatalog;
-import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileOperations;
+import io.quizforge.core.question.content.TextContent;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.source.QuestionBankReferenceResolver;
+import io.quizforge.core.question.source.SourceRef;
+import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.type.objective.choice.ChoiceOption;
+import io.quizforge.core.question.type.objective.choice.ChoicePayload;
+import io.quizforge.core.workspace.model.Workspace;
+import io.quizforge.core.workspace.model.WorkspaceFileKind;
+import io.quizforge.core.workspace.model.WorkspaceFileTree;
+import io.quizforge.core.workspace.model.WorkspaceFileType;
+import io.quizforge.core.workspace.service.WorkspaceFileService;
+import io.quizforge.core.workspace.service.WorkspaceService;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
-import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
-import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
+import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
+import io.quizforge.infrastructure.filesystem.workspace.FileSystemWorkspaceAssetScanner;
+import io.quizforge.infrastructure.filesystem.workspace.LocalWorkspaceFileCatalog;
+import io.quizforge.infrastructure.filesystem.workspace.LocalWorkspaceFileOperations;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspacePathResolver;
 import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
-import java.nio.file.Files;
 import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
@@ -29,6 +33,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.*;
 
 class WorkspaceFileExplorerIntegrationTest {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-09-25T00:00:00Z"), ZoneOffset.UTC);
@@ -69,7 +74,7 @@ class WorkspaceFileExplorerIntegrationTest {
         Files.createDirectories(root.resolve("AFolder"));
         write("z.md", "Z");
         write("B.md", "B");
-        assertEquals(List.of("AFolder", "bFolder", "documents", "materials", "question-banks", "sources",
+        assertEquals(List.of("AFolder", "bFolder", "documents", "question-banks", "sources",
                         "B.md", "z.md"),
                 service.refresh(workspace.id()).childrenOf("").stream().map(file -> file.name()).toList());
     }
@@ -83,9 +88,9 @@ class WorkspaceFileExplorerIntegrationTest {
         write("面试/Broken.qbank", "{ broken json");
         write("Java/image.png", "not decoded");
         WorkspaceFileTree tree = service.refresh(workspace.id());
-        assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, entry(tree, "Java/Knowledge.md").kind());
+        assertEquals(WorkspaceFileKind.REGISTERED_MARKDOWN, entry(tree, "Java/Knowledge.md").kind());
         assertEquals("doc_alpha", entry(tree, "Java/Knowledge.md").assetId());
-        assertEquals(WorkspaceFileKind.INVALID_STANDARD_DOCUMENT, entry(tree, "Java/Invalid.md").kind());
+        assertEquals(WorkspaceFileKind.INVALID_REGISTERED_MARKDOWN, entry(tree, "Java/Invalid.md").kind());
         assertNotNull(entry(tree, "Java/Invalid.md").issue());
         assertTrue(tree.entries().stream().noneMatch(file -> file.relativePath().endsWith(".markdown")));
         assertEquals(WorkspaceFileKind.QUESTION_BANK, entry(tree, "面试/Bank.qbank").kind());
@@ -132,7 +137,7 @@ class WorkspaceFileExplorerIntegrationTest {
         Path newFile = Files.createDirectories(root.resolve("Moved/Here")).resolve("Renamed.md");
         Files.move(root.resolve("Java/Knowledge.md"), newFile);
         WorkspaceFileTree tree = service.refresh(workspace.id());
-        assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT, entry(tree, "Moved/Here/Renamed.md").kind());
+        assertEquals(WorkspaceFileKind.REGISTERED_MARKDOWN, entry(tree, "Moved/Here/Renamed.md").kind());
         assertTrue(tree.entries().stream().noneMatch(file -> file.relativePath().equals("Java/Knowledge.md")));
         assertEquals("Moved/Here/Renamed.md", scanner.scan(workspace.id()).stream()
                 .filter(asset -> asset.assetId().equals("doc_alpha")).findFirst().orElseThrow().currentPath());
@@ -141,7 +146,7 @@ class WorkspaceFileExplorerIntegrationTest {
     @Test void emptyWorkspaceHasVisibleEmptyDirectories() {
         WorkspaceFileTree tree = service.refresh(workspace.id());
         assertFalse(tree.hasFiles());
-        assertEquals(4, tree.childrenOf("").size());
+        assertEquals(3, tree.childrenOf("").size());
     }
 
     @Test void createsMarkdownAndQuestionBankInCustomFolderAndRefreshesRegistry() throws Exception {
@@ -183,7 +188,7 @@ class WorkspaceFileExplorerIntegrationTest {
                 () -> service.createFolder(workspace.id(), "", "../outside"));
     }
 
-    private io.quizforge.core.workspace.WorkspaceFileEntry entry(WorkspaceFileTree tree, String path) {
+    private io.quizforge.core.workspace.model.WorkspaceFileEntry entry(WorkspaceFileTree tree, String path) {
         return tree.entries().stream().filter(file -> file.relativePath().equals(path)).findFirst().orElseThrow();
     }
 
@@ -201,8 +206,8 @@ class WorkspaceFileExplorerIntegrationTest {
     }
 
     private QuestionBank validBank() {
-        String contentId = new io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentV1()
-                .parseIfStandard(formalDocument("doc_alpha", "Java", "Facts stay stable."))
+        String contentId = new io.quizforge.infrastructure.filesystem.markdown.LegacyMarkdownCodec()
+                .parseLegacy(formalDocument("doc_alpha", "Java", "Facts stay stable."))
                 .orElseThrow().contentId();
         return new QuestionBank("qb_alpha", "Java Questions", "2.0", List.of(), List.of(Question.choice("q_one", "SINGLE_CHOICE", new TextContent("What stays stable?"), new TextContent("The source says facts."), List.of(SourceRef.anchor("doc_alpha", contentId, "section_one", 1, "Java", "Section")), new ChoicePayload(List.of(new ChoiceOption("opt_a", new TextContent("Facts")),
                                 new ChoiceOption("opt_b", new TextContent("Nothing")))), new ChoiceAnswerSpec(List.of("opt_a")))), List.of());

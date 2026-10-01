@@ -1,6 +1,17 @@
 package io.quizforge.infrastructure.testing;
 
-import io.quizforge.core.question.*;
+import io.quizforge.core.question.content.BlockImageNode;
+import io.quizforge.core.question.content.InlineTextNode;
+import io.quizforge.core.question.content.ParagraphNode;
+import io.quizforge.core.question.content.QuestionContent;
+import io.quizforge.core.question.content.RichContent;
+import io.quizforge.core.question.content.RichDocument;
+import io.quizforge.core.question.content.TextContent;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.model.ScoreSpec;
+import io.quizforge.core.question.type.subjective.essay.EssayAnswerSpec;
+import io.quizforge.core.question.type.subjective.essay.EssayPayload;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;

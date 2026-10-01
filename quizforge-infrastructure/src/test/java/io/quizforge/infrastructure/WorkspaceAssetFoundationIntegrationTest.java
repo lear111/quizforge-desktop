@@ -1,25 +1,21 @@
 package io.quizforge.infrastructure;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quizforge.core.asset.AssetType;
-import io.quizforge.core.workspace.Workspace;
-import io.quizforge.core.workspace.WorkspaceId;
-import io.quizforge.core.workspace.WorkspaceService;
-import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
+import io.quizforge.core.workspace.model.Workspace;
+import io.quizforge.core.workspace.model.WorkspaceId;
+import io.quizforge.core.workspace.service.WorkspaceService;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
-import io.quizforge.infrastructure.filesystem.WorkspaceManifestStore;
-import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
+import io.quizforge.infrastructure.filesystem.workspace.FileSystemWorkspaceAssetScanner;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspaceManifestStore;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspacePathResolver;
 import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
+import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -30,6 +26,9 @@ import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkspaceAssetFoundationIntegrationTest {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-09-25T00:00:00Z"), ZoneOffset.UTC);
@@ -68,12 +67,12 @@ class WorkspaceAssetFoundationIntegrationTest {
         var bank = scanner.scan(workspace.id()).getFirst();
         assertEquals("qb_one", bank.assetId());
         assertEquals("2.0", bank.schemaVersion());
-        assertEquals(new io.quizforge.infrastructure.filesystem.QuestionBankV2Codec()
+        assertEquals(new io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec()
                 .contentId(QuestionBankV2CodecTest.valid("SINGLE_CHOICE")), bank.contentId());
     }
 
     @Test void emptyPackageHasRevisionAndUnsupportedNeighborDoesNotAbortScan() throws Exception {
-        var draft = new io.quizforge.core.question.QuestionBank("qb_empty", "Empty draft",
+        var draft = new io.quizforge.core.question.model.QuestionBank("qb_empty", "Empty draft",
                 java.util.List.of(), java.util.List.of(), java.util.List.of());
         new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter()
                 .write(root.resolve("question-banks/empty.qbank"), draft);
@@ -84,7 +83,7 @@ class WorkspaceAssetFoundationIntegrationTest {
         assertEquals(1, result.assets().size());
         var asset = index.findById(workspace.id(), "qb_empty").orElseThrow();
         assertEquals("question-banks/empty.qbank", asset.currentPath());
-        assertEquals(new io.quizforge.infrastructure.filesystem.QuestionBankV2Codec()
+        assertEquals(new io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec()
                 .contentId(draft), asset.contentId());
         assertEquals(1, result.issues().size());
         assertEquals("INVALID_ASSET_FILE", result.issues().getFirst().code());
@@ -104,7 +103,7 @@ class WorkspaceAssetFoundationIntegrationTest {
         Path file = packageFixture(); var before = scanner.scan(workspace.id()).getFirst();
         var bank = QuestionBankV2CodecTest.valid("SINGLE_CHOICE");
         new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(file,
-                new io.quizforge.core.question.QuestionBank(bank.assetId(), "Changed", bank.stimuli(), bank.questions(), bank.resources()));
+                new io.quizforge.core.question.model.QuestionBank(bank.assetId(), "Changed", bank.stimuli(), bank.questions(), bank.resources()));
         var after = scanner.scan(workspace.id()).getFirst();
         assertEquals(before.assetId(), after.assetId()); assertFalse(before.contentId().equals(after.contentId()));
     }
@@ -171,6 +170,8 @@ class WorkspaceAssetFoundationIntegrationTest {
         repository.save(legacy);
         WorkspaceService workspaces = new WorkspaceService(repository, paths, CLOCK);
         assertEquals(2, workspaces.listWorkspaces().size());
+        assertFalse(Files.exists(legacyRoot.resolve("sources")));
+        workspaces.getWorkspace(legacy.id());
         assertTrue(Files.isDirectory(legacyRoot.resolve("sources")));
         assertTrue(Files.isDirectory(legacyRoot.resolve("documents")));
         assertTrue(Files.isDirectory(legacyRoot.resolve("question-banks")));
@@ -183,8 +184,8 @@ class WorkspaceAssetFoundationIntegrationTest {
         Path custom = Files.createDirectories(root.resolve("notes/semester-one"));
         Files.writeString(custom.resolve("study.md"), DOCUMENT, StandardCharsets.UTF_8);
         QBankTestPackageBuilder.write(root.resolve("question-banks/quiz.qbank"),
-                new io.quizforge.infrastructure.filesystem.QuestionBankV2Codec().write(
-                    new io.quizforge.core.question.QuestionBank("qb_java", "Java Quiz", java.util.List.of(),
+                new io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec().write(
+                    new io.quizforge.core.question.model.QuestionBank("qb_java", "Java Quiz", java.util.List.of(),
                         QuestionBankV2CodecTest.valid("SINGLE_CHOICE").questions(), java.util.List.of())));
         Files.writeString(root.resolve("sources/plain.md"), "# An ordinary note");
         Files.writeString(root.resolve("documents/ignored.markdown"),
@@ -193,7 +194,7 @@ class WorkspaceAssetFoundationIntegrationTest {
         var assets = scanner.scan(workspace.id());
         assertEquals(2, assets.size());
         var document = index.findById(workspace.id(), "doc_java").orElseThrow();
-        assertEquals(AssetType.STANDARD_DOCUMENT, document.assetType());
+        assertEquals(AssetType.REGISTERED_MARKDOWN, document.assetType());
         assertEquals("notes/semester-one/study.md", document.currentPath());
         assertEquals("Java Study", document.title());
         var bank = index.findById(workspace.id(), "qb_java").orElseThrow();

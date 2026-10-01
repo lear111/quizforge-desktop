@@ -1,6 +1,6 @@
 package io.quizforge.core.practice;
 
-import io.quizforge.core.question.QuestionBankPracticeSession;
+import io.quizforge.core.question.type.QuestionTypes;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -22,10 +22,10 @@ public final class PracticeRuntimeMapper {
             var row = snapshot.questions().get(index);
             var question = row.sessionQuestion();
             var fileQuestion = runtime.bank().questions().get(index);
-            if (!question.questionId().equals(fileQuestion.id()) || !question.snapshot().equals(mapper.map(fileQuestion)))
+            if (!question.questionId().equals(fileQuestion.id()) || !PracticeQuestionSnapshotMapper.logical(question.snapshot()).equals(mapper.map(fileQuestion)))
                 throw new IllegalStateException("Practice snapshot has a different revision");
             if (question.questionId().equals(snapshot.session().currentQuestionId())) current = index;
-            if ("ESSAY".equals(question.snapshot().questionType())) {
+            if (QuestionTypes.isEssay(question.snapshot().questionType())) {
                 if (question.practiceState() == PracticeSessionQuestion.State.SUBMITTED && row.attempts().isEmpty())
                     throw new IllegalStateException("Submitted essay attempt is missing");
                 EssayPracticeAnswer.from(question.draftAnswer());

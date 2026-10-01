@@ -3,9 +3,9 @@ package io.quizforge.infrastructure.filesystem.qbank;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.quizforge.core.*;
-import io.quizforge.core.question.QuestionBank;
-import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
+import io.quizforge.core.ErrorCode;
+import io.quizforge.core.QuizForgeException;
+import io.quizforge.core.question.model.QuestionBank;
 import java.util.Set;
 
 final class PackageJson {

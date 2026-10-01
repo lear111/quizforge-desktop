@@ -24,7 +24,7 @@ public final class QuizForgeDataDirectory {
             root = path.toRealPath();
             Files.createDirectories(workspacesDirectory());
         } catch (IOException e) {
-            throw new QuizForgeException(ErrorCode.MATERIAL_STORAGE_FAILED,
+            throw new QuizForgeException(ErrorCode.WORKSPACE_STORAGE_FAILED,
                     "Could not create the QuizForge data directory.", e);
         }
     }

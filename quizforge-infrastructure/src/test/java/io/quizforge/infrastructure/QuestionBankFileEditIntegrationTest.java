@@ -1,21 +1,40 @@
 package io.quizforge.infrastructure;
 
-import io.quizforge.core.question.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-import io.quizforge.core.workspace.Workspace;
-import io.quizforge.core.workspace.WorkspaceService;
-import io.quizforge.infrastructure.filesystem.*;
-import io.quizforge.infrastructure.persistence.*;
-import java.nio.file.Files;
+import io.quizforge.core.question.content.TextContent;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.resource.QBankResource;
+import io.quizforge.core.question.resource.ResourceKind;
+import io.quizforge.core.question.service.QuestionBankEditorModel;
+import io.quizforge.core.question.service.QuestionBankFileEditService;
+import io.quizforge.core.question.source.QuestionSourceDocument;
+import io.quizforge.core.question.source.SourceRef;
+import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.type.objective.choice.ChoiceOption;
+import io.quizforge.core.question.type.objective.choice.ChoicePayload;
+import io.quizforge.core.workspace.model.Workspace;
+import io.quizforge.core.workspace.service.WorkspaceService;
+import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
+import io.quizforge.infrastructure.filesystem.markdown.FileDocumentNodeLookup;
+import io.quizforge.infrastructure.filesystem.markdown.LegacyMarkdownCodec;
+import io.quizforge.infrastructure.filesystem.markdown.LocalMarkdownFileStorage;
+import io.quizforge.infrastructure.filesystem.qbank.LocalQuestionBankFileStorage;
+import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
+import io.quizforge.infrastructure.filesystem.workspace.FileSystemWorkspaceAssetScanner;
+import io.quizforge.infrastructure.filesystem.workspace.LocalWorkspaceFileCatalog;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspacePathResolver;
+import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
+import io.quizforge.infrastructure.persistence.SqliteDatabase;
+import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
 import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.*;
 
 class QuestionBankFileEditIntegrationTest {
     @TempDir Path temp;
@@ -23,38 +42,37 @@ class QuestionBankFileEditIntegrationTest {
     private Workspace workspace;
     private WorkspacePathResolver paths;
     private LocalQuestionBankFileStorage banks;
-    private LocalStandardDocumentFileStorage documents;
+    private LocalMarkdownFileStorage documents;
     private FileSystemWorkspaceAssetScanner scanner;
     private SqliteAssetIndexRepository index;
     private final QuestionBankV2Codec codec = new QuestionBankV2Codec();
-    private final StandardKnowledgeDocumentV1 markdown = new StandardKnowledgeDocumentV1();
+    private final LegacyMarkdownCodec markdown = new LegacyMarkdownCodec();
     private String bankPath;
     private String documentPath;
     private QuestionBank original;
 
-    @BeforeEach void setup() {
+    @BeforeEach void setup() throws Exception {
         QuizForgeDataDirectory directory = new QuizForgeDataDirectory(temp.resolve("data"));
         paths = new WorkspacePathResolver(directory);
         workspaces = new WorkspaceService(new SqliteWorkspaceRepository(new SqliteDatabase(directory)),
                 paths, Clock.systemUTC());
         workspace = workspaces.createWorkspace("Editor");
         banks = new LocalQuestionBankFileStorage(directory);
-        documents = new LocalStandardDocumentFileStorage(directory);
+        documents = new LocalMarkdownFileStorage(directory);
         index = new SqliteAssetIndexRepository(paths);
         scanner = new FileSystemWorkspaceAssetScanner(paths, index, Clock.systemUTC());
-        try (var staged = documents.stageCreate(workspace.id(), "Source", document())) {
-            staged.publish(); staged.complete(); documentPath = staged.currentPath();
-        }
-        String revision = markdown.parseIfStandard(document()).orElseThrow().contentId();
+        documentPath = "documents/Source.md";
+        Files.writeString(paths.workspaceRoot(workspace.id()).resolve(documentPath), document());
+        String revision = markdown.parseLegacy(document()).orElseThrow().contentId();
         var source = new QuestionSourceDocument("doc_source", revision, "Source");
         var ref = SourceRef.anchor("doc_source", revision, "section_one", 1, "Source", "One");
         var question = Question.choice("q_one", "SINGLE_CHOICE", new TextContent("Original?"), new TextContent("Reason"), List.of(ref), new ChoicePayload(List.of(
                         new ChoiceOption("opt_a", new TextContent("A")),
                         new ChoiceOption("opt_b", new TextContent("B")))), new ChoiceAnswerSpec(List.of("opt_a")));
         original = new QuestionBank("qb_editor", "Bank", "2.0", List.of(), List.of(question), List.of());
-        try (var staged = banks.stageCreate(workspace.id(), original.title(), original)) {
-            staged.publish(); staged.complete(); bankPath = staged.currentPath();
-        }
+        bankPath = "question-banks/Bank.qbank";
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter()
+                .write(paths.workspaceRoot(workspace.id()).resolve(bankPath), original);
         scanner.scan(workspace.id());
     }
 
@@ -67,7 +85,6 @@ class QuestionBankFileEditIntegrationTest {
 
     private QuestionBankFileEditService service() {
         return new QuestionBankFileEditService(workspaces, banks, codec, scanner,
-                new FormalMarkdownDocumentReader(documents),
                 new FileDocumentNodeLookup(new LocalWorkspaceFileCatalog(paths, codec)));
     }
 
@@ -111,7 +128,7 @@ class QuestionBankFileEditIntegrationTest {
         edit.setTitle("Changed");
         var failing = new QuestionBankFileEditService(workspaces, banks, codec,
                 id -> { throw new IllegalStateException("Injected registry failure"); },
-                new FormalMarkdownDocumentReader(documents));
+                null);
         assertThrows(IllegalStateException.class,
                 () -> failing.save(workspace.id(), bankPath, codec.contentId(original), edit.bank()));
         assertEquals(before, banks.read(workspace.id(), bankPath));
@@ -143,9 +160,7 @@ class QuestionBankFileEditIntegrationTest {
     }
 
     @Test void onlyValidMarkdownSectionsCanBecomeNewReferences() {
-        assertEquals("doc_source", service().availableSources(workspace.id()).getFirst().assetId());
-        assertEquals("section_one", service().source(workspace.id(), "doc_source")
-                .chapters().getFirst().sections().getFirst().id());
+        assertTrue(scanner.scan(workspace.id()).stream().anyMatch(asset->asset.assetId().equals("doc_source")));
         var edit = new QuestionBankEditorModel(original);
         var ref = original.questions().getFirst().sourceRefs().getFirst();
         edit.addSourceRef(0, SourceRef.anchor(ref.documentAssetId(), ref.documentContentId(), "section_missing", 1, ref.documentTitle(), "Missing"));
@@ -161,7 +176,7 @@ class QuestionBankFileEditIntegrationTest {
         Files.writeString(paths.workspaceRoot(workspace.id()).resolve(documentPath), changedSource);
         var saved = service().save(workspace.id(), bankPath, codec.contentId(original), edit.bank());
         assertEquals(original.sourceDocuments(), banks.read(workspace.id(), bankPath).sourceDocuments());
-        assertNotEquals(markdown.parseIfStandard(changedSource).orElseThrow().contentId(),
+        assertNotEquals(markdown.parseLegacy(changedSource).orElseThrow().contentId(),
                 original.sourceDocuments().getFirst().contentId());
     }
 
@@ -172,7 +187,7 @@ class QuestionBankFileEditIntegrationTest {
         QuestionBank empty = codec.parseEmptyDraft(draft);
         var edit = new QuestionBankEditorModel(empty);
         edit.addQuestion("SINGLE_CHOICE");
-        var source = service().source(workspace.id(), "doc_source");
+        var source = scanner.scan(workspace.id()).stream().filter(asset->asset.assetId().equals("doc_source")).findFirst().orElseThrow();
         edit.addSourceRef(0, SourceRef.anchor(source.assetId(), source.contentId(), "section_one", 1, source.title(), "One"));
         QuestionBank changed = new QuestionBank(empty.assetId(), "Externally changed", List.of(), List.of(), List.of());
         QBankTestPackageBuilder.write(paths.workspaceRoot(workspace.id()).resolve(path), codec.write(changed));

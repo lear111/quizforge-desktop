@@ -1,15 +1,40 @@
 package io.quizforge.infrastructure;
 
-import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.quizforge.core.question.*;
 import io.quizforge.core.QuizForgeException;
-import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
+import io.quizforge.core.question.content.BlockImageNode;
+import io.quizforge.core.question.content.BlockMathNode;
+import io.quizforge.core.question.content.InlineImageNode;
+import io.quizforge.core.question.content.InlineMathNode;
+import io.quizforge.core.question.content.InlineTextNode;
+import io.quizforge.core.question.content.LineBreakNode;
+import io.quizforge.core.question.content.LinkNode;
+import io.quizforge.core.question.content.ParagraphNode;
+import io.quizforge.core.question.content.QuestionContent;
+import io.quizforge.core.question.content.RichContent;
+import io.quizforge.core.question.content.RichDocument;
+import io.quizforge.core.question.content.TextContent;
+import io.quizforge.core.question.model.EvaluationCriterion;
+import io.quizforge.core.question.model.EvaluationSpec;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.model.ScoreSpec;
+import io.quizforge.core.question.model.Stimulus;
+import io.quizforge.core.question.resource.QBankResource;
+import io.quizforge.core.question.resource.ResourceKind;
+import io.quizforge.core.question.service.QuestionBankEditorModel;
+import io.quizforge.core.question.source.SourceRef;
+import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.type.objective.choice.ChoiceOption;
+import io.quizforge.core.question.type.objective.choice.ChoicePayload;
+import io.quizforge.core.question.type.objective.choice.QuestionText;
+import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 class QuestionBankV2CodecTest {
     private final QuestionBankV2Codec codec = new QuestionBankV2Codec();

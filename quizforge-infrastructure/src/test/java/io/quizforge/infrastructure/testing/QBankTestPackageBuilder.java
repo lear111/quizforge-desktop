@@ -2,9 +2,10 @@ package io.quizforge.infrastructure.testing;
 
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.quizforge.core.question.QuestionBank;
-import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
-import io.quizforge.infrastructure.filesystem.qbank.*;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader;
+import io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter;
+import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;

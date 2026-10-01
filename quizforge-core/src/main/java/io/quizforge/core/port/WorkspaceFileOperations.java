@@ -1,7 +1,7 @@
 package io.quizforge.core.port;
 
-import io.quizforge.core.workspace.WorkspaceFileType;
-import io.quizforge.core.workspace.WorkspaceId;
+import io.quizforge.core.workspace.model.WorkspaceFileType;
+import io.quizforge.core.workspace.model.WorkspaceId;
 import java.nio.file.Path;
 
 /** Mutations of user-owned files in a Workspace. Paths are workspace-relative. */

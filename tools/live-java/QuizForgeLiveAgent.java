@@ -15,6 +15,7 @@ public final class QuizForgeLiveAgent {
     private final Instrumentation instrumentation;
     private final Path repository = Path.of(System.getProperty("quizforge.liveJava.repo"));
     private final Path output = Path.of(System.getProperty("quizforge.liveJava.output"));
+    private final Path buildDirectory = Path.of(System.getProperty("quizforge.liveJava.buildDirectory", "target"));
     private final List<String> modules = Arrays.asList(System.getProperty("quizforge.liveJava.modules").split(","));
     private Map<Path, String> sources;
     private Map<Path, String> installed;
@@ -79,7 +80,8 @@ public final class QuizForgeLiveAgent {
     private boolean compile() throws Exception {
         Path logFile = output.resolve("compile.log");
         String maven = System.getProperty("quizforge.liveJava.maven");
-        String command = "\"" + maven + "\" -B -pl " + modules.getLast() + " -am -DskipTests compile";
+        String command = "\"" + maven + "\" -B -pl " + modules.getLast()
+                + " -am \"-Dquizforge.build.directory=" + buildDirectory + "\" -DskipTests compile";
         ProcessBuilder builder = new ProcessBuilder("cmd.exe", "/d", "/s", "/c", "\"" + command + "\"")
                 .directory(repository.toFile()).redirectErrorStream(true).redirectOutput(logFile.toFile());
         // JVM/agent arguments apply to the desktop only, never to the compiler's JVM.
@@ -101,7 +103,7 @@ public final class QuizForgeLiveAgent {
         Map<Path, String> next = new LinkedHashMap<>();
         Map<Path, byte[]> bytes = new LinkedHashMap<>();
         for (String module : modules) {
-            Path classes = repository.resolve(module).resolve("target/classes");
+            Path classes = repository.resolve(module).resolve(buildDirectory).resolve("classes");
             if (!Files.isDirectory(classes)) continue;
             try (var paths = Files.walk(classes)) {
                 for (Path file : paths.filter(Files::isRegularFile).toList()) {
@@ -175,7 +177,7 @@ public final class QuizForgeLiveAgent {
 
     private static void refresh(Set<String> names) throws Exception {
         try {
-            Class<?> refresh = Class.forName("io.quizforge.desktop.ui.DevelopmentUiReloader");
+            Class<?> refresh = Class.forName("io.quizforge.desktop.dev.DevelopmentUiReloader");
             refresh.getMethod("refresh", Set.class).invoke(null, names);
         } catch (ClassNotFoundException headlessProbe) { /* Agent smoke tests have no JavaFX. */ }
     }

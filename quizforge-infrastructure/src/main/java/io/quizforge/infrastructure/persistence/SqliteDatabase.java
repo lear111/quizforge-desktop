@@ -3,10 +3,10 @@ package io.quizforge.infrastructure.persistence;
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.nio.file.Path;
 import org.flywaydb.core.Flyway;
 import org.sqlite.SQLiteConfig;
 
@@ -34,7 +34,7 @@ public final class SqliteDatabase {
         return DriverManager.getConnection(jdbcUrl, config.toProperties());
     }
 
-    Connection openPracticeTransactionConnection() throws SQLException {
+    public Connection openPracticeTransactionConnection() throws SQLException {
         SQLiteConfig config = new SQLiteConfig();
         config.enforceForeignKeys(true);
         config.setTransactionMode(SQLiteConfig.TransactionMode.IMMEDIATE);

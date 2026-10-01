@@ -10,15 +10,14 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>quizforge-extension-api</module>
         <module>quizforge-core</module>
-        <module>quizforge-default-extensions</module>
         <module>quizforge-infrastructure</module>
         <module>quizforge-desktop-app</module>
     </modules>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <quizforge.build.directory>target</quizforge.build.directory>
         <maven.compiler.release>21</maven.compiler.release>
         <spring.version>7.0.9</spring.version>
         <javafx.version>23.0.2</javafx.version>
@@ -34,17 +33,7 @@
         <dependencies>
             <dependency>
                 <groupId>io.quizforge</groupId>
-                <artifactId>quizforge-extension-api</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.quizforge</groupId>
                 <artifactId>quizforge-core</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.quizforge</groupId>
-                <artifactId>quizforge-default-extensions</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -106,6 +95,7 @@
     </dependencyManagement>
 
     <build>
+        <directory>${quizforge.build.directory}</directory>
         <pluginManagement>
             <plugins>
                 <plugin>

@@ -11,10 +11,6 @@
     <artifactId>quizforge-core</artifactId>
     <dependencies>
         <dependency>
-            <groupId>io.quizforge</groupId>
-            <artifactId>quizforge-extension-api</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>

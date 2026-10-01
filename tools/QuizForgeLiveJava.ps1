@@ -12,14 +12,14 @@ function Start-QuizForgeLiveJava {
     foreach ($executable in @($java, $javac, $jar)) {
         if (-not (Test-Path -LiteralPath $executable)) { throw "LiveJava requires a JDK: missing $executable" }
     }
-    $probe = New-TemporaryFile
+    $probePath = [System.IO.Path]::GetTempFileName()
     try {
         $ErrorActionPreference = 'Continue'
-        & $java '-XX:+AllowEnhancedClassRedefinition' '-version' *> $probe.FullName
+        & $java '-XX:+AllowEnhancedClassRedefinition' '-version' *> $probePath
         $supported = $LASTEXITCODE -eq 0
         $ErrorActionPreference = 'Stop'
         if (-not $supported) { throw 'This JVM does not support enhanced HotSwap. Set QUIZFORGE_LIVE_JAVA_HOME to a JetBrains JBR JDK.' }
-    } finally { Remove-Item -LiteralPath $probe.FullName -ErrorAction SilentlyContinue }
+    } finally { Remove-Item -LiteralPath $probePath -ErrorAction SilentlyContinue }
 
     # One compiler per checkout. Separate class directories also isolate running Java from failed builds.
     $identityBytes = [Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($Repository).ToLowerInvariant())
@@ -34,9 +34,10 @@ function Start-QuizForgeLiveJava {
         $output = Join-Path $Repository ('target\live-java\' + [Guid]::NewGuid().ToString('N'))
         $agentClasses = Join-Path $output 'agent'
         [void][IO.Directory]::CreateDirectory($agentClasses)
-        $modules = @('quizforge-extension-api', 'quizforge-core', 'quizforge-default-extensions', 'quizforge-infrastructure', 'quizforge-desktop-app')
+        $modules = @( 'quizforge-core', 'quizforge-infrastructure', 'quizforge-desktop-app')
+        $buildDirectory = 'target/launcher'
         foreach ($module in $modules) {
-            $source = Join-Path $Repository "$module\target\classes"
+            $source = Join-Path $Repository "$module\$buildDirectory\classes"
             if (-not (Test-Path -LiteralPath $source)) { throw "Missing compiled module: $module" }
             Copy-Item -LiteralPath $source -Destination (Join-Path $output $module) -Recurse
         }
@@ -70,6 +71,7 @@ function Start-QuizForgeLiveJava {
             '-XX:+AllowEnhancedClassRedefinition', "-javaagent:$agentJar",
             "-Dquizforge.liveJava.repo=$Repository", "-Dquizforge.liveJava.output=$output",
             "-Dquizforge.liveJava.maven=$Maven", ('-Dquizforge.liveJava.modules=' + ($modules -join ',')),
+            "-Dquizforge.liveJava.buildDirectory=$buildDirectory",
             '-cp', $classpath, $MainClass
         )
         # A Java argument file handles Windows command length and spaces without shell interpolation.

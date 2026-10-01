@@ -5,8 +5,8 @@ import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.asset.Asset;
 import io.quizforge.core.asset.AssetType;
 import io.quizforge.core.port.AssetIndexRepository;
-import io.quizforge.core.workspace.WorkspaceId;
-import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
+import io.quizforge.core.workspace.model.WorkspaceId;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspacePathResolver;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -73,7 +73,7 @@ public final class SqliteAssetIndexRepository implements AssetIndexRepository {
                             throw new IllegalArgumentException("Duplicate asset ID in scan: " + asset.assetId());
                         }
                         upsert.setString(1, asset.assetId());
-                        upsert.setString(2, asset.assetType().name());
+                        upsert.setString(2, asset.assetType() == AssetType.REGISTERED_MARKDOWN ? "STANDARD_DOCUMENT" : asset.assetType().name());
                         upsert.setString(3, asset.contentId());
                         upsert.setString(4, asset.currentPath());
                         upsert.setString(5, asset.title());
@@ -111,12 +111,15 @@ public final class SqliteAssetIndexRepository implements AssetIndexRepository {
     }
 
     private Asset map(ResultSet row) throws SQLException {
-        return new Asset(row.getString("asset_id"), AssetType.valueOf(row.getString("asset_type")),
+        return new Asset(row.getString("asset_id"), storedType(row.getString("asset_type")),
                 row.getString("current_path"), row.getString("title"),
                 row.getString("content_id"), row.getString("schema_version"));
     }
 
     private QuizForgeException failure(String action, SQLException error) {
         return new QuizForgeException(ErrorCode.PERSISTENCE_FAILED, "Could not " + action + ".", error);
+    }
+    private static AssetType storedType(String name) {
+        return "STANDARD_DOCUMENT".equals(name) ? AssetType.REGISTERED_MARKDOWN : AssetType.valueOf(name);
     }
 }

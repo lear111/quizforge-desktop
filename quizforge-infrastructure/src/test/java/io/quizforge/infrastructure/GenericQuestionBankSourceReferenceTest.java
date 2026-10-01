@@ -1,24 +1,29 @@
 package io.quizforge.infrastructure;
 
-import io.quizforge.core.question.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 import io.quizforge.core.asset.Asset;
 import io.quizforge.core.asset.AssetType;
 import io.quizforge.core.asset.WorkspaceScanResult;
 import io.quizforge.core.document.registered.MarkdownBlockType;
 import io.quizforge.core.port.WorkspaceAssetScanner;
 import io.quizforge.core.port.WorkspaceFileCatalog;
-import io.quizforge.core.workspace.WorkspaceFileEntry;
-import io.quizforge.core.workspace.WorkspaceId;
-import io.quizforge.infrastructure.filesystem.FileDocumentNodeLookup;
-import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentV1;
-import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
-import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
+import io.quizforge.core.question.content.TextContent;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.source.QuestionBankReferenceResolver;
+import io.quizforge.core.question.source.SourceRef;
+import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.type.objective.choice.ChoiceOption;
+import io.quizforge.core.question.type.objective.choice.ChoicePayload;
+import io.quizforge.core.workspace.model.WorkspaceFileEntry;
+import io.quizforge.core.workspace.model.WorkspaceId;
+import io.quizforge.infrastructure.filesystem.markdown.FileDocumentNodeLookup;
+import io.quizforge.infrastructure.filesystem.markdown.LegacyMarkdownCodec;
+import io.quizforge.infrastructure.filesystem.markdown.RegisteredMarkdownCodec;
+import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 class GenericQuestionBankSourceReferenceTest {
     private final QuestionBankV2Codec banks = new QuestionBankV2Codec();
@@ -79,7 +84,7 @@ class GenericQuestionBankSourceReferenceTest {
                 + "quizforge_id: \"doc_legacy\"\ntitle: \"Legacy\"\nlanguage: \"zh-CN\"\n---\n"
                 + "# Legacy\n\n## Chapter\n<!-- qf:id=chapter_old -->\n\n"
                 + "<!-- qf:anchor=section_old -->\n### Section\n<!-- qf:id=section_old -->\n\nBody\n";
-        String revision = new StandardKnowledgeDocumentV1().parseIfStandard(markdown)
+        String revision = new LegacyMarkdownCodec().parseLegacy(markdown)
                 .orElseThrow().contentId();
         var legacy = banks.parse(banks.write(bank("doc_legacy", revision, "section_old")));
         var source = new AtomicReference<>(markdown);
@@ -165,7 +170,7 @@ class GenericQuestionBankSourceReferenceTest {
     }
 
     private Asset asset(String id, String revision, String path, String version) {
-        return new Asset(id, AssetType.STANDARD_DOCUMENT, path, "Document", revision, version);
+        return new Asset(id, AssetType.REGISTERED_MARKDOWN, path, "Document", revision, version);
     }
 
     private QuestionBank bank(String id, String revision, String nodeId) {

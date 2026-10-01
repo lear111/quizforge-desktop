@@ -1,19 +1,28 @@
 package io.quizforge.core.question;
 
-import static org.junit.jupiter.api.Assertions.*;
+import io.quizforge.core.question.content.BlockImageNode;
+import io.quizforge.core.question.content.BlockMathNode;
+import io.quizforge.core.question.content.InlineImageNode;
+import io.quizforge.core.question.content.InlineMathNode;
+import io.quizforge.core.question.content.InlineTextNode;
+import io.quizforge.core.question.content.LineBreakNode;
+import io.quizforge.core.question.content.LinkNode;
+import io.quizforge.core.question.content.ParagraphNode;
+import io.quizforge.core.question.content.QuestionContentData;
+import io.quizforge.core.question.content.RichContent;
+import io.quizforge.core.question.content.RichDocument;
+import io.quizforge.core.question.model.EvaluationCriterion;
+import io.quizforge.core.question.model.EvaluationSpec;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.model.ScoreSpec;
+import io.quizforge.core.question.service.QuestionBankEditorModel;
+import io.quizforge.core.question.type.subjective.essay.EssayPayload;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
+import static org.junit.jupiter.api.Assertions.*;
 
 class EssayDomainTest {
-    @ParameterizedTest @CsvSource({
-        "'Hello, world!',2", "'First paragraph.\n\nSecond paragraph.',4",
-        "'don''t mother-in-law state-of-the-art',3", "'2026 a1b2',2",
-        "'English 中文 words',2", "'-- ... ！',0", "'a—b a/b',4",
-        "' leading   spaces ',2", "'it’s everyone’s',2"
-    }) void stableEnglishWordCount(String text,int expected) {assertEquals(expected,EnglishWordCount.count(text));}
-    @Test void nullAndBlankHaveNoWords() {assertEquals(0,EnglishWordCount.count(null));assertEquals(0,EnglishWordCount.count("\n\t "));}
     @Test void newEssayUsesCommonSkeletonAndDefaultScore() {
         var model=new QuestionBankEditorModel(new QuestionBank("qb_draft","Draft",List.of(),List.of(),List.of()));
         model.addQuestion("ESSAY");var question=model.bank().questions().getFirst();

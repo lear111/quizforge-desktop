@@ -1,6 +1,7 @@
 package io.quizforge.infrastructure.filesystem.qbank;
 
-import io.quizforge.core.question.*;
+import io.quizforge.core.question.resource.QBankResource;
+import io.quizforge.core.question.resource.ResourceKind;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;

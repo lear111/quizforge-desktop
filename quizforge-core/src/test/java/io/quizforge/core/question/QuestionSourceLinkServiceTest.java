@@ -1,24 +1,24 @@
 package io.quizforge.core.question;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import io.quizforge.core.asset.Asset;
 import io.quizforge.core.asset.AssetType;
 import io.quizforge.core.document.navigation.MarkdownNavigationLinkCodec;
 import io.quizforge.core.document.navigation.QuizForgeNavigationLink;
 import io.quizforge.core.port.AssetIndexRepository;
 import io.quizforge.core.port.DocumentNodeLookup;
-import io.quizforge.core.workspace.WorkspaceId;
+import io.quizforge.core.question.source.QuestionSourceLinkService;
+import io.quizforge.core.workspace.model.WorkspaceId;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 class QuestionSourceLinkServiceTest {
     private static final String REVISION = "qfd:v2:" + "a".repeat(64);
     private final WorkspaceId workspace = WorkspaceId.newId();
-    private Asset asset = new Asset("doc_a", AssetType.STANDARD_DOCUMENT,
+    private Asset asset = new Asset("doc_a", AssetType.REGISTERED_MARKDOWN,
             "Java/Java集合.md", "Java", REVISION, "1.0");
     private boolean found = true;
     private boolean orphan;
@@ -66,7 +66,7 @@ class QuestionSourceLinkServiceTest {
         actualRevision = "qfd:v2:" + "b".repeat(64);
         var ref = service.resolve(workspace, link(1));
         assertEquals(actualRevision, ref.documentContentId());
-        asset = new Asset("doc_a", AssetType.STANDARD_DOCUMENT,
+        asset = new Asset("doc_a", AssetType.REGISTERED_MARKDOWN,
                 "Renamed/Java Collections.md", "Old title", REVISION, "1.0");
         assertEquals("Java Collections · 定义", service.displayName(workspace, ref));
     }

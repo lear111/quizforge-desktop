@@ -1,19 +1,24 @@
 package io.quizforge.infrastructure;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import io.quizforge.core.asset.AssetType;
-import io.quizforge.core.question.QuestionBankReferenceResolver;
-import io.quizforge.core.workspace.WorkspaceService;
-import io.quizforge.infrastructure.filesystem.*;
-import io.quizforge.infrastructure.persistence.*;
-import java.nio.file.Files;
+import io.quizforge.core.question.source.QuestionBankReferenceResolver;
+import io.quizforge.core.workspace.service.WorkspaceService;
+import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
+import io.quizforge.infrastructure.filesystem.markdown.LegacyMarkdownCodec;
+import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
+import io.quizforge.infrastructure.filesystem.workspace.FileSystemWorkspaceAssetScanner;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspacePathResolver;
+import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
+import io.quizforge.infrastructure.persistence.SqliteDatabase;
+import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
 import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.*;
 
 class QuestionBankExampleTest {
     @TempDir Path temp;
@@ -40,7 +45,7 @@ class QuestionBankExampleTest {
         if (!Files.isDirectory(examples)) examples = Path.of(System.getProperty("user.dir"))
                 .toAbsolutePath().getParent().resolve("examples/step7-practice");
         String source = Files.readString(examples.resolve("Java 学习长文档（滚动测试）.md"));
-        var document = new StandardKnowledgeDocumentV1().parseIfStandard(source).orElseThrow();
+        var document = new LegacyMarkdownCodec().parseLegacy(source).orElseThrow();
         assertEquals("doc_38284f165e60479f8855be07452300d5", document.assetId());
         assertTrue(document.contentId().startsWith("qfd:v1:"));
         assertTrue(source.lines().count() > 500);
@@ -52,9 +57,9 @@ class QuestionBankExampleTest {
                 .toAbsolutePath().getParent().resolve("examples/step7-practice");
         Path documentFile = examples.resolve("Java集合示例.md");
         Path bankFile = examples.resolve("Java集合练习.qbank");
-        var documentCodec = new StandardKnowledgeDocumentV1();
+        var documentCodec = new LegacyMarkdownCodec();
         var bankCodec = new QuestionBankV2Codec();
-        var document = documentCodec.parseIfStandard(Files.readString(documentFile)).orElseThrow();
+        var document = documentCodec.parseLegacy(Files.readString(documentFile)).orElseThrow();
         var bank = bankCodec.parse(QBankTestPackageBuilder.read(bankFile));
         assertEquals(4, bank.questions().size());
         assertEquals(2, bank.questions().stream().filter(q -> q.type().equals("SINGLE_CHOICE")).count());

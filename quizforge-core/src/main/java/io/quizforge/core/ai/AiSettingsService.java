@@ -48,13 +48,32 @@ public final class AiSettingsService {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid AI provider Base URL.");
         }
-        String reference = "ai-provider-" + provider;
+        var previous = repository.findDefault();
+        boolean replaceKey = newApiKey != null && !newApiKey.isBlank();
+        String reference = replaceKey ? "ai-" + provider + "-" + java.util.UUID.randomUUID().toString().replace("-", "")
+                : previous.filter(item -> item.providerType().equals(provider))
+                        .map(AiProviderConfig::credentialRef).orElse("ai-provider-" + provider);
         AiProviderConfig config = new AiProviderConfig(DEFAULT_ID, provider, url, modelName,
                 reference, clock.instant());
-        if (newApiKey != null && !newApiKey.isBlank()) {
+        if (replaceKey) {
             credentials.save(reference, newApiKey.trim());
         }
-        repository.save(config);
+        try { repository.save(config); }
+        catch (RuntimeException failure) {
+            if (replaceKey) {
+                try {
+                    // A repository can report a failure after committing. Never remove an active key.
+                    if (repository.findDefault().stream().noneMatch(item -> reference.equals(item.credentialRef())))
+                        credentials.delete(reference);
+                }
+                catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
+            }
+            throw failure;
+        }
+        if (replaceKey) previous.filter(item -> !item.credentialRef().equals(reference)).ifPresent(item -> {
+            try { credentials.delete(item.credentialRef()); }
+            catch (RuntimeException ignored) { /* Committed configuration remains valid. */ }
+        });
         return config;
     }
 

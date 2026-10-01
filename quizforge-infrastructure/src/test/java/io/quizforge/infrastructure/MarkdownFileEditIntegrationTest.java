@@ -1,14 +1,12 @@
 package io.quizforge.infrastructure;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import io.quizforge.core.document.MarkdownFileEditService;
-import io.quizforge.core.workspace.Workspace;
-import io.quizforge.core.workspace.WorkspaceService;
-import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
-import io.quizforge.infrastructure.filesystem.LocalStandardDocumentFileStorage;
+import io.quizforge.core.workspace.model.Workspace;
+import io.quizforge.core.workspace.service.WorkspaceService;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
-import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
+import io.quizforge.infrastructure.filesystem.markdown.LocalMarkdownFileStorage;
+import io.quizforge.infrastructure.filesystem.workspace.FileSystemWorkspaceAssetScanner;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspacePathResolver;
 import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
@@ -18,6 +16,7 @@ import java.time.Clock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.*;
 
 class MarkdownFileEditIntegrationTest {
     @TempDir Path temporaryDirectory;
@@ -35,7 +34,7 @@ class MarkdownFileEditIntegrationTest {
         root = paths.workspaceRoot(workspace.id());
         scanner = new FileSystemWorkspaceAssetScanner(paths, new SqliteAssetIndexRepository(paths),
                 Clock.systemUTC());
-        edits = new MarkdownFileEditService(workspaces, new LocalStandardDocumentFileStorage(data), scanner);
+        edits = new MarkdownFileEditService(workspaces, new LocalMarkdownFileStorage(data), scanner);
     }
 
     @Test void ordinaryMarkdownSavesExactSourceIncludingLeadingBrace() throws Exception {

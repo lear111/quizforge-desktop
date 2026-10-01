@@ -5,5 +5,4 @@
 .gitignore text eol=lf
 .gitattributes text eol=lf
 # Bundled dependencies contain significant whitespace inside multiline strings.
-quizforge-desktop-app/src/main/resources/io/quizforge/desktop/ui/canvas-editor-bundle.js whitespace=-blank-at-eol
-quizforge-desktop-app/src/main/resources/io/quizforge/desktop/ui/tiptap-bundle.js whitespace=-blank-at-eol
+quizforge-desktop-app/src/main/resources/editor/canvas/canvas-editor-bundle.js whitespace=-blank-at-eol

@@ -1,13 +1,5 @@
 package io.quizforge.infrastructure;
 
-import io.quizforge.core.question.*;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
 import io.quizforge.core.port.PracticeTransaction;
@@ -18,13 +10,21 @@ import io.quizforge.core.practice.PracticeSession;
 import io.quizforge.core.practice.PracticeSessionQuestion;
 import io.quizforge.core.practice.PracticeSessionService;
 import io.quizforge.core.practice.QuestionAttempt;
-import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
+import io.quizforge.core.question.content.TextContent;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.source.SourceRef;
+import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.type.objective.choice.ChoiceOption;
+import io.quizforge.core.question.type.objective.choice.ChoicePayload;
+import io.quizforge.core.question.type.objective.choice.QuestionText;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
+import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
-import io.quizforge.infrastructure.persistence.SqlitePracticeSessionQuestionRepository;
-import io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository;
-import io.quizforge.infrastructure.persistence.SqlitePracticeTransaction;
-import io.quizforge.infrastructure.persistence.SqliteQuestionAttemptRepository;
+import io.quizforge.infrastructure.persistence.practice.SqlitePracticeSessionQuestionRepository;
+import io.quizforge.infrastructure.persistence.practice.SqlitePracticeSessionRepository;
+import io.quizforge.infrastructure.persistence.practice.SqlitePracticeTransaction;
+import io.quizforge.infrastructure.persistence.practice.SqliteQuestionAttemptRepository;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -44,6 +44,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ActivePracticeSessionIntegrationTest {
     private static final Instant START = Instant.parse("2026-09-28T04:00:00.123456789Z");

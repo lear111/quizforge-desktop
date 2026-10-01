@@ -1,15 +1,20 @@
 package io.quizforge.core.practice;
 
-import io.quizforge.core.question.*;
-
+import io.quizforge.core.question.content.TextContent;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.source.QuestionSourceAddress;
+import io.quizforge.core.question.source.SourceRef;
+import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.type.objective.choice.ChoiceOption;
+import io.quizforge.core.question.type.objective.choice.ChoicePayload;
+import io.quizforge.core.question.type.objective.choice.QuestionText;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-
-import java.util.List;
-import java.util.Map;
-import org.junit.jupiter.api.Test;
 
 class PracticeQuestionSnapshotMapperTest {
     private final PracticeQuestionSnapshotMapper mapper = new PracticeQuestionSnapshotMapper();

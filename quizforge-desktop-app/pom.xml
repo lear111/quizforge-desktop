@@ -23,14 +23,6 @@
         </dependency>
         <dependency>
             <groupId>io.quizforge</groupId>
-            <artifactId>quizforge-extension-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quizforge</groupId>
-            <artifactId>quizforge-default-extensions</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quizforge</groupId>
             <artifactId>quizforge-infrastructure</artifactId>
         </dependency>
         <dependency>

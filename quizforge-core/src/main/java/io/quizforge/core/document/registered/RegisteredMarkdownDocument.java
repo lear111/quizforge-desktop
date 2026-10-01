@@ -14,7 +14,7 @@ public record RegisteredMarkdownDocument(String documentAssetId, String contentI
                 unaddressedBlockCount, List.of(), List.of());
     }
     public RegisteredMarkdownDocument {
-        new Asset(documentAssetId, AssetType.STANDARD_DOCUMENT, relativePath, title,
+        new Asset(documentAssetId, AssetType.REGISTERED_MARKDOWN, relativePath, title,
                 contentId, "1");
         addressableBlocks = List.copyOf(addressableBlocks);
         anchors = List.copyOf(anchors);

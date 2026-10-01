@@ -1,8 +1,8 @@
 package io.quizforge.core.port;
 
-import io.quizforge.core.workspace.Workspace;
-import io.quizforge.core.workspace.WorkspaceFolder;
-import io.quizforge.core.workspace.WorkspaceId;
+import io.quizforge.core.workspace.model.Workspace;
+import io.quizforge.core.workspace.model.WorkspaceFolder;
+import io.quizforge.core.workspace.model.WorkspaceId;
 import java.nio.file.Path;
 
 public interface WorkspaceDirectoryStorage {

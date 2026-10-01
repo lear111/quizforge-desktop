@@ -1,6 +1,6 @@
 package io.quizforge.core.port;
 
-import io.quizforge.core.question.*;
+import io.quizforge.core.question.model.QuestionBank;
 
 /** Internal logical JSON codec and revision hashing; never reads a physical .qbank file. */
 public interface QuestionBankFileCodec {

@@ -3,9 +3,13 @@
 From the repository root:
 
 ```powershell
-.\Start-QuizForge.ps1 -LiveUi
-# Or double-click Start-QuizForge-LiveUi.cmd
+.\Start-QuizForge-LiveUi.cmd
+# Equivalent: .\Start-QuizForge.cmd -LiveUi
 ```
+
+Both root entry points are `.cmd` files and support double-click startup. The
+shared PowerShell implementation lives in `tools/Start-QuizForge.ps1`; the
+entry points forward flags to it. Use `Start-QuizForge.cmd` for ordinary startup.
 
 `LiveUi` now enables all three development layers:
 
@@ -25,15 +29,18 @@ The agent is built locally from `tools/live-java`; no agent download is required
 
 ## Java pipeline
 
-1. The ordinary initial reactor build runs first.
-2. The development launcher copies each module's `target/classes` into a unique
+1. The initial reactor build runs first with
+   `-Dquizforge.build.directory=target/launcher`. All startup modes use this
+   separate output so IDE compilation in `target/classes` cannot supply broken
+   or stale classes to the launcher. Ordinary manual Maven builds still use `target`.
+2. The development launcher copies each module's `target/launcher/classes` into a unique
    ignored `target/live-java/<run>/` directory. Runtime reactor JARs are replaced
    by these directories; external dependencies remain Maven-resolved JARs.
 3. A development-only agent hashes `src/main/java`, `src/main/resources`, and
    POMs every 500 ms, with a 700 ms debounce. Canvas source uses its existing Vite
    watcher independently. Workspace assets and databases are not watched.
 4. Resource-only edits are copied directly without starting Maven. For Java
-   edits a single compiler invokes `mvn -B -pl quizforge-desktop-app -am -DskipTests compile`.
+   edits a single compiler invokes `mvn -B -pl quizforge-desktop-app -am -Dquizforge.build.directory=target/launcher -DskipTests compile`.
    Edits made during compilation are compiled again before publishing. Compiler
    failures leave the running JVM and its separate class directory unchanged.
 5. On success, changed loaded classes are passed together to
@@ -99,3 +106,12 @@ native probe uses an in-memory bank (no workspace/DB), changes a real Java
 toolbar label, waits for Maven and the same JavaFX window to update, restores the
 source bytes, and verifies the reverse update and process cleanup. Temporary
 probe files and logs stay under ignored `target/`.
+
+
+## 优化后的路径与接口
+
+2026-10-01：reactor 与 LiveJava 模块表收敛为 core、infrastructure、desktop-app。刷新入口为 io.quizforge.desktop.dev.DevelopmentUiReloader，组件实现 DevelopmentRefreshable，代理不再依赖 ui 包中的旧 FQN 或私有方法反射。
+
+Canvas 源码在 quizforge-desktop-app/editor-web/canvas，构建输出在 src/main/resources/editor/canvas；JavaFX/Markdown 样式在 src/main/resources/styles。修改前端后执行 npm run build，普通启动使用这些包内文件。
+
+Test-QuizForgeLiveJavaUi.ps1 会把三个模块源码与 tools 复制到 target/live-java-ui-smoke/<run>/checkout，真实 Maven 编译与源码替换仅发生在副本。-WithLiveCss 开启副本 CSS 监听；-CanvasDevUrl http://127.0.0.1:5173 可验证已明确提供的本地 Vite 服务，探针不会停止外部服务器。调用方启动自己拥有的服务时需自行清理进程树。

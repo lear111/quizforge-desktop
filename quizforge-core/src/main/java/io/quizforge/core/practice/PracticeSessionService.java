@@ -1,8 +1,11 @@
 package io.quizforge.core.practice;
 
-import io.quizforge.core.question.*;
-
 import io.quizforge.core.port.PracticeTransaction;
+import io.quizforge.core.question.content.QuestionContentData;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.service.QuestionBankValidator;
+import io.quizforge.core.question.type.QuestionTypes;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -27,6 +30,9 @@ public final class PracticeSessionService {
 
     /** The caller supplies the contentId of this exact current file model; no path is accepted. */
     public ActivePracticeSnapshot openOrCreateActiveSession(QuestionBank bank, String contentId) {
+        return openOrCreateActiveSession(bank,contentId,io.quizforge.core.port.QuestionResourceInput.NONE);
+    }
+    public ActivePracticeSnapshot openOrCreateActiveSession(QuestionBank bank,String contentId,io.quizforge.core.port.QuestionResourceInput resources) {
         validator.validate(bank); // Includes the existing rule that empty banks cannot be practiced.
         if (contentId == null || !contentId.matches("qfb:v2:[0-9a-f]{64}")) {
             throw new IllegalArgumentException("A current QBank contentId is required.");
@@ -34,12 +40,19 @@ public final class PracticeSessionService {
         return transactions.execute(repositories -> {
             Instant now = clock.instant();
             PracticeSession session = repositories.sessions().findActiveByQuestionBankAssetId(bank.assetId())
-                    .orElseGet(() -> create(repositories, bank, contentId, now));
-            var persistedIds = repositories.questions().findBySessionId(session.id()).stream()
+                    .orElseGet(() -> create(repositories, bank, contentId, now,resources));
+            var persistedRows=repositories.questions().findBySessionId(session.id());
+            var persistedIds = persistedRows.stream()
                     .map(PracticeSessionQuestion::questionId).toList();
+            boolean incomplete=persistedRows.stream().filter(q->QuestionTypes.isEssay(q.snapshot().questionType())).anyMatch(q->{
+                var fields=QuestionContentData.map(q.snapshot().correctAnswer().value());
+                if(!(fields.get("essayPresentation") instanceof Map<?,?> presentation))return true;
+                return resources!=io.quizforge.core.port.QuestionResourceInput.NONE
+                        && ((Map<?,?>)presentation.get("resourceData")).size()<((List<?>)presentation.get("resources")).size();
+            });
             if (!session.questionBankContentId().equals(contentId)
-                    || !persistedIds.equals(bank.questions().stream().map(Question::id).toList())) {
-                synchronize(repositories, session, bank, contentId, now);
+                    || !persistedIds.equals(bank.questions().stream().map(Question::id).toList()) || incomplete) {
+                synchronize(repositories, session, bank, contentId, now,resources);
             } else {
                 repositories.sessions().touch(session.id(), now);
             }
@@ -92,7 +105,7 @@ public final class PracticeSessionService {
         return transactions.execute(repositories -> {
             requireCurrent(repositories, sessionId, expectedContentId, questionId);
             var question = requireQuestion(repositories, sessionId, questionId);
-            if (!"ESSAY".equals(question.snapshot().questionType()))
+            if (!QuestionTypes.isEssay(question.snapshot().questionType()))
                 throw new IllegalArgumentException("Essay answer requires an essay question");
             if (question.practiceState() == PracticeSessionQuestion.State.SUBMITTED)
                 throw new IllegalStateException("Answer already submitted; retry before editing");
@@ -114,7 +127,7 @@ public final class PracticeSessionService {
         return transactions.execute(repositories -> {
             requireCurrent(repositories, sessionId, expectedContentId, questionId);
             var current = requireQuestion(repositories, sessionId, questionId);
-            if ("ESSAY".equals(current.snapshot().questionType())) {
+            if (QuestionTypes.isEssay(current.snapshot().questionType())) {
                 if (current.practiceState() == PracticeSessionQuestion.State.SUBMITTED)
                     throw new IllegalStateException("Answer already submitted");
                 var answer = EssayPracticeAnswer.from(current.draftAnswer());
@@ -174,6 +187,10 @@ public final class PracticeSessionService {
 
     public ActivePracticeSnapshot restartPractice(String sessionId, String expectedContentId,
             QuestionBank currentBank, String currentContentId) {
+        return restartPractice(sessionId,expectedContentId,currentBank,currentContentId,io.quizforge.core.port.QuestionResourceInput.NONE);
+    }
+    public ActivePracticeSnapshot restartPractice(String sessionId,String expectedContentId,QuestionBank currentBank,
+            String currentContentId,io.quizforge.core.port.QuestionResourceInput resources) {
         validator.validate(currentBank);
         if (currentContentId == null || !currentContentId.matches("qfb:v2:[0-9a-f]{64}"))
             throw new IllegalArgumentException("A current QBank contentId is required.");
@@ -183,7 +200,7 @@ public final class PracticeSessionService {
                 throw new IllegalArgumentException("Restart bank does not match the active session");
             Instant now = clock.instant();
             repositories.sessions().archive(sessionId, now);
-            var next = create(repositories, currentBank, currentContentId, now);
+            var next = create(repositories, currentBank, currentContentId, now,resources);
             return restore(repositories, next.id());
         });
     }
@@ -219,18 +236,18 @@ public final class PracticeSessionService {
     }
 
     private void validateSelection(PracticeSessionQuestion.Snapshot snapshot, Set<String> selected) {
-        if (!Set.of("SINGLE_CHOICE", "MULTIPLE_CHOICE").contains(snapshot.questionType()))
+        if (!QuestionTypes.isChoice(snapshot.questionType()))
             throw new IllegalStateException("Unsupported practice question type");
         Set<String> options = new java.util.HashSet<>();
         for (Object value : (List<?>) snapshot.options().value()) options.add((String) ((Map<?, ?>) value).get("id"));
-        if (!options.containsAll(selected) || "SINGLE_CHOICE".equals(snapshot.questionType()) && selected.size() > 1)
+        if (!options.containsAll(selected) || QuestionTypes.isSingleChoice(snapshot.questionType()) && selected.size() > 1)
             throw new IllegalArgumentException("Invalid selected option IDs");
     }
 
     private PracticePayload answer(Set<String> selected) { return new PracticePayload(selected.stream().sorted().toList()); }
 
     private PracticeSession create(PracticeTransaction.Repositories repositories, QuestionBank bank,
-            String contentId, Instant now) {
+            String contentId, Instant now,io.quizforge.core.port.QuestionResourceInput resources) {
         var session = new PracticeSession(id("ps_"), bank.assetId(), contentId, bank.title(),
                 PracticeSession.Status.ACTIVE, PracticeSession.View.QUESTION, bank.questions().getFirst().id(),
                 now, now, null);
@@ -239,14 +256,14 @@ public final class PracticeSessionService {
         for (int index = 0; index < bank.questions().size(); index++) {
             var question = bank.questions().get(index);
             questions.add(newQuestion(id("psq_"), session.id(), question.id(), index,
-                    mapper.map(question), now, now));
+                    mapper.map(question,bank.resources(),resources), now, now));
         }
         repositories.questions().createAll(questions);
         return session;
     }
 
     private void synchronize(PracticeTransaction.Repositories repositories, PracticeSession session,
-            QuestionBank bank, String contentId, Instant now) {
+            QuestionBank bank, String contentId, Instant now,io.quizforge.core.port.QuestionResourceInput resources) {
         List<PracticeSessionQuestion> previous = repositories.questions().findBySessionId(session.id());
         Map<String, PracticeSessionQuestion> byId = new HashMap<>();
         for (var question : previous) byId.put(question.questionId(), question);
@@ -260,7 +277,7 @@ public final class PracticeSessionService {
         }
         for (int order = 0; order < bank.questions().size(); order++) {
             var current = bank.questions().get(order);
-            var snapshot = mapper.map(current);
+            var snapshot = mapper.map(current,bank.resources(),resources);
             var old = byId.get(current.id());
             if (old == null) {
                 repositories.questions().create(newQuestion(id("psq_"), session.id(), current.id(), order,
@@ -293,6 +310,7 @@ public final class PracticeSessionService {
     }
 
     private boolean semanticChange(PracticeSessionQuestion.Snapshot before, PracticeSessionQuestion.Snapshot after) {
+        before=PracticeQuestionSnapshotMapper.logical(before);after=PracticeQuestionSnapshotMapper.logical(after);
         return !before.questionType().equals(after.questionType()) || !before.stem().equals(after.stem())
                 || !before.options().equals(after.options()) || !before.correctAnswer().equals(after.correctAnswer());
     }

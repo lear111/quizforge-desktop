@@ -32,7 +32,7 @@ public record Asset(String assetId, AssetType assetType, String currentPath, Str
         if (schemaVersion == null || schemaVersion.isBlank()) {
             throw new IllegalArgumentException("Asset schema version is required");
         }
-        if (contentId != null && !(assetType == AssetType.STANDARD_DOCUMENT
+        if (contentId != null && !(assetType == AssetType.REGISTERED_MARKDOWN
                 && contentId.matches("qfd:v[12]:[0-9a-f]{64}")
                 || assetType == AssetType.QUESTION_BANK
                 && contentId.matches("qfb:v2:[0-9a-f]{64}"))) {

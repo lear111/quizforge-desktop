@@ -1,11 +1,5 @@
 package io.quizforge.infrastructure;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
@@ -18,9 +12,9 @@ import io.quizforge.core.practice.PracticeSessionQuestion;
 import io.quizforge.core.practice.QuestionAttempt;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
-import io.quizforge.infrastructure.persistence.SqlitePracticeSessionQuestionRepository;
-import io.quizforge.infrastructure.persistence.SqlitePracticeSessionRepository;
-import io.quizforge.infrastructure.persistence.SqliteQuestionAttemptRepository;
+import io.quizforge.infrastructure.persistence.practice.SqlitePracticeSessionQuestionRepository;
+import io.quizforge.infrastructure.persistence.practice.SqlitePracticeSessionRepository;
+import io.quizforge.infrastructure.persistence.practice.SqliteQuestionAttemptRepository;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.file.Path;
@@ -39,6 +33,11 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PracticePersistenceIntegrationTest {
     private static final Instant START = Instant.parse("2026-09-28T01:02:03.123456789Z");

@@ -24,8 +24,8 @@ public record PracticeSummary(int totalCount, int submittedCount, int correctCou
         }
         int submitted = correct + incorrect + unscored;
         return new PracticeSummary(questions.size(), submitted, correct, incorrect,
-                questions.size() - submitted, correct + incorrect == 0 ? OptionalInt.empty()
-                        : OptionalInt.of((int) Math.round(100.0 * correct / (correct + incorrect))));
+                questions.size() - submitted, submitted == 0 ? OptionalInt.empty()
+                        : OptionalInt.of((int) Math.round(100.0 * correct / submitted)));
     }
 
     public int unscoredCount() { return submittedCount - correctCount - incorrectCount; }

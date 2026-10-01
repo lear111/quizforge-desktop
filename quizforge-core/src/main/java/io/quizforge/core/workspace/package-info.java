@@ -1,2 +1,2 @@
-/** Future workspace domain code. */
+/** Workspace models and coordinating services. */
 package io.quizforge.core.workspace;

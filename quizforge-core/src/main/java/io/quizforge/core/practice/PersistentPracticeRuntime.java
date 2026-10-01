@@ -1,6 +1,6 @@
 package io.quizforge.core.practice;
 
-import io.quizforge.core.question.*;
+import io.quizforge.core.question.model.QuestionBank;
 
 /** Persist first, then hydrate the same runtime object used by the view and its read-only Outline. */
 public final class PersistentPracticeRuntime {
@@ -8,14 +8,19 @@ public final class PersistentPracticeRuntime {
     private final QuestionBankPracticeSession session;
     private String sessionId;
     private final String contentId;
+    private final io.quizforge.core.port.QuestionResourceInput resources;
     private final PracticeRuntimeMapper mapper = new PracticeRuntimeMapper();
     private ActivePracticeSnapshot snapshot;
 
     public PersistentPracticeRuntime(PracticeSessionService service, QuestionBank bank, String contentId) {
+        this(service,bank,contentId,io.quizforge.core.port.QuestionResourceInput.NONE);
+    }
+    public PersistentPracticeRuntime(PracticeSessionService service,QuestionBank bank,String contentId,io.quizforge.core.port.QuestionResourceInput resources) {
         this.service = service;
         this.contentId = contentId;
+        this.resources=resources;
         session = new QuestionBankPracticeSession(bank);
-        var snapshot = service.openOrCreateActiveSession(bank, contentId);
+        var snapshot = service.openOrCreateActiveSession(bank, contentId,resources);
         sessionId = snapshot.session().id();
         hydrate(snapshot);
     }
@@ -57,7 +62,7 @@ public final class PersistentPracticeRuntime {
     public void retry() { hydrate(service.retryQuestion(sessionId, contentId, session.current().id())); }
 
     public void restart() {
-        var next = service.restartPractice(sessionId, contentId, session.bank(), contentId);
+        var next = service.restartPractice(sessionId, contentId, session.bank(), contentId,resources);
         hydrate(next);
         sessionId = next.session().id();
     }

@@ -16,6 +16,7 @@ public record PracticePayload(Object value) {
 
     private static Object freeze(Object value) {
         if (value == null || value instanceof String || value instanceof Boolean) return value;
+        if (value instanceof Enum<?> item) return item.name();
         if (value instanceof Number number) {
             // One numeric representation makes database round trips independent of Java number classes.
             return new BigDecimal(number.toString()).stripTrailingZeros();

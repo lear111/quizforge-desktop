@@ -6,7 +6,10 @@ import java.util.Objects;
 
 /** Immutable, file-independent view of one archived practice round. */
 public record PracticeHistoryDetail(String sessionId, String bankTitle, Instant startedAt, Instant archivedAt,
-        PracticeSummary summary, List<Question> questions) {
+        PracticeSummary summary, List<Question> questions,String bankContentId) {
+    public PracticeHistoryDetail(String sessionId,String bankTitle,Instant startedAt,Instant archivedAt,PracticeSummary summary,List<Question> questions){
+        this(sessionId,bankTitle,startedAt,archivedAt,summary,questions,null);
+    }
     public PracticeHistoryDetail {
         Objects.requireNonNull(sessionId);
         Objects.requireNonNull(bankTitle);
@@ -19,7 +22,12 @@ public record PracticeHistoryDetail(String sessionId, String bankTitle, Instant 
     public record Question(String sessionQuestionId, String questionId, int questionOrder, String questionType,
             String stem, List<Option> options, List<String> correctOptionIds, String analysis,
             PracticePayload sourceRefs, PracticeSessionQuestion.State finalState, PracticePayload draftAnswer,
-            List<Attempt> attempts) {
+            List<Attempt> attempts,PracticePayload contentSnapshot) {
+        public Question(String sessionQuestionId,String questionId,int questionOrder,String questionType,String stem,
+                List<Option> options,List<String> correctOptionIds,String analysis,PracticePayload sourceRefs,
+                PracticeSessionQuestion.State finalState,PracticePayload draftAnswer,List<Attempt> attempts){
+            this(sessionQuestionId,questionId,questionOrder,questionType,stem,options,correctOptionIds,analysis,sourceRefs,finalState,draftAnswer,attempts,null);
+        }
         public Question {
             options = List.copyOf(options);
             correctOptionIds = List.copyOf(correctOptionIds);

@@ -1,8 +1,8 @@
 package io.quizforge.core.port;
 
-import io.quizforge.core.document.registered.RegisteredMarkdownDocument;
 import io.quizforge.core.document.registered.NamedMarkdownAnchor;
-import io.quizforge.core.workspace.WorkspaceId;
+import io.quizforge.core.document.registered.RegisteredMarkdownDocument;
+import io.quizforge.core.workspace.model.WorkspaceId;
 import java.util.Optional;
 
 public interface MarkdownDocumentRegistration {

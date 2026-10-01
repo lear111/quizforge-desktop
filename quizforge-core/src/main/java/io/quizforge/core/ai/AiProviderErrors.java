@@ -2,7 +2,6 @@ package io.quizforge.core.ai;
 
 import io.quizforge.core.ErrorCode;
 import io.quizforge.core.QuizForgeException;
-import io.quizforge.extension.ai.AiProviderException;
 
 public final class AiProviderErrors {
     private AiProviderErrors() {

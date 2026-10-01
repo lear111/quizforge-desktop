@@ -1,6 +1,11 @@
-package io.quizforge.desktop.ui;
+package io.quizforge.desktop.ui.content.document.canvas;
 
-import io.quizforge.core.question.*;
+import io.quizforge.core.question.model.*;
+import io.quizforge.core.question.content.*;
+import io.quizforge.core.question.type.objective.choice.*;
+import io.quizforge.desktop.ui.question.editor.QuestionBankEditorView;
+import io.quizforge.desktop.ui.shared.UiTheme;
+import io.quizforge.desktop.dev.LiveCssReloader;
 import javafx.animation.*;
 import javafx.application.Platform;
 import javafx.scene.*;
@@ -15,8 +20,8 @@ public final class QuizForgeLiveUiProbe {
     public static void main(String[] args) {
         Platform.startup(() -> {
             var question = Question.choice("q_probe", "SINGLE_CHOICE", new TextContent("Native reload probe"), null,
-                    List.of(), new ChoicePayload(List.of(new ChoiceOption("a", new TextContent("A")),
-                    new ChoiceOption("b", new TextContent("B")))), new ChoiceAnswerSpec(List.of("a")));
+                    List.of(), new ChoicePayload(List.of(new ChoiceOption("opt_probe_a", new TextContent("A")),
+                    new ChoiceOption("opt_probe_b", new TextContent("B")))), new ChoiceAnswerSpec(List.of("opt_probe_a")));
             var bank = new QuestionBank("qb_probe", "Probe", List.of(), List.of(question), List.of());
             var editor = new QuestionBankEditorView(bank, null, null, null, ignored -> {
                 throw new AssertionError("Probe must never save");
@@ -34,7 +39,7 @@ public final class QuizForgeLiveUiProbe {
             Runnable stopCss = LiveCssReloader.start(scene);
             if (UiTheme.liveCssEnabled()) System.out.println("[LiveJava] CSS_LIVE_ENABLED");
             var stage = new Stage(); stage.setOpacity(0); stage.setScene(scene); stage.show();
-            ((TextField)editor.lookup("#qbank-title")).setText("LiveJava unsaved title");
+            ((TextArea)editor.lookup("#qbank-question-stem")).setText("LiveJava unsaved stem");
             String[] previous = {""};
             boolean[] webReady = {false};
             var observe = new Timeline(new KeyFrame(Duration.millis(300), event -> {
@@ -48,8 +53,8 @@ public final class QuizForgeLiveUiProbe {
                 String text = labels(editor);
                 String state = text.contains("[LiveJava native probe]") ? "updated" : "original";
                 if (!state.equals(previous[0])) {
-                    String title = ((TextField)editor.lookup("#qbank-title")).getText();
-                    if (!title.equals("LiveJava unsaved title")) throw new AssertionError("Unsaved input lost");
+                    String stem = ((TextArea)editor.lookup("#qbank-question-stem")).getText();
+                    if (!stem.equals("LiveJava unsaved stem")) throw new AssertionError("Unsaved input lost");
                     System.out.println("[LiveJava] NATIVE_SCENE " + state + " pid=" + ProcessHandle.current().pid() + " draft=retained");
                     previous[0] = state;
                 }

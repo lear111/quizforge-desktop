@@ -1,7 +1,7 @@
 package io.quizforge.desktop.bootstrap;
 
 import io.quizforge.desktop.config.DesktopConfiguration;
-import io.quizforge.desktop.ui.DesktopView;
+import io.quizforge.desktop.ui.shell.DesktopView;
 import javafx.application.Application;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;

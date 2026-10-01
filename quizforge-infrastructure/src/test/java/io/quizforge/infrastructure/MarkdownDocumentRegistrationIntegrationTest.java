@@ -1,22 +1,17 @@
 package io.quizforge.infrastructure;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import io.quizforge.core.asset.AssetType;
 import io.quizforge.core.port.WorkspaceAssetScanner;
-import io.quizforge.core.workspace.WorkspaceFileKind;
-import io.quizforge.core.workspace.WorkspaceId;
-import io.quizforge.core.workspace.WorkspaceService;
-import io.quizforge.infrastructure.filesystem.FileSystemWorkspaceAssetScanner;
-import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileCatalog;
-import io.quizforge.infrastructure.filesystem.MarkdownDocumentRegistrationService;
-import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
-import io.quizforge.infrastructure.filesystem.QuestionBankV2Codec;
+import io.quizforge.core.workspace.model.WorkspaceFileKind;
+import io.quizforge.core.workspace.model.WorkspaceId;
+import io.quizforge.core.workspace.service.WorkspaceService;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
-import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
+import io.quizforge.infrastructure.filesystem.markdown.MarkdownDocumentRegistrationService;
+import io.quizforge.infrastructure.filesystem.markdown.RegisteredMarkdownCodec;
+import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
+import io.quizforge.infrastructure.filesystem.workspace.FileSystemWorkspaceAssetScanner;
+import io.quizforge.infrastructure.filesystem.workspace.LocalWorkspaceFileCatalog;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspacePathResolver;
 import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
@@ -26,6 +21,10 @@ import java.time.Clock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MarkdownDocumentRegistrationIntegrationTest {
     @TempDir Path temporary;
@@ -95,12 +94,12 @@ class MarkdownDocumentRegistrationIntegrationTest {
                 3, 1, "Study source");
         var document = registration.inspect(workspace, "custom/notes/study.md").orElseThrow();
         var asset = index.findById(workspace, document.documentAssetId()).orElseThrow();
-        assertEquals(AssetType.STANDARD_DOCUMENT, asset.assetType());
+        assertEquals(AssetType.REGISTERED_MARKDOWN, asset.assetType());
         assertEquals(document.contentId(), asset.contentId());
         assertEquals("custom/notes/study.md", asset.currentPath());
         assertEquals("1", asset.schemaVersion());
         var catalog = new LocalWorkspaceFileCatalog(paths, new QuestionBankV2Codec());
-        assertEquals(WorkspaceFileKind.STANDARD_DOCUMENT,
+        assertEquals(WorkspaceFileKind.REGISTERED_MARKDOWN,
                 catalog.inspect(workspace, "custom/notes/study.md").kind());
 
         Path moved = Files.createDirectories(root.resolve("anywhere")).resolve("renamed.md");

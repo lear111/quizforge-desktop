@@ -1,11 +1,6 @@
 package io.quizforge.core.ai;
 
 import io.quizforge.core.port.AiProviderResolver;
-import io.quizforge.extension.ai.AiGenerationOptions;
-import io.quizforge.extension.ai.AiMessage;
-import io.quizforge.extension.ai.AiProviderException;
-import io.quizforge.extension.ai.AiRequest;
-import io.quizforge.extension.ai.AiRole;
 import java.util.List;
 
 public final class AiConnectionService {

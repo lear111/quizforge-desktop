@@ -1,16 +1,50 @@
 package io.quizforge.infrastructure;
 
-import io.quizforge.core.question.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-import io.quizforge.core.practice.*;
-import io.quizforge.core.workspace.Workspace;
-import io.quizforge.core.workspace.WorkspaceId;
-import io.quizforge.infrastructure.filesystem.*;
-import io.quizforge.infrastructure.persistence.*;
-import java.nio.file.Files;
+import io.quizforge.core.practice.EssayPracticeAnswer;
+import io.quizforge.core.practice.EssayQuestionSnapshot;
+import io.quizforge.core.practice.PersistentPracticeRuntime;
+import io.quizforge.core.practice.PracticeHistoryDetail;
+import io.quizforge.core.practice.PracticeHistoryEntry;
+import io.quizforge.core.practice.PracticeHistoryService;
+import io.quizforge.core.practice.PracticePayload;
+import io.quizforge.core.practice.PracticeQuestionSnapshotMapper;
+import io.quizforge.core.practice.PracticeSession;
+import io.quizforge.core.practice.PracticeSessionQuestion;
+import io.quizforge.core.practice.PracticeSessionService;
+import io.quizforge.core.practice.PracticeSummary;
+import io.quizforge.core.practice.QuestionAttempt;
+import io.quizforge.core.practice.QuestionBankPracticeSession;
+import io.quizforge.core.question.content.DocumentContent;
+import io.quizforge.core.question.content.QuestionContentData;
+import io.quizforge.core.question.content.TextContent;
+import io.quizforge.core.question.model.EvaluationCriterion;
+import io.quizforge.core.question.model.EvaluationSpec;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.model.ScoreSpec;
+import io.quizforge.core.question.resource.QBankResource;
+import io.quizforge.core.question.resource.ResourceKind;
+import io.quizforge.core.question.source.QuestionSourceDocument;
+import io.quizforge.core.question.source.SourceRef;
+import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.type.objective.choice.ChoiceOption;
+import io.quizforge.core.question.type.objective.choice.ChoicePayload;
+import io.quizforge.core.question.type.objective.choice.QuestionText;
+import io.quizforge.core.question.type.subjective.essay.EssayAnswerSpec;
+import io.quizforge.core.question.type.subjective.essay.EssayPayload;
+import io.quizforge.core.workspace.model.Workspace;
+import io.quizforge.core.workspace.model.WorkspaceId;
+import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
+import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspacePathResolver;
+import io.quizforge.infrastructure.persistence.SqliteDatabase;
+import io.quizforge.infrastructure.persistence.practice.SqlitePracticeSessionQuestionRepository;
+import io.quizforge.infrastructure.persistence.practice.SqlitePracticeSessionRepository;
+import io.quizforge.infrastructure.persistence.practice.SqlitePracticeTransaction;
+import io.quizforge.infrastructure.persistence.practice.SqliteQuestionAttemptRepository;
+import io.quizforge.infrastructure.persistence.practice.SqliteWorkspacePracticeRuntimeProvider;
 import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
@@ -25,6 +59,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import static org.junit.jupiter.api.Assertions.*;
 
 class PersistentPracticeRuntimeIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-09-28T05:00:00Z");
@@ -34,6 +69,27 @@ class PersistentPracticeRuntimeIntegrationTest {
     private PersistentPracticeRuntime runtime;
     private QuestionBank bank;
     private final QuestionBankV2Codec codec = new QuestionBankV2Codec();
+
+    @Test void styledEssaySurvivesSqliteReloadAndHistoryWithoutEnumLoss() {
+        var prompt=new io.quizforge.core.question.content.RichContent(new io.quizforge.core.question.content.RichDocument(List.of(
+                new io.quizforge.core.question.content.HeadingNode(2,List.of(new io.quizforge.core.question.content.InlineTextNode("Styled title",
+                        List.of(io.quizforge.core.question.content.TextMark.BOLD))),io.quizforge.core.question.content.TextAlignment.CENTER),
+                new io.quizforge.core.question.content.ParagraphNode(List.of(new io.quizforge.core.question.content.InlineTextNode("Styled body",
+                        List.of(io.quizforge.core.question.content.TextMark.ITALIC))),io.quizforge.core.question.content.TextAlignment.RIGHT))));
+        var question=new Question("q_styled","ESSAY",List.of(),prompt,new EssayPayload(null),new EssayAnswerSpec(prompt),
+                ScoreSpec.defaultScore(),null,null,List.of());
+        var styled=new QuestionBank("qb_styled","Styled",List.of(),List.of(question),List.of());
+        var active=new PersistentPracticeRuntime(service,styled,codec.contentId(styled));
+        active.saveEssayDraft(question.id(),new EssayPracticeAnswer("Answer",null));active.submit();
+        var restored=new PersistentPracticeRuntime(service(new SqliteDatabase(new QuizForgeDataDirectory(temp))),styled,codec.contentId(styled));
+        assertEquals(1,restored.questionState(question.id()).attempts().size());
+        String archived=restored.sessionId();restored.restart();
+        var detail=new PracticeHistoryService(new SqlitePracticeTransaction(database)).loadArchivedSessionDetail(styled.assetId(),archived);
+        var fields=QuestionContentData.map(detail.questions().getFirst().contentSnapshot().value());
+        var snapshot=EssayQuestionSnapshot.from(new PracticePayload(fields.get("essayPresentation")));
+        assertEquals(prompt,snapshot.prompt());assertEquals(prompt,snapshot.reference());
+        assertEquals(QuestionAttempt.Result.UNSCORED,detail.questions().getFirst().attempts().getFirst().result());
+    }
 
     @BeforeEach void setup() {
         database = new SqliteDatabase(new QuizForgeDataDirectory(temp));
@@ -565,6 +621,8 @@ class PersistentPracticeRuntimeIntegrationTest {
         var one = new Workspace(WorkspaceId.newId(), "one", NOW, NOW);
         var two = new Workspace(WorkspaceId.newId(), "two", NOW, NOW);
         paths.create(one); paths.create(two);
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(paths.workspaceRoot(one.id()).resolve("question-banks/review.qbank"),bank);
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(paths.workspaceRoot(two.id()).resolve("question-banks/review.qbank"),bank);
         Path registry = paths.workspaceRoot(one.id()).resolve(".quizforge/workspace.db");
         byte[] registryBefore = Files.readAllBytes(registry);
         var provider = new SqliteWorkspacePracticeRuntimeProvider(paths, codec, Clock.fixed(NOW, ZoneOffset.UTC));
@@ -585,6 +643,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         var workspace = new Workspace(WorkspaceId.newId(), "Mixed", NOW, NOW);
         paths.create(workspace);
         var provider = new SqliteWorkspacePracticeRuntimeProvider(paths, codec, Clock.fixed(NOW, ZoneOffset.UTC));
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(paths.workspaceRoot(workspace.id()).resolve("question-banks/review.qbank"),bank);
         var original = provider.open(workspace.id(), bank);
         original.select("opt_a"); original.submit();
         var essay = io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst();
@@ -595,6 +654,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         var attempts = new SqliteQuestionAttemptRepository(db);
         var priorRows = questions.findBySessionId(original.sessionId());
         var priorAttempts = attempts.listBySessionQuestion(priorRows.getFirst().id());
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(paths.workspaceRoot(workspace.id()).resolve("question-banks/review.qbank"),mixed);
         var restored = provider.open(workspace.id(), mixed);
         assertEquals(original.sessionId(), restored.sessionId());
         assertEquals(QuestionBankPracticeSession.State.SUBMITTED, restored.session().state());
@@ -609,6 +669,7 @@ class PersistentPracticeRuntimeIntegrationTest {
                 new TextContent("Edited essay only"), essay.essayPayload(), null);
         var edited = new QuestionBank(bank.assetId(), bank.title(), List.of(),
                 List.of(editedEssay, bank.questions().get(0), bank.questions().get(1)), List.of());
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(paths.workspaceRoot(workspace.id()).resolve("question-banks/review.qbank"),edited);
         var afterEdit = provider.open(workspace.id(), edited);
         assertEquals(Set.of("opt_d", "opt_e"), afterEdit.session().selected());
         assertEquals(priorAttempts, attempts.listBySessionQuestion(priorRows.getFirst().id()));
@@ -619,7 +680,41 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(List.of("ESSAY","SINGLE_CHOICE", "MULTIPLE_CHOICE"), history.questions().stream()
                 .map(PracticeHistoryDetail.Question::questionType).toList());
         assertEquals(priorAttempts, attempts.listBySessionQuestion(priorRows.getFirst().id()));
-        assertEquals(2,provider.open(workspace.id(),io.quizforge.infrastructure.testing.EssayTestBanks.bank()).session().bank().questions().size());
+        var pureEssay=io.quizforge.infrastructure.testing.EssayTestBanks.bank();
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(paths.workspaceRoot(workspace.id()).resolve("question-banks/essay.qbank"),pureEssay);
+        assertEquals(2,provider.open(workspace.id(),pureEssay).session().bank().questions().size());
+    }
+
+    @Test void duplicatePortableIdentityCannotChangeExistingAttemptsAndRenameStillRestores() throws Exception {
+        var paths=new WorkspacePathResolver(new QuizForgeDataDirectory(temp.resolve("identity-data")));
+        var workspace=new Workspace(WorkspaceId.newId(),"identity",NOW,NOW);paths.create(workspace);
+        Path root=paths.workspaceRoot(workspace.id()), file=root.resolve("question-banks/original.qbank");
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(file,bank);
+        var provider=new SqliteWorkspacePracticeRuntimeProvider(paths,codec,Clock.fixed(NOW,ZoneOffset.UTC));
+        var original=provider.open(workspace.id(),bank);original.select("opt_a");original.submit();
+        var attempts=new SqliteQuestionAttemptRepository(new SqliteDatabase(root.resolve(".quizforge/quizforge.db")));
+        var questions=new SqlitePracticeSessionQuestionRepository(new SqliteDatabase(root.resolve(".quizforge/quizforge.db")));
+        var row=questions.findBySessionIdAndQuestionId(original.sessionId(),"q_one").orElseThrow();
+        var facts=attempts.listBySessionQuestion(row.id());
+        Path copy=root.resolve("question-banks/copy.qbank");Files.copy(file,copy);
+        assertThrows(IllegalStateException.class,()->provider.open(workspace.id(),bank));
+        assertEquals(facts,attempts.listBySessionQuestion(row.id()));
+        Files.delete(copy);Files.move(file,file.resolveSibling("renamed.qbank"));
+        assertEquals(original.sessionId(),provider.open(workspace.id(),bank).sessionId());
+        assertEquals(facts,attempts.listBySessionQuestion(row.id()));
+    }
+
+    @Test void accuracyCountsSubmittedQuestionsIncludingUnscoredEssayButExcludesDrafts() {
+        runtime.select("opt_a");runtime.submit();
+        assertEquals(100,runtime.summary().accuracyPercent().orElseThrow());
+        runtime.next();runtime.select("opt_d");
+        assertEquals(100,runtime.summary().accuracyPercent().orElseThrow());
+        var essay=io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst();
+        var mixed=new QuestionBank("qb_accuracy","accuracy",List.of(),List.of(bank.questions().getFirst(),essay),List.of());
+        var active=new PersistentPracticeRuntime(service,mixed,codec.contentId(mixed));
+        active.select("opt_a");active.submit();active.next();active.saveEssayDraft(essay.id(),new EssayPracticeAnswer("answer",null));active.submit();
+        assertEquals(2,active.summary().submittedCount());assertEquals(1,active.summary().unscoredCount());
+        assertEquals(50,active.summary().accuracyPercent().orElseThrow());
     }
 
     @Test void unsubmittedEssayDocumentAndEmbeddedImageSurviveDatabaseReopenAndClear() throws Exception {
@@ -676,6 +771,41 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(Set.of("opt_b"),restored.session().selected());
         assertEquals(PracticeSessionQuestion.State.UNANSWERED,restored.questionState(essay.id()).sessionQuestion().practiceState());
         assertTrue(restored.questionState("q_one").attempts().isEmpty());
+    }
+
+    @Test void essayHistoryOwnsPromptResourcesScoreAndReferenceWithoutResettingExistingAttempt() throws Exception {
+        byte[] bytes=("{\"version\":\"1.0.4\",\"options\":{},\"data\":{\"main\":[{\"value\":\"Directions\",\"bold\":true},{\"type\":\"image\",\"value\":\"data:image/png;base64,"
+                +java.util.Base64.getEncoder().encodeToString(io.quizforge.infrastructure.testing.EssayTestBanks.image("png"))+"\",\"width\":24,\"height\":16}]}}")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String hash=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        var resource=new QBankResource("res_canvas_"+hash,ResourceKind.DOCUMENT,"application/vnd.quizforge.canvas+json","resources/prompt.canvas.json",hash);
+        var essay=new Question("q_history_essay","ESSAY",List.of(),new DocumentContent(resource.id(),"Directions"),new EssayPayload(null),
+                new EssayAnswerSpec(new TextContent("Reference answer")),new ScoreSpec(new java.math.BigDecimal("20.25")),
+                new EvaluationSpec(List.of(new EvaluationCriterion("content","Content",java.math.BigDecimal.ONE)),"Rubric guidance"),new TextContent("Analysis"),List.of());
+        var original=new QuestionBank("qb_history_essay","History",List.of(),List.of(essay),List.of(resource));
+        io.quizforge.core.port.QuestionResourceInput input=r->new java.io.ByteArrayInputStream(bytes);
+        String revision=codec.contentId(original);
+        var active=new PersistentPracticeRuntime(service,original,revision,input);
+        active.saveEssayDraft(essay.id(),new EssayPracticeAnswer("My answer",null));active.submit();
+        var before=active.questionState(essay.id());
+        // Simulate an existing ACTIVE snapshot from before presentation resources were saved.
+        new SqlitePracticeSessionQuestionRepository(database).updateSnapshot(active.sessionId(),essay.id(),0,
+                PracticeQuestionSnapshotMapper.logical(before.sessionQuestion().snapshot()),NOW);
+        var enriched=new PersistentPracticeRuntime(service,original,revision,input);
+        assertEquals(before.attempts(),enriched.questionState(essay.id()).attempts());
+        assertEquals(before.sessionQuestion().id(),enriched.questionState(essay.id()).sessionQuestion().id());
+        String archived=enriched.sessionId();enriched.restart();
+        var history=new PracticeHistoryService(new SqlitePracticeTransaction(new SqliteDatabase(new QuizForgeDataDirectory(temp))))
+                .loadArchivedSessionDetail(original.assetId(),archived);
+        var fields=QuestionContentData.map(history.questions().getFirst().contentSnapshot().value());
+        var saved=EssayQuestionSnapshot.from(new PracticePayload(fields.get("essayPresentation")));
+        assertEquals(revision,history.bankContentId());assertEquals(essay.prompt(),saved.prompt());
+        assertEquals(new java.math.BigDecimal("20.25"),saved.maxScore());
+        assertEquals(new TextContent("Reference answer"),saved.reference());assertEquals(new TextContent("Analysis"),saved.analysis());
+        assertEquals("Rubric guidance",saved.guidance());
+        try(var stream=saved.open(resource)){assertArrayEquals(bytes,stream.readAllBytes());}
+        assertEquals(1,history.questions().getFirst().attempts().size());
+        assertEquals("My answer",EssayPracticeAnswer.from(history.questions().getFirst().attempts().getFirst().answer()).text());
     }
 
     private PracticeSession session() { return new SqlitePracticeSessionRepository(database).findById(runtime.sessionId()).orElseThrow(); }

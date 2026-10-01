@@ -1,10 +1,22 @@
 package io.quizforge.core.question;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-import java.util.List;
+import io.quizforge.core.question.content.TextContent;
+import io.quizforge.core.question.model.EvaluationCriterion;
+import io.quizforge.core.question.model.EvaluationSpec;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.model.ScoreSpec;
+import io.quizforge.core.question.model.Stimulus;
+import io.quizforge.core.question.resource.QBankResource;
+import io.quizforge.core.question.resource.ResourceKind;
+import io.quizforge.core.question.service.QuestionBankEditorModel;
+import io.quizforge.core.question.service.QuestionBankValidator;
+import io.quizforge.core.question.source.SourceRef;
+import io.quizforge.core.question.type.objective.choice.QuestionText;
 import java.math.BigDecimal;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 class QuestionBankEditorModelTest {
     @Test void editsPreserveBankAndExistingQuestionIdentity() {

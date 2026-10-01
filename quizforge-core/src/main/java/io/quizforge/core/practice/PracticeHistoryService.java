@@ -49,10 +49,10 @@ public final class PracticeHistoryService {
                 return new PracticeHistoryDetail.Question(question.id(), question.questionId(),
                         question.questionOrder(), snapshot.questionType(), snapshot.stem(),
                         options(snapshot.options()), correctIds(snapshot.correctAnswer()), snapshot.analysis(),
-                        snapshot.sourceRefs(), question.practiceState(), question.draftAnswer(), attempts);
+                        snapshot.sourceRefs(), question.practiceState(), question.draftAnswer(), attempts,snapshot.correctAnswer());
             }).toList();
             return new PracticeHistoryDetail(session.id(), session.bankTitleSnapshot(), session.startedAt(),
-                    session.archivedAt(), PracticeSummary.fromQuestions(rows), questions);
+                    session.archivedAt(), PracticeSummary.fromQuestions(rows), questions,session.questionBankContentId());
         });
     }
 

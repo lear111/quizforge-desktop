@@ -1,8 +1,7 @@
 package io.quizforge.core.document.registered;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 class QuizForgeReferenceCodecTest {
     private final QuizForgeReferenceCodec codec = new QuizForgeReferenceCodec();

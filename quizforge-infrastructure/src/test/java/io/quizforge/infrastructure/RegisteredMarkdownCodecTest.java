@@ -1,18 +1,26 @@
 package io.quizforge.infrastructure;
 
+import io.quizforge.core.document.registered.MarkdownBlockType;
+import io.quizforge.infrastructure.filesystem.markdown.RegisteredMarkdownCodec;
+import java.util.HashSet;
+import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.quizforge.core.document.registered.MarkdownBlockType;
-import io.quizforge.infrastructure.filesystem.RegisteredMarkdownCodec;
-import java.util.HashSet;
-import org.junit.jupiter.api.Test;
-
 class RegisteredMarkdownCodecTest {
     private final RegisteredMarkdownCodec codec = new RegisteredMarkdownCodec();
+
+    @Test void markersInsideNestedCodeRemainLiteralAndProduceNoAnchorErrors() {
+        String body = "> ```html\n> <!-- qf:anchor=quoted -->\n> ```\n\n"
+                + "- Example\n\n  ```html\n  <!-- qf:anchor=listed -->\n  ```\n\n"
+                + "<!-- qf:anchor=real -->\nActual paragraph.\n";
+        var document=codec.prepareRegistration(body,"notes.md").document();
+        assertEquals(java.util.List.of("real"),document.anchors().stream().map(anchor->anchor.name()).toList());
+        assertTrue(document.anchorErrors().isEmpty());
+    }
 
     @Test void ordinaryMarkdownGetsMetadataAndStableBlockIdsWithoutChangingItsExtension() {
         String original = "# Java\n\nA paragraph.\n";

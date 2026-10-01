@@ -1,21 +1,20 @@
 package io.quizforge.core.asset;
 
+import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import org.junit.jupiter.api.Test;
-
 class AssetTest {
     @Test void acceptsWorkspaceRelativePathOnly() {
-        Asset asset = new Asset("doc_123", AssetType.STANDARD_DOCUMENT,
+        Asset asset = new Asset("doc_123", AssetType.REGISTERED_MARKDOWN,
                 "documents/java/study.md", "Java");
         assertEquals("documents/java/study.md", asset.currentPath());
         assertThrows(IllegalArgumentException.class, () -> new Asset("doc_123",
-                AssetType.STANDARD_DOCUMENT, "C:/private/study.md", "Java"));
+                AssetType.REGISTERED_MARKDOWN, "C:/private/study.md", "Java"));
         assertThrows(IllegalArgumentException.class, () -> new Asset("doc_123",
-                AssetType.STANDARD_DOCUMENT, "../study.md", "Java"));
+                AssetType.REGISTERED_MARKDOWN, "../study.md", "Java"));
         assertThrows(IllegalArgumentException.class, () -> new Asset("doc_123",
-                AssetType.STANDARD_DOCUMENT, "/tmp/study.md", "Java"));
+                AssetType.REGISTERED_MARKDOWN, "/tmp/study.md", "Java"));
     }
 
     @Test void revisionPrefixMatchesAssetType() {

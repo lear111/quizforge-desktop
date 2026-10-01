@@ -1,24 +1,37 @@
 package io.quizforge.infrastructure;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-import io.quizforge.core.workspace.WorkspaceService;
+import io.quizforge.core.workspace.model.WorkspaceFileType;
+import io.quizforge.core.workspace.service.WorkspaceService;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
-import io.quizforge.infrastructure.filesystem.WorkspaceManifestStore;
-import io.quizforge.infrastructure.filesystem.WorkspacePathResolver;
-import io.quizforge.infrastructure.filesystem.LocalWorkspaceFileOperations;
+import io.quizforge.infrastructure.filesystem.workspace.LocalWorkspaceFileOperations;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspaceManifestStore;
+import io.quizforge.infrastructure.filesystem.workspace.WorkspacePathResolver;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.SqliteWorkspaceRepository;
-import io.quizforge.core.workspace.WorkspaceFileType;
-import io.quizforge.core.material.MaterialId;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.*;
 
 class WorkspaceLocationIntegrationTest {
     @TempDir Path temporary;
+
+    @Test void unavailableWorkspaceDoesNotBlockListingOrRecreateItsDirectory() throws Exception {
+        var data=new QuizForgeDataDirectory(temporary.resolve("listing-data"));
+        var repository=new SqliteWorkspaceRepository(new SqliteDatabase(data));
+        var paths=new WorkspacePathResolver(data,repository);
+        var service=new WorkspaceService(repository,paths,Clock.systemUTC());
+        var unavailable=service.createWorkspace("Unavailable");
+        var available=service.createWorkspace("Available");
+        Path original=paths.workspaceRoot(unavailable.id());
+        Files.move(original,temporary.resolve("moved-workspace"));
+        assertEquals(2,service.listWorkspaces().size());
+        assertFalse(Files.exists(original));
+        assertEquals(available.id(),service.getWorkspace(available.id()).id());
+        assertFalse(Files.exists(original));
+    }
 
     @Test void createsWorkspaceInSelectedFolderAndReopensItByRegisteredPath() throws Exception {
         var data = new QuizForgeDataDirectory(temporary.resolve("app-data"));
@@ -43,7 +56,6 @@ class WorkspaceLocationIntegrationTest {
         assertEquals("notes.md", new LocalWorkspaceFileOperations(reopened)
                 .createFile(workspace.id(), "", "notes", WorkspaceFileType.MARKDOWN));
         assertTrue(Files.isRegularFile(expected.resolve("notes.md")));
-        assertTrue(reopened.materialPath(workspace.id(), MaterialId.newId()).startsWith(expected));
         assertEquals(workspace.id(), service.getWorkspace(workspace.id()).id());
     }
 

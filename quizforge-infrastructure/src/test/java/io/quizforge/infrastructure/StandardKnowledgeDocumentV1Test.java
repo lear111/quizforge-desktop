@@ -1,16 +1,15 @@
 package io.quizforge.infrastructure;
 
+import io.quizforge.infrastructure.filesystem.markdown.LegacyMarkdownCodec;
+import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.quizforge.infrastructure.filesystem.StandardKnowledgeDocumentV1;
-import org.junit.jupiter.api.Test;
-
 class StandardKnowledgeDocumentV1Test {
-    private final StandardKnowledgeDocumentV1 format = new StandardKnowledgeDocumentV1();
+    private final LegacyMarkdownCodec format = new LegacyMarkdownCodec();
     private static final String DOCUMENT = """
             ---
             quizforge_format: "study-document"
@@ -35,66 +34,66 @@ class StandardKnowledgeDocumentV1Test {
             """;
 
     @Test void identifiesAssetAndHasDeterministicContentId() {
-        var first = format.parseIfStandard(DOCUMENT).orElseThrow();
+        var first = format.parseLegacy(DOCUMENT).orElseThrow();
         assertEquals("doc_one", first.assetId());
         assertTrue(first.contentId().matches("qfd:v1:[0-9a-f]{64}"));
-        assertEquals(first.contentId(), format.parseIfStandard(DOCUMENT).orElseThrow().contentId());
-        assertEquals(first.contentId(), format.parseIfStandard(DOCUMENT.replace("\n", "\r\n"))
+        assertEquals(first.contentId(), format.parseLegacy(DOCUMENT).orElseThrow().contentId());
+        assertEquals(first.contentId(), format.parseLegacy(DOCUMENT.replace("\n", "\r\n"))
                 .orElseThrow().contentId());
     }
 
     @Test void bodyTitleAndSectionIdentityChangeRevision() {
-        String original = format.parseIfStandard(DOCUMENT).orElseThrow().contentId();
-        assertNotEquals(original, format.parseIfStandard(DOCUMENT.replace("preserves order", "is ordered"))
+        String original = format.parseLegacy(DOCUMENT).orElseThrow().contentId();
+        assertNotEquals(original, format.parseLegacy(DOCUMENT.replace("preserves order", "is ordered"))
                 .orElseThrow().contentId());
-        assertNotEquals(original, format.parseIfStandard(DOCUMENT.replace("title: \"Java Collections\"",
+        assertNotEquals(original, format.parseLegacy(DOCUMENT.replace("title: \"Java Collections\"",
                 "title: \"Collections in Java\"")).orElseThrow().contentId());
-        assertNotEquals(original, format.parseIfStandard(DOCUMENT.replace("section_arraylist", "section_list"))
+        assertNotEquals(original, format.parseLegacy(DOCUMENT.replace("section_arraylist", "section_list"))
                 .orElseThrow().contentId());
-        assertNotEquals(original, format.parseIfStandard(DOCUMENT.replace("chapter_lists", "chapter_all"))
+        assertNotEquals(original, format.parseLegacy(DOCUMENT.replace("chapter_lists", "chapter_all"))
                 .orElseThrow().contentId());
     }
 
     @Test void assetIdentityAndUnrelatedMetadataDoNotChangeRevision() {
-        String original = format.parseIfStandard(DOCUMENT).orElseThrow().contentId();
-        assertEquals(original, format.parseIfStandard(DOCUMENT.replace("doc_one", "doc_two"))
+        String original = format.parseLegacy(DOCUMENT).orElseThrow().contentId();
+        assertEquals(original, format.parseLegacy(DOCUMENT.replace("doc_one", "doc_two"))
                 .orElseThrow().contentId());
-        assertEquals(original, format.parseIfStandard(DOCUMENT.replace("language: \"en-US\"",
+        assertEquals(original, format.parseLegacy(DOCUMENT.replace("language: \"en-US\"",
                 "language: \"en-US\"\nui_state: \"expanded\""))
                 .orElseThrow().contentId());
     }
 
     @Test void validatesChapterAndSectionIdsAndBody() {
         assertThrows(IllegalArgumentException.class,
-                () -> format.parseIfStandard(DOCUMENT.replace("<!-- qf:id=chapter_lists -->", "")));
+                () -> format.parseLegacy(DOCUMENT.replace("<!-- qf:id=chapter_lists -->", "")));
         assertThrows(IllegalArgumentException.class,
-                () -> format.parseIfStandard(DOCUMENT.replace("<!-- qf:id=section_arraylist -->", "")));
+                () -> format.parseLegacy(DOCUMENT.replace("<!-- qf:id=section_arraylist -->", "")));
         assertThrows(IllegalArgumentException.class,
-                () -> format.parseIfStandard(DOCUMENT.replace("section_arraylist", "chapter_lists")));
+                () -> format.parseLegacy(DOCUMENT.replace("section_arraylist", "chapter_lists")));
         assertThrows(IllegalArgumentException.class,
-                () -> format.parseIfStandard(DOCUMENT.replace("A list preserves order.\n\n- first\n- second\n\n"
+                () -> format.parseLegacy(DOCUMENT.replace("A list preserves order.\n\n- first\n- second\n\n"
                         + "```java\nList<String> names = new ArrayList<>();\n```", "")));
     }
 
     @Test void validatesHeadingStructure() {
         assertThrows(IllegalArgumentException.class,
-                () -> format.parseIfStandard(DOCUMENT.replace("# Java Collections", "# Java Collections\n# Extra")));
+                () -> format.parseLegacy(DOCUMENT.replace("# Java Collections", "# Java Collections\n# Extra")));
         assertThrows(IllegalArgumentException.class,
-                () -> format.parseIfStandard(DOCUMENT.replace("### ArrayList", "#### ArrayList")));
+                () -> format.parseLegacy(DOCUMENT.replace("### ArrayList", "#### ArrayList")));
         assertThrows(IllegalArgumentException.class,
-                () -> format.parseIfStandard(DOCUMENT.replace("### ArrayList\n<!-- qf:id=section_arraylist -->",
+                () -> format.parseLegacy(DOCUMENT.replace("### ArrayList\n<!-- qf:id=section_arraylist -->",
                         "")));
     }
 
     @Test void rejectsDuplicateSectionIdsAndUnclosedDeclaredFrontMatter() {
         String duplicate = DOCUMENT + "\n### LinkedList\n<!-- qf:id=section_arraylist -->\nA linked list.\n";
-        assertThrows(IllegalArgumentException.class, () -> format.parseIfStandard(duplicate));
+        assertThrows(IllegalArgumentException.class, () -> format.parseLegacy(duplicate));
         assertThrows(IllegalArgumentException.class,
-                () -> format.parseIfStandard("---\nquizforge_format: study-document\n"));
+                () -> format.parseLegacy("---\nquizforge_format: study-document\n"));
     }
 
     @Test void ordinaryMarkdownIsNotAnAsset() {
-        assertFalse(format.parseIfStandard("# Plain notes\nA paragraph.").isPresent());
-        assertFalse(format.parseIfStandard(DOCUMENT.replace("study-document", "other-format")).isPresent());
+        assertFalse(format.parseLegacy("# Plain notes\nA paragraph.").isPresent());
+        assertFalse(format.parseLegacy(DOCUMENT.replace("study-document", "other-format")).isPresent());
     }
 }

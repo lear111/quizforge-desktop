@@ -1,117 +1,60 @@
 # QuizForge Desktop V2
 
-Independent Java 21 Maven desktop project. It does not use QuizForge V1 code or start a web server.
+Java 21 + JavaFX 本地桌面题库应用，独立于 V1。当前保留工作区文件管理、Markdown 编辑与命名来源引用、单选/多选/作文编辑、练习草稿/提交/重做及归档历史。AI 仅保留设置、凭据和连接测试。
 
-## Module boundaries
+## 构建与运行
 
-| Module | Responsibility | Direct project dependencies |
-| --- | --- | --- |
-| `quizforge-extension-api` | Vendor neutral AI, document structure and question generation contracts | None |
-| `quizforge-core` | Workspace, Asset, Material, StandardDocument and QuestionBank models, services and ports | `quizforge-extension-api` |
-| `quizforge-default-extensions` | DeepSeek, Standard Markdown v1 and choice question generation | `quizforge-extension-api` |
-| `quizforge-infrastructure` | SQLite, Flyway, local files and Windows DPAPI credentials | `quizforge-core` |
-| `quizforge-desktop-app` | JavaFX UI and Spring composition root | All four modules |
-
-## Build and run
-
-Use Maven with JDK 21 from this directory:
+在本目录使用 JDK 21 与 Maven：
 
 ```powershell
 mvn test
 mvn install -DskipTests
 mvn -pl quizforge-desktop-app javafx:run
+# 或使用项目启动器
+.\Start-QuizForge.cmd
 ```
 
-The app creates `%USERPROFILE%\.quizforge\quizforge.db`. Imported materials are stored
-under `workspaces\{workspace-id}\materials\`. Validated Standard Documents are stored
-at `workspaces\{workspace-id}\document\study.md`. SQLite stores metadata and Material
-provenance. AI provider settings contain a credential reference; API keys are encrypted
-with Windows DPAPI in `secrets\` and never stored in SQLite.
+根目录统一使用 `.cmd` 启动入口：`Start-QuizForge.cmd` 普通启动，`Start-QuizForge-LiveUi.cmd` 开发启动，两者均可双击。共用的启动实现位于 `tools/Start-QuizForge.ps1`，参数由 `.cmd` 原样传入，例如 `.\Start-QuizForge.cmd -LiveCss`。
 
-## File-first workspace foundation
-
-New workspaces are real directories under `%USERPROFILE%\.quizforge\workspaces\{workspace-id}\`
-(or under the overridden data directory). Each new root includes `sources/`, `documents/`,
-`question-banks/`, and `.quizforge/`. The internal directory contains `workspace.json`
-with a stable workspace UUID and `workspace.db` with the rebuildable `asset_registry` table.
-The old `materials/` and `document/` paths remain in use by the existing generation flow.
-The global `quizforge.db` remains in use by the current MVP.
-Existing workspaces receive the missing directories and internal metadata when loaded;
-their legacy materials and generated documents stay in place.
-
-The workspace scanner recursively checks arbitrary folders except `.quizforge/`.
-The default folders are optional categories, never asset-type rules. A valid file-backed
-Standard Knowledge Document is a `.md` file with `quizforge_format: study-document`,
-`schema_version: "1.0"`, a stable `quizforge_id`, `title`, and `language` in YAML Front Matter.
-Its body has exactly one H1, at least one H2 with a `<!-- qf:id=chapter_x -->` comment,
-and at least one H3 with a `<!-- qf:id=section_x -->` comment and nonempty body per chapter.
-IDs must be unique in the document. The former AI-generated Draft is still stored and used
-by the existing generation pipeline, but is not recognized as a file-backed v1 asset.
-
-The document `contentId` is `qfd:v1:` plus lowercase SHA-256 over a canonical sequence:
-UTF-8 domain separator `quizforge-study-document-canonical-v1` plus NUL, then four
-length-prefixed UTF-8 fields in order: schema version, title, language, complete Markdown
-body. Each length is a 32-bit big-endian byte count. Line endings become LF and Unicode is
-NFC normalized; title and language are trimmed. The body includes headings, chapter and
-section ID comments, prose, lists, and code. Front Matter `quizforge_id`, file path/name,
-mtime, UI state, cache, and database values are excluded. The hash is computed on scan and
-is never written into Markdown.
-
-A `.qbank` is a QBank v2 JSON document with `schemaVersion: "2.0"`, stable `assetId`,
-`title`, `stimuli`, `questions`, and `resources`. Valid logical content has a `qfb:v2:`
-SHA-256 revision independent of asset identity, filesystem path and UI state.
-QBank v1 files are not accepted. See [QBank v2 foundation](docs/qbank-v2-foundation.md)
-and the JSON Schema at `quizforge-infrastructure/src/main/resources/schema/qbank-v2.schema.json`.
-The registry records only normalized workspace-relative paths. A rescan updates paths for
-moved or renamed assets, updates content IDs after edits, and removes entries for deleted
-files. Duplicate asset IDs are reported as `DUPLICATE_ASSET_ID` and neither conflicting file
-is indexed. Invalid files are reported and skipped. Removing `workspace.db` and scanning
-again rebuilds the registry from files.
-The scanner indexes files; this step does not write `.qbank` files or move existing assets.
-
-The Standard Document page now creates real file-backed v1 documents. The existing AI
-processor supplies a validated Draft with semantic headings and content; the local
-assembler discards any AI-provided QuizForge IDs, creates document/chapter/section IDs,
-and validates the completed file with the same v1 parser used by the scanner. New files
-use a title-based name under `documents/`; collisions receive ` (2)`, ` (3)`, etc.
-Regenerating a selected file retains its asset ID, writes via a staged replacement,
-and refreshes the registry immediately. The page reads its preview from the saved `.md`
-file and shows the asset ID, content ID, and workspace-relative path. Multiple document
-files can coexist and be rediscovered after restart or relocation.
-If registry refresh fails after a new file is published, the valid file remains on disk
-and the error names its relative path; a later scan can register it. A failed regeneration
-restores the previous file.
-
-The old `standard_document` tables and `document/study.md` Draft path remain solely for
-the current QuestionBank compatibility flow. New document generation does not write to
-those tables or treat them as the source of its formal content. QuestionBank generation
-from file-backed documents is a later migration step.
-
-The Question Bank tab generates 1–50 single and/or multiple choice questions from the whole
-Standard Document, one chapter or one section. The dialog populates chapter and section
-choices from CommonMark headings. AI output must be JSON. The local validator accepts only
-questions with valid options, correct answers and source labels. Invalid candidates are
-discarded; at least one valid question is required. SQLite V3 stores one current bank per
-workspace and replaces it in one transaction after generation completes. A failed generation
-or save retains the previous bank. The page warns when its source document has changed.
-
-Override the data directory for an isolated run with the JVM property `quizforge.dataDir`.
-For example, in PowerShell:
+普通启动使用包内 Canvas 页面，不要求 Node/npm。修改 Canvas 前端时：
 
 ```powershell
-$env:JAVA_TOOL_OPTIONS = '-Dquizforge.dataDir=C:\temp\quizforge-demo'
-mvn -pl quizforge-desktop-app javafx:run
-Remove-Item Env:JAVA_TOOL_OPTIONS
+Set-Location quizforge-desktop-app/editor-web/canvas
+npm ci
+npm run build
+# 回到项目根目录后启动开发模式
+Set-Location ../../..
+.\Start-QuizForge-LiveUi.cmd
 ```
 
-In AI Settings, save DeepSeek Base URL, Model and your own API key, then use Test Connection.
-Defaults are `https://api.deepseek.com` and `deepseek-v4-flash`. Network calls run in
-background JavaFX tasks. Candidate documents are saved only after local Standard Markdown
-v1 validation. A failed regeneration keeps the previous document.
+LiveUi 合并 Java、CSS 与 Vite 更新，需要支持增强类重定义的 JBR 21。普通 JDK 21 可用于 Maven 编译与普通启动。详见 [开发热更新说明](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/development-live-update.md)。
 
-`quizforge.material.maxBytes` defaults to 10 MiB per imported Markdown material.
-`quizforge.document.maxInputChars` defaults to 100,000 characters across selected Material
-names and content. Oversized inputs are rejected without truncation.
+## 模块与目录
 
-`mvn test` uses fake providers and a local mock HTTP server; it never contacts the live
-DeepSeek API. Live acceptance requires a user supplied key entered locally in AI Settings.
+| 模块 | 职责 | 项目依赖 |
+| --- | --- | --- |
+| quizforge-core | 通用模型、具体题型规则、内容/资源、业务流程与端口 | 无 |
+| quizforge-infrastructure | 本地文件与 ZIP、SQLite/Flyway、Windows DPAPI、DeepSeek HTTP | core |
+| quizforge-desktop-app | JavaFX 交互、内容组件和 Spring 组合入口 | core、infrastructure |
+
+题目按 model/type/content/resource/source/service 分工，具体题型分 objective/choice 与 subjective/essay。桌面 UI 按 shell/workspace/file/markdown/question/content/ai/shared 组织，开发刷新在 dev。旧 extension-api、default-extensions、Material 和标准文档生成链路已退出构建。
+
+## 文件与数据
+
+全局数据默认在 `%USERPROFILE%\.quizforge`，可用 JVM 属性 `-Dquizforge.dataDir=<path>` 指定独立目录。全局 quizforge.db 保存工作区登记与 AI 配置；密钥通过 Windows DPAPI 加密到 secrets/，配置只保存凭据引用。
+
+新工作区创建 sources/、documents/、question-banks/ 和 .quizforge/。默认文件夹只是分类，资产可放在工作区其他目录。已有 materials/ 等目录和文件保留；列出最近工作区不重建缺失目录，实际打开检查 manifest 与根目录。
+
+工作区 .quizforge/workspace.db 是可重建资产索引，.quizforge/quizforge.db 保存练习与历史。索引重扫不会删除作答；重复 assetId 的冲突题库禁止打开可写练习。
+
+`.qbank` 是 ZIP，包含 manifest.json、bank.json、resources/。manifest.json 保存 schemaVersion 2.0、资产 ID、标题和资源表，bank.json 保存 stimuli/questions 及稳定题目/选项 ID。读取器把两部分合并为 QuestionBank 逻辑模型。TEXT 为直接文本，RICH 为既有结构化富文本，DOCUMENT 引用 resources/ 下的 Canvas 原生 JSON；资源由 ID 映射到包内路径与哈希。图片采用现有内容节点或 Canvas 内嵌图片；音频、视频和新的 RESOURCE discriminator 尚未实现。
+
+普通 Markdown 首次用于来源时登记 quizforge 身份，用户选择正文块并创建 qf:anchor。旧 study-document 与 qf:id 仍可读。源码类型已改为 REGISTERED_MARKDOWN，索引适配器保留历史 STANDARD_DOCUMENT 数据库文本，既有 SQL 迁移不改写。
+
+正确率口径：正确题数 / 已提交题数，包含待评分作文，草稿不计入；没有提交显示“—”。主观题可保存参考答案与评分指导，目前提交结果为 UNSCORED，人工/AI 评分流程未实现。
+
+## 开发文档
+
+完整目录见 [开发文档导航](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/README.md)。新人从 [项目结构与新增题型指南](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/new-developer-guide.md) 开始，实施新题型时填写 [五步模板](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/templates/new-question-type.md)。题库协议统一维护在 [文件格式与内容资源](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/qbank-format.md)。
+
+每次修改同步实际行为、协议/兼容说明和相关测试。业务事实的保存放在核心流程与事务中，界面不建立第二条保存旁路。新增媒体、作答结构或评分机制时先扩展共享协议和历史基础，再接题型组件。

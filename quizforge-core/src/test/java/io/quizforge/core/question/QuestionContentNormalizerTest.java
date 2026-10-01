@@ -1,8 +1,19 @@
 package io.quizforge.core.question;
 
-import static org.junit.jupiter.api.Assertions.*;
+import io.quizforge.core.question.content.BlockImageNode;
+import io.quizforge.core.question.content.BlockMathNode;
+import io.quizforge.core.question.content.InlineImageNode;
+import io.quizforge.core.question.content.InlineTextNode;
+import io.quizforge.core.question.content.LineBreakNode;
+import io.quizforge.core.question.content.LinkNode;
+import io.quizforge.core.question.content.ParagraphNode;
+import io.quizforge.core.question.content.QuestionContentNormalizer;
+import io.quizforge.core.question.content.RichContent;
+import io.quizforge.core.question.content.RichDocument;
+import io.quizforge.core.question.content.TextContent;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 class QuestionContentNormalizerTest {
     @Test void textRemainsTextIncludingWhitespaceAndMarkup(){

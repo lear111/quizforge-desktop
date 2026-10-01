@@ -1,16 +1,39 @@
 package io.quizforge.core.practice;
 
-import io.quizforge.core.question.*;
-
+import io.quizforge.core.question.content.QuestionContentData;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.resource.QBankResource;
+import io.quizforge.core.question.source.QuestionSourceAddress;
+import io.quizforge.core.question.source.SourceRef;
+import io.quizforge.core.question.type.QuestionTypes;
+import io.quizforge.core.question.type.objective.choice.QuestionText;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** The single mapping from current QBank content to persistence-neutral practice snapshots. */
 public final class PracticeQuestionSnapshotMapper {
+    public PracticeSessionQuestion.Snapshot map(Question question,java.util.List<QBankResource> resources,
+            io.quizforge.core.port.QuestionResourceInput input){
+        var snapshot=map(question);
+        if(!QuestionTypes.isEssay(question.type()))return snapshot;
+        var fields=new LinkedHashMap<String,Object>();
+        QuestionContentData.map(snapshot.correctAnswer().value()).forEach((key,value)->fields.put((String)key,value));
+        fields.put("essayPresentation",EssayQuestionSnapshot.capture(question,resources,input).payload().value());
+        return new PracticeSessionQuestion.Snapshot(snapshot.questionType(),snapshot.stem(),snapshot.options(),
+                new PracticePayload(fields),snapshot.analysis(),snapshot.sourceRefs());
+    }
+
+    public static PracticeSessionQuestion.Snapshot logical(PracticeSessionQuestion.Snapshot snapshot){
+        if(!QuestionTypes.isEssay(snapshot.questionType()))return snapshot;
+        var fields=new LinkedHashMap<String,Object>();
+        QuestionContentData.map(snapshot.correctAnswer().value()).forEach((key,value)->{if(!"essayPresentation".equals(key))fields.put((String)key,value);});
+        return new PracticeSessionQuestion.Snapshot(snapshot.questionType(),snapshot.stem(),snapshot.options(),
+                new PracticePayload(fields),snapshot.analysis(),snapshot.sourceRefs());
+    }
     public PracticeSessionQuestion.Snapshot map(Question question) {
         if (!question.stimulusRefs().isEmpty())
             throw new UnsupportedOperationException("The current practice snapshot does not support shared stimuli");
-        if ("ESSAY".equals(question.type())) {
+        if (QuestionTypes.isEssay(question.type())) {
             return new PracticeSessionQuestion.Snapshot(question.type(), QuestionContentData.plainText(question.prompt()),
                     new PracticePayload(java.util.List.of()), new PracticePayload(Map.of(
                             "correctOptionIds", java.util.List.of(),

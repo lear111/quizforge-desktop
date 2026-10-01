@@ -1,8 +1,7 @@
 package io.quizforge.core.document.navigation;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 class QuizForgeNavigationLinkCodecTest {
     private final QuizForgeNavigationLinkCodec codec = new QuizForgeNavigationLinkCodec();

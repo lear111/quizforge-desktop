@@ -1,6 +1,6 @@
 package io.quizforge.core.port;
 
-import io.quizforge.core.question.QBankResource;
+import io.quizforge.core.question.resource.QBankResource;
 import java.io.IOException;
 import java.io.InputStream;
 

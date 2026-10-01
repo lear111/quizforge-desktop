@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>QuizForge Canvas Editor</title>
+<meta http-equiv="Content-Security-Policy" content="img-src data:; media-src 'none'; object-src 'none'">
+</head>
+<body><div id="toolbar" role="toolbar" aria-label="内容编辑工具栏">
+<div class="menu-row">
+  <button class="tool" data-icon="undo" data-command="undo" title="撤销"><i></i></button><button class="tool" data-icon="redo" data-command="redo" title="重做"><i></i></button><button class="tool" data-icon="format" data-command="clear" title="清除格式"><i></i></button>
+  <span class="divider"></span><select class="font" data-select="font" title="字体"><option value="Arial">Arial</option><option value="Microsoft YaHei">微软雅黑</option><option value="SimSun">宋体</option><option value="Georgia">Georgia</option></select>
+  <select class="size" data-select="size" title="字号"><option>12</option><option>14</option><option selected>16</option><option>18</option><option>20</option><option>24</option><option>28</option><option>32</option></select>
+  <button class="tool" data-icon="sizeAdd" data-command="sizeAdd" title="增大字号"><i></i></button><button class="tool" data-icon="sizeMinus" data-command="sizeMinus" title="减小字号"><i></i></button>
+  <span class="divider"></span><button class="tool" data-icon="bold" data-command="bold" title="加粗"><i></i></button><button class="tool" data-icon="italic" data-command="italic" title="斜体"><i></i></button><button class="tool" data-icon="underline" data-command="underline" title="下划线"><i></i></button><button class="tool" data-icon="strike" data-command="strike" title="删除线"><i></i></button><button class="tool" data-icon="superscript" data-command="superscript" title="上标"><i></i></button><button class="tool" data-icon="subscript" data-command="subscript" title="下标"><i></i></button>
+  <span class="divider"></span><label title="文字颜色"><input id="color" type="color" value="#242830"></label><label title="高亮颜色"><input id="highlight" type="color" value="#fff3a8"></label>
+</div>
+<div class="menu-row">
+  <select class="heading" data-select="heading" title="段落样式"><option value="">正文</option><option value="first">标题 1</option><option value="second">标题 2</option><option value="third">标题 3</option></select>
+  <span class="divider"></span><button class="tool" data-icon="left" data-command="align" data-value="left" title="左对齐"><i></i></button><button class="tool" data-icon="center" data-command="align" data-value="center" title="居中"><i></i></button><button class="tool" data-icon="right" data-command="align" data-value="right" title="右对齐"><i></i></button><button class="tool" data-icon="justify" data-command="align" data-value="justify" title="两端对齐"><i></i></button>
+  <span class="divider"></span><button class="tool" data-icon="list" data-command="list" data-value="ul" title="无序列表"><i></i></button><button class="tool" data-icon="list" data-command="list" data-value="ol" title="有序列表"><i></i></button>
+  <span class="divider"></span><button class="tool" data-icon="image" id="insert-image" title="插入图片"><i></i></button>
+  <button class="tool" data-icon="hyperlink" id="insert-link" title="插入链接"><i></i></button><button class="tool" data-icon="table" data-command="table" title="插入表格"><i></i></button><button class="tool" data-icon="latex" id="insert-latex" title="插入公式"><i></i></button>
+</div></div><div id="workspace"><div id="paper"></div></div><script type="module" src="/src/editor.js"></script></body></html>

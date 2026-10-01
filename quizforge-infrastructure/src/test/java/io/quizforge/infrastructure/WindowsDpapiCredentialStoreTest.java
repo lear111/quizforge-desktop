@@ -1,9 +1,5 @@
 package io.quizforge.infrastructure;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import io.quizforge.core.ai.AiSettingsService;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
 import io.quizforge.infrastructure.persistence.SqliteAiProviderConfigRepository;
@@ -18,10 +14,32 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @EnabledOnOs(OS.WINDOWS)
 class WindowsDpapiCredentialStoreTest {
     @TempDir Path temporaryDirectory;
+
+    @Test void rejectedSqlMetadataUpdateRetainsOldEncryptedKeyAndConfiguration() throws Exception {
+        var directory=new QuizForgeDataDirectory(temporaryDirectory.resolve("failed-update"));
+        var database=new SqliteDatabase(directory);
+        var repository=new SqliteAiProviderConfigRepository(database);
+        var store=new WindowsDpapiCredentialStore(directory);
+        var settings=new AiSettingsService(repository,store,Clock.systemUTC());
+        var original=settings.save("deepseek","https://example.invalid","test-model","owned-test-key");
+        try(var connection=database.openConnection();var statement=connection.createStatement()) {
+            statement.execute("CREATE TRIGGER reject_settings BEFORE UPDATE ON ai_provider_config BEGIN SELECT RAISE(ABORT,'owned test failure'); END");
+        }
+        assertThrows(RuntimeException.class,()->settings.save("deepseek","https://example.invalid","replacement-model","replacement-test-key"));
+        assertEquals(original,settings.configuration().orElseThrow());
+        assertEquals("owned-test-key",store.get(original.credentialRef()).orElseThrow());
+        try(var files=Files.list(directory.root().resolve("secrets"))) {
+            assertEquals(java.util.List.of(original.credentialRef()+".dpapi"),files.map(path->path.getFileName().toString()).toList());
+        }
+    }
 
     @Test
     void roundTripReplaceDeleteAndNeverPersistPlaintextInSqlite() throws Exception {
