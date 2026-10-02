@@ -58,9 +58,25 @@
       ]
     },
     "nativeDocument": {
-      "type": "object", "additionalProperties": false,
-      "properties": { "kind": { "const": "DOCUMENT" }, "resourceId": { "type": "string", "pattern": "^res_[A-Za-z0-9_-]+$" }, "text": { "type": "string" } },
-      "required": ["kind", "resourceId", "text"]
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "DOCUMENT"
+        },
+        "resourceId": {
+          "type": "string",
+          "pattern": "^res_[A-Za-z0-9_-]+$"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "resourceId",
+        "text"
+      ]
     },
     "text": {
       "type": "object",
@@ -253,7 +269,10 @@
           "type": "string"
         },
         "marks": {
-          "type": ["array", "null"],
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "enum": [
               "BOLD",
@@ -369,6 +388,18 @@
         },
         {
           "$ref": "#/$defs/essayPayload"
+        },
+        {
+          "$ref": "#/$defs/clozePayload"
+        },
+        {
+          "$ref": "#/$defs/readingPayload"
+        },
+        {
+          "$ref": "#/$defs/matchingPayload"
+        },
+        {
+          "$ref": "#/$defs/translationPayload"
         }
       ]
     },
@@ -379,6 +410,18 @@
         },
         {
           "$ref": "#/$defs/essayAnswer"
+        },
+        {
+          "$ref": "#/$defs/clozeAnswer"
+        },
+        {
+          "$ref": "#/$defs/readingAnswer"
+        },
+        {
+          "$ref": "#/$defs/matchingAnswer"
+        },
+        {
+          "$ref": "#/$defs/translationAnswer"
         }
       ]
     },
@@ -491,7 +534,11 @@
           "enum": [
             "SINGLE_CHOICE",
             "MULTIPLE_CHOICE",
-            "ESSAY"
+            "ESSAY",
+            "CLOZE",
+            "READING",
+            "MATCHING",
+            "TRANSLATION"
           ]
         },
         "stimulusRefs": {
@@ -570,12 +617,88 @@
             }
           },
           "else": {
-            "properties": {
-              "payload": {
-                "$ref": "#/$defs/choicePayload"
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "CLOZE"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "payload": {
+                  "$ref": "#/$defs/clozePayload"
+                },
+                "answerSpec": {
+                  "$ref": "#/$defs/clozeAnswer"
+                }
+              }
+            },
+            "else": {
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "READING"
+                  }
+                }
               },
-              "answerSpec": {
-                "$ref": "#/$defs/choiceAnswer"
+              "then": {
+                "properties": {
+                  "payload": {
+                    "$ref": "#/$defs/readingPayload"
+                  },
+                  "answerSpec": {
+                    "$ref": "#/$defs/readingAnswer"
+                  }
+                }
+              },
+              "else": {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "MATCHING"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "payload": {
+                      "$ref": "#/$defs/matchingPayload"
+                    },
+                    "answerSpec": {
+                      "$ref": "#/$defs/matchingAnswer"
+                    }
+                  }
+                },
+                "else": {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "TRANSLATION"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "payload": {
+                        "$ref": "#/$defs/translationPayload"
+                      },
+                      "answerSpec": {
+                        "$ref": "#/$defs/translationAnswer"
+                      }
+                    }
+                  },
+                  "else": {
+                    "properties": {
+                      "payload": {
+                        "$ref": "#/$defs/choicePayload"
+                      },
+                      "answerSpec": {
+                        "$ref": "#/$defs/choiceAnswer"
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -828,6 +951,393 @@
       "required": [
         "type",
         "blocks"
+      ]
+    },
+    "clozeBlank": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^blank_[A-Za-z0-9_-]+$"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/option"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      },
+      "required": [
+        "id",
+        "number",
+        "options"
+      ]
+    },
+    "clozePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "CLOZE"
+        },
+        "blanks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/clozeBlank"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "kind",
+        "blanks"
+      ]
+    },
+    "clozeAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "CLOZE"
+        },
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "blankId": {
+                "type": "string",
+                "pattern": "^blank_[A-Za-z0-9_-]+$"
+              },
+              "correctOptionId": {
+                "type": "string",
+                "pattern": "^opt_[A-Za-z0-9_-]+$"
+              }
+            },
+            "required": [
+              "blankId",
+              "correctOptionId"
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "kind",
+        "answers"
+      ]
+    },
+    "readingItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^item_[A-Za-z0-9_-]+$"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^opt_[A-Za-z0-9_-]+$"
+              },
+              "content": {
+                "$ref": "#/$defs/text"
+              }
+            },
+            "required": [
+              "id",
+              "content"
+            ]
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "prompt": {
+          "$ref": "#/$defs/content"
+        }
+      },
+      "required": [
+        "id",
+        "number",
+        "options",
+        "prompt"
+      ]
+    },
+    "readingPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "READING"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/readingItem"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "items"
+      ]
+    },
+    "readingAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "READING"
+        },
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "correctOptionId": {
+                "type": "string",
+                "pattern": "^opt_[A-Za-z0-9_-]+$"
+              },
+              "itemId": {
+                "type": "string",
+                "pattern": "^item_[A-Za-z0-9_-]+$"
+              }
+            },
+            "required": [
+              "itemId",
+              "correctOptionId"
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "kind",
+        "answers"
+      ]
+    },
+    "matchingBlank": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^blank_[A-Za-z0-9_-]+$"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "locked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "number",
+        "locked"
+      ]
+    },
+    "matchingOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^opt_[A-Za-z0-9_-]+$"
+        },
+        "label": {
+          "type": "string",
+          "pattern": "^[A-H]$"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ]
+    },
+    "matchingPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "MATCHING"
+        },
+        "blanks": {
+          "type": "array",
+          "minItems": 8,
+          "items": {
+            "$ref": "#/$defs/matchingBlank"
+          },
+          "maxItems": 8,
+          "contains": {
+            "type": "object",
+            "properties": {
+              "locked": {
+                "const": true
+              }
+            },
+            "required": [
+              "locked"
+            ]
+          },
+          "minContains": 3,
+          "maxContains": 3
+        },
+        "options": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/matchingOption"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "blanks",
+        "options"
+      ]
+    },
+    "matchingAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "MATCHING"
+        },
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "blankId": {
+                "type": "string",
+                "pattern": "^blank_[A-Za-z0-9_-]+$"
+              },
+              "correctOptionId": {
+                "type": "string",
+                "pattern": "^opt_[A-Za-z0-9_-]+$"
+              }
+            },
+            "required": [
+              "blankId",
+              "correctOptionId"
+            ]
+          },
+          "minItems": 8,
+          "maxItems": 8
+        }
+      },
+      "required": [
+        "kind",
+        "answers"
+      ]
+    },
+    "translationItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^item_[A-Za-z0-9_-]+$"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "number",
+        "text"
+      ]
+    },
+    "translationPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "TRANSLATION"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/translationItem"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "items"
+      ]
+    },
+    "translationAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "TRANSLATION"
+        },
+        "answers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "itemId": {
+                "type": "string",
+                "pattern": "^item_[A-Za-z0-9_-]+$"
+              },
+              "referenceAnswer": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/content"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "itemId"
+            ]
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "answers"
       ]
     }
   }

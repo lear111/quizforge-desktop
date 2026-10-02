@@ -122,6 +122,7 @@ public final class UiTheme {
             case "grid" -> "M2 2 L8 2 L8 8 L2 8 Z M12 2 L18 2 L18 8 L12 8 Z M2 12 L8 12 L8 18 L2 18 Z M12 12 L18 12 L18 18 L12 18 Z";
             case "clock" -> "M10 2 A8 8 0 1 1 9.99 2 M10 5 L10 10 L14 12";
             case "plus" -> "M10 3 L10 17 M3 10 L17 10";
+            case "minus" -> "M3 10 L17 10";
             case "settings" -> "M8 1 L12 1 L12.5 3.3 L14.2 4.3 L16.5 3.6 L18.5 7 L16.7 8.6 L16.7 11.4 L18.5 13 L16.5 16.4 L14.2 15.7 L12.5 16.7 L12 19 L8 19 L7.5 16.7 L5.8 15.7 L3.5 16.4 L1.5 13 L3.3 11.4 L3.3 8.6 L1.5 7 L3.5 3.6 L5.8 4.3 L7.5 3.3 Z M13 10 A3 3 0 1 1 7 10 A3 3 0 1 1 13 10";
             case "panel" -> "M2 3 L18 3 L18 17 L2 17 Z M7 3 L7 17";
             case "upload" -> "M10 13 L10 2 M6 6 L10 2 L14 6 M3 12 L3 18 L17 18 L17 12";
@@ -132,6 +133,8 @@ public final class UiTheme {
             case "copy" -> "M7 7 L18 7 L18 18 L7 18 Z M13 4 L13 2 L2 2 L2 13 L4 13";
             case "trash" -> "M3 5 L17 5 M7 5 L7 2 L13 2 L13 5 M5 5 L6 18 L14 18 L15 5 M8 8 L8 15 M12 8 L12 15";
             case "close" -> "M5 5 L15 15 M15 5 L5 15";
+            case "lock" -> "M5 9 L15 9 L15 17 L5 17 Z M7 9 L7 6 A3 3 0 0 1 13 6 L13 9 M10 12 L10 14";
+            case "unlock" -> "M5 9 L15 9 L15 17 L5 17 Z M7 9 L7 6 A3 3 0 0 1 13 6 M10 12 L10 14";
             case "finish" -> "M4 18 L4 2 L16 2 L16 11 L4 11 M8 2 L8 11 M12 2 L12 11 M4 6.5 L16 6.5";
             case "spark" -> "M10 2 L12 8 L18 10 L12 12 L10 18 L8 12 L2 10 L8 8 Z";
             default -> throw new IllegalArgumentException("Unknown icon: " + name);

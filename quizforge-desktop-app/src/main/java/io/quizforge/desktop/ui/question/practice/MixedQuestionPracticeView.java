@@ -43,6 +43,9 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
     private QuestionBank bank;
     private int index;
     private IntConsumer editorJump;
+    private io.quizforge.desktop.ui.question.objective.reading.ReadingQuestionCardView readingCard;
+    private io.quizforge.desktop.ui.question.objective.matching.MatchingQuestionCardView matchingCard;
+    private io.quizforge.desktop.ui.question.subjective.translation.TranslationQuestionCardView translationCard;
     public MixedQuestionPracticeView(QuestionBank bank,QuestionResourceInput resources){
         this(bank, resources, null, refs -> null);
     }
@@ -53,6 +56,7 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
         if(practiceLoader!=null)ensurePractice();
         outline=new QuestionOutlineView(practice==null?new QuestionBankPracticeSession(bank):practice.session(),this::show,"authoring-question-");
         outline.setId("authoring-outline");
+        outline.setItemJump(this::showItem);
         readerColumn.setMinWidth(320);
         getItems().addAll(readerColumn,outline);SplitPane.setResizableWithParent(outline,false);
         widthProperty().addListener(new javafx.beans.value.ChangeListener<Number>(){
@@ -67,10 +71,20 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
         }
         render();
     }
-    public static boolean containsEssay(QuestionBank bank){return bank.questions().stream().anyMatch(q->QuestionTypes.isEssay(q.type()));}
+    public static boolean requiresMixedView(QuestionBank bank){return bank.questions().stream().anyMatch(q->QuestionTypes.isEssay(q.type()) || QuestionTypes.isCloze(q.type()) || QuestionTypes.isReading(q.type()) || QuestionTypes.isMatching(q.type()) || QuestionTypes.isTranslation(q.type()));}
     public static boolean hasPracticeChoices(QuestionBank bank){return bank.questions().stream().anyMatch(QuestionText::supports);}
     public static boolean supportsEditing(QuestionBank bank){
-        return bank.questions().stream().allMatch(q->QuestionTypes.isEssay(q.type())
+        return bank.questions().stream().allMatch(q->QuestionTypes.isTranslation(q.type())
+                ? q.stimulusRefs().isEmpty() && editableContent(q.prompt()) && (q.analysis()==null || editableContent(q.analysis()))
+                    && ((io.quizforge.core.question.type.subjective.translation.TranslationAnswerSpec)q.answerSpec()).referenceAnswers().values().stream().allMatch(MixedQuestionPracticeView::editableContent)
+                : QuestionTypes.isMatching(q.type())
+                ? q.stimulusRefs().isEmpty() && editableContent(q.prompt()) && (q.analysis()==null || editableContent(q.analysis()))
+                : QuestionTypes.isReading(q.type())
+                ? q.stimulusRefs().isEmpty() && editableContent(q.prompt()) && (q.analysis()==null || editableContent(q.analysis()))
+                    && ((io.quizforge.core.question.type.objective.reading.ReadingPayload)q.payload()).items().stream().allMatch(item->editableContent(item.prompt()))
+                : QuestionTypes.isCloze(q.type())
+                ? q.stimulusRefs().isEmpty() && editableContent(q.prompt()) && (q.analysis()==null || editableContent(q.analysis()))
+                : QuestionTypes.isEssay(q.type())
                 ? q.stimulusRefs().isEmpty() && editableContent(q.prompt())
                 : q.stimulusRefs().isEmpty() && q.prompt() instanceof TextContent
                     && (q.analysis()==null || q.analysis() instanceof TextContent)
@@ -88,6 +102,7 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
     @Override public void refreshForDevelopment() { render(); }
     @Override public boolean shouldRefreshForDevelopment() { return editorJump == null; }
     private void render(){
+        readingCard=null;matchingCard=null;translationCard=null;
         if(practice!=null && practice.session().finished()){
             showingSummary=true;
             readerColumn.setCenter(QuestionCardLayout.scroll(new QuestionBankPracticeView(practice,sources,null,this::practiceChanged)));
@@ -109,6 +124,50 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
             refreshOutline();return;
         }
         var q=bank.questions().get(index);
+        if(QuestionTypes.isTranslation(q.type())) {
+            translationCard=new io.quizforge.desktop.ui.question.subjective.translation.TranslationQuestionCardView(q,index,bank.questions().size(),bank.resources(),resources,"practice-",
+                    ()->practice==null?java.util.Map.of():practice.session().translationAnswers(),
+                    ()->practice!=null && practice.session().state()==QuestionBankPracticeSession.State.SUBMITTED,
+                    practice==null?null:(item,answer)->{practice.assignTranslation(item,answer);refreshOutline();},
+                    ()->{practice.submit();refreshOutline();},()->{practice.retry();refreshOutline();},sources.apply(q.sourceRefs()));
+            var previous=QuestionCardLayout.navigation("arrow-left","上一题",()->show(index-1));previous.setId("authoring-previous-question");previous.setDisable(index==0);
+            boolean last=index==bank.questions().size()-1;
+            var next=QuestionCardLayout.navigation("arrow",last && practiceLoader!=null?"查看本次练习":"下一题",this::next);next.setId("authoring-next-question");next.setDisable(last && practiceLoader==null);
+            var stage=new VBox(QuestionCardLayout.row(previous,translationCard,next));QuestionCardLayout.configure(stage);readerColumn.setCenter(QuestionCardLayout.scroll(stage));refreshOutline();return;
+        }
+        if(QuestionTypes.isMatching(q.type())) {
+            matchingCard=new io.quizforge.desktop.ui.question.objective.matching.MatchingQuestionCardView(q,index,bank.questions().size(),bank.resources(),resources,"practice-",
+                    ()->practice==null?java.util.Map.of():practice.session().matchingAnswers(),
+                    ()->practice!=null && practice.session().state()==QuestionBankPracticeSession.State.SUBMITTED,
+                    practice==null?null:(blank,option)->{practice.assignMatching(blank,option);refreshOutline();},
+                    ()->{practice.submit();refreshOutline();},()->{practice.retry();refreshOutline();},sources.apply(q.sourceRefs()));
+            var previous=QuestionCardLayout.navigation("arrow-left","上一题",()->show(index-1));previous.setId("authoring-previous-question");previous.setDisable(index==0);
+            boolean last=index==bank.questions().size()-1;
+            var next=QuestionCardLayout.navigation("arrow",last && practiceLoader!=null?"查看本次练习":"下一题",this::next);next.setId("authoring-next-question");next.setDisable(last && practiceLoader==null);
+            var stage=new VBox(QuestionCardLayout.row(previous,matchingCard,next));QuestionCardLayout.configure(stage);readerColumn.setCenter(QuestionCardLayout.scroll(stage));refreshOutline();return;
+        }
+        if(QuestionTypes.isReading(q.type())) {
+            readingCard=new io.quizforge.desktop.ui.question.objective.reading.ReadingQuestionCardView(q,index,bank.questions().size(),bank.resources(),resources,"practice-",
+                    ()->practice==null?java.util.Set.of():practice.session().selected(),
+                    ()->practice!=null && practice.session().state()==QuestionBankPracticeSession.State.SUBMITTED,
+                    practice==null?null:option->{practice.select(option);refreshOutline();},
+                    ()->{practice.submit();refreshOutline();},()->{practice.retry();refreshOutline();},sources.apply(q.sourceRefs()));
+            var previous=QuestionCardLayout.navigation("arrow-left","上一题",()->show(index-1));previous.setId("authoring-previous-question");previous.setDisable(index==0);
+            boolean last=index==bank.questions().size()-1;
+            var next=QuestionCardLayout.navigation("arrow",last && practiceLoader!=null?"查看本次练习":"下一题",this::next);next.setId("authoring-next-question");next.setDisable(last && practiceLoader==null);
+            var stage=new VBox(QuestionCardLayout.row(previous,readingCard,next));QuestionCardLayout.configure(stage);readerColumn.setCenter(QuestionCardLayout.scroll(stage));refreshOutline();return;
+        }
+        if(QuestionTypes.isCloze(q.type())){
+            var card=new io.quizforge.desktop.ui.question.objective.cloze.ClozeQuestionCardView(q,index,bank.questions().size(),bank.resources(),resources,"practice-",
+                    ()->practice==null?java.util.Set.of():practice.session().selected(),
+                    ()->practice!=null && practice.session().state()==QuestionBankPracticeSession.State.SUBMITTED,
+                    practice==null?null:option->{practice.select(option);refreshOutline();},
+                    ()->{practice.submit();refreshOutline();},()->{practice.retry();refreshOutline();},sources.apply(q.sourceRefs()));
+            var previous=QuestionCardLayout.navigation("arrow-left","上一题",()->show(index-1));previous.setId("authoring-previous-question");previous.setDisable(index==0);
+            boolean last=index==bank.questions().size()-1;
+            var next=QuestionCardLayout.navigation("arrow",last && practiceLoader!=null?"查看本次练习":"下一题",this::next);next.setId("authoring-next-question");next.setDisable(last && practiceLoader==null);
+            var stage=new VBox(QuestionCardLayout.row(previous,card,next));QuestionCardLayout.configure(stage);readerColumn.setCenter(QuestionCardLayout.scroll(stage));refreshOutline();return;
+        }
         var card=QuestionTypes.isEssay(q.type())?EssayQuestionCardView.card(q.prompt(),q.scoreSpec().defaultMaxScore(),index,bank.questions().size(),
                 "authoring-",bank.resources(),resources):new VBox(16);
         if(!QuestionTypes.isEssay(q.type())){
@@ -168,6 +227,12 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
             render();
         }
         refreshOutline();
+    }
+    private void showItem(int target,int itemNumber) {
+        if(editorJump!=null || target!=index || readingCard==null && matchingCard==null && translationCard==null)show(target);
+        if(editorJump==null && translationCard!=null)translationCard.focusItem(itemNumber);
+        else if(editorJump==null && matchingCard!=null)matchingCard.focusBlank(itemNumber);
+        else if(editorJump==null && readingCard!=null)readingCard.focusItem(itemNumber);
     }
     private void refreshOutline(){
         int selected=editorJump!=null || practice==null || !practice.session().finished()?index:-1;

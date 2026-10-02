@@ -22,7 +22,9 @@
 4. 来源：注册 Markdown 身份 → 用户命名锚点 → 题目 SourceRef → 当前文件定位；缺失/孤立/版本变化显式展示。
 5. AI 接入：AiSettingsService/AiConnectionService → 配置/凭据端口 → DeepSeekAiProvider；没有文档或题目生成页面。
 
-正确率 = 正确题数 / 已提交题数；已提交待评分作文进入分母，草稿不进入分母，零提交显示“—”。历史使用相同统计入口。
+练习与历史统一展示得分与总分。得分累计当前已提交且已评分的最新尝试，小题按单题分值计分；总分包含全部题目，排序题的锁定提示不计分。草稿、重试中和待评分题暂不累计得分，未评分状态单独展示。旧历史缺少分值时显示“—”。
+
+题卡排序：`QuestionOutlineView.setMoveAction` 在 `QuestionBankFileView` 的练习与编辑入口启用拖动及右键移动。每个大纲小题关联父题卡的稳定 ID；按下、拖动与松开的鼠标过滤器在按钮默认行为前处理手势，用场景坐标定位目标并转换为父题卡前后的插入位置。编辑模式经 `QuestionBankEditorView.moveQuestion` 校验当前字段、调用 `QuestionBankEditorModel.moveQuestion` 后进入未保存状态。练习模式经 `QuestionBankFileView.moveBankQuestion` 直接调用同一文件保存服务，复用 `PracticeSessionService.synchronize` 按稳定 ID 更新 ACTIVE 顺序、保留作答和尝试，重开后显示被移动题卡。两种入口均重建大纲编号，不另建排序存储或修改冻结历史。
 
 ## 逐文件职责
 
@@ -119,19 +121,24 @@
 | [ActivePracticeSnapshot.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/ActivePracticeSnapshot.java) | 恢复活动练习所需的会话、单题记录和作答历史集合；供运行对象和统计使用 |
 | [EssayPracticeAnswer.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/EssayPracticeAnswer.java) | 表示作文答案的文本与可选 Canvas 原生文档，校验文档长度并在 TEXT/CANVAS_DOCUMENT 负载间转换；只处理答案保存和读取 |
 | [EssayQuestionSnapshot.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/EssayQuestionSnapshot.java) | 保存作文题干、参考答案、解析、满分和评分细则，以及所用资源信息和 Base64 内容；捕获资源时核对 SHA-256，供归档历史在资源已改变后展示原内容 |
-| [PersistentPracticeRuntime.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PersistentPracticeRuntime.java) | 供界面调用的持久化练习运行对象；每次操作先调用服务保存，再用返回快照恢复同一个 QuestionBankPracticeSession，供题目和大纲共用；还提供作文答案和统计读取 |
+| [PersistentPracticeRuntime.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PersistentPracticeRuntime.java) | 供界面调用的持久化练习运行对象；每次操作先调用服务保存，再用返回快照恢复同一个 QuestionBankPracticeSession，供题目和大纲共用；提供各题型作答、逐题状态和得分统计读取 |
 | [PracticeHistoryDetail.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeHistoryDetail.java) | 历史详情结果：题库标题/版本、时间、统计、题目快照、最终状态、草稿和全部作答记录；还携带作文展示所需的结构化快照 |
 | [PracticeHistoryEntry.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeHistoryEntry.java) | 历史列表中单轮练习的摘要：会话 ID、开始/归档时间和统计 |
 | [PracticeHistoryService.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeHistoryService.java) | 按题库身份查询归档轮次、读取历史详情、删除指定归档轮次；详情来自保存的题目/作答快照，并校验轮次确实归档且属于该题库 |
 | [PracticePayload.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticePayload.java) | 深度冻结历史/作答的基础结构；枚举以稳定名称保存，数值规范化为 BigDecimal。 |
-| [PracticeQuestionSnapshotMapper.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeQuestionSnapshotMapper.java) | 将当前题目映射为持久化快照；选择题保存文本与正确选项，作文保存结构化内容及展示资源，来源保存命名锚点。logical 方法剥离作文展示附加数据用于语义比较 |
+| [PracticeQuestionSnapshotMapper.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeQuestionSnapshotMapper.java) | 为各题型捕获逻辑与展示快照、来源和顶层总分；logical 剥离展示及顶层分值元数据，使旧 ACTIVE 升级保留作答 |
 | [PracticeRuntimeMapper.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeRuntimeMapper.java) | 核对持久化快照与当前运行题库是否匹配，恢复当前题目、草稿、提交状态、结果和总结页；供 PersistentPracticeRuntime 使用 |
 | [PracticeSession.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeSession.java) | 一轮练习的会话记录：题库身份/版本、标题快照、活动或归档状态、当前题目/总结页和时间 |
 | [PracticeSessionQuestion.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeSessionQuestion.java) | 一轮练习内的单题记录：题目顺序、题干/选项/答案/解析/来源快照、当前状态、草稿和时间；状态包含未作答、草稿、已提交、重做中和修改中 |
 | [PracticeSessionService.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeSessionService.java) | 组织打开/恢复练习、同步题库修订、保存草稿、提交、重做、导航和重新开始；通过 PracticeTransaction 将相关写入放在同一事务内，并校验活动状态、内容版本和当前题目 |
-| [PracticeSummary.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeSummary.java) | 按题目当前状态计算统计；正确率为正确题数/已提交题数，包含已提交未评分作文；零提交时为空。 |
+| [PracticeSummary.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeSummary.java) | 按当前状态汇总题数与得分；累计最新已评分尝试，读取冻结总分，保留待评分计数；旧记录缺失分值时为空。 |
 | [QuestionAttempt.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/QuestionAttempt.java) | 一次已提交作答的不可变记录：作答序号、首次/修改/重做模式、答案、对错或未评分结果、可选分数和提交时间 |
 | [QuestionBankPracticeSession.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/QuestionBankPracticeSession.java) | 管理当前题库的内存选择、位置、提交与恢复状态；题型规则由 QuestionTypes 分派。 |
+| [ClozeQuestionSnapshot.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/ClozeQuestionSnapshot.java) | 冻结与恢复完形正文、空位选项、分值、解析及资源，兼容旧逻辑分值。 |
+| [MatchingPracticeAnswer.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/MatchingPracticeAnswer.java) | 仅保存未锁定位置到选项 ID 的草稿和提交映射，冻结为 PracticePayload。 |
+| [MatchingQuestionSnapshot.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/MatchingQuestionSnapshot.java) | 冻结排序正文、八个位置、锁定状态、标准排列、分值、解析及资源。 |
+| [TranslationPracticeAnswer.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/TranslationPracticeAnswer.java) | 按小题稳定 ID 保存 EssayPracticeAnswer，恢复文本及原生富文本译文。 |
+| [TranslationQuestionSnapshot.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/TranslationQuestionSnapshot.java) | 冻结翻译正文、各句身份和参考译文、单句分值、解析及资源。 |
 
 ### quizforge-core / io.quizforge.core.question
 
@@ -302,7 +309,7 @@
 | 文件 | 作用 |
 | --- | --- |
 | [CanvasClipboardImage.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/content/document/canvas/CanvasClipboardImage.java) | 读取系统剪贴板图片并交给资源导入流程。 |
-| [CanvasDocumentView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/content/document/canvas/CanvasDocumentView.java) | 用 Canvas 渲染原生文档的只读组件；移出 Scene 释放桥接，重新附着后重建。 |
+| [CanvasDocumentView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/content/document/canvas/CanvasDocumentView.java) | 用 Canvas 渲染原生文档的只读组件；同步重建复用渲染器，切题后保留最近 6 个已加载预览。 |
 | [CanvasEditorAdapter.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/content/document/canvas/CanvasEditorAdapter.java) | 将受支持的旧 TEXT/RICH 节点转换为 Canvas 元素，并保留转换回归所需的子集解码。 |
 | [CanvasEditorBridge.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/content/document/canvas/CanvasEditorBridge.java) | 内部 Java/JavaScript 桥接：加载、读取内容、资源与编辑事件，限制页面导航。 |
 | [CanvasEditorImageHost.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/content/document/canvas/CanvasEditorImageHost.java) | 提供给 JavaScript 的窄桥接入口，转发选图、初始化、内容和高度事件。 |
@@ -366,7 +373,7 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| [MixedQuestionPracticeView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/practice/MixedQuestionPracticeView.java) | 组合选择题与作文预览/作答，复用同一持久化轮次和共享大纲。 |
+| [MixedQuestionPracticeView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/practice/MixedQuestionPracticeView.java) | 组合选择、作文、完形、阅读、排序和翻译题卡，复用同一持久化轮次和共享大纲。 |
 | [QuestionBankPracticeView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/practice/QuestionBankPracticeView.java) | 选择题交互、结果/重做、题目切换与总结卡；命令先持久化再更新界面。 |
 
 ### quizforge-desktop-app / io.quizforge.desktop.ui.question.shared
@@ -375,8 +382,9 @@
 | --- | --- |
 | [QuestionCardLayout.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/shared/QuestionCardLayout.java) | 题卡标题、正文、元信息与详情区域的共用布局。 |
 | [QuestionEditorContext.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/shared/QuestionEditorContext.java) | 向题型字段组件传入模型、资源、来源动作、窗口拥有者与刷新能力。 |
-| [QuestionOutlineView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/shared/QuestionOutlineView.java) | 题型分组的大纲组件，表达未作答、草稿、正确、错误、待评分与当前题。 |
+| [QuestionOutlineView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/shared/QuestionOutlineView.java) | 按连续题型分组并展开可作答小题的大纲；稳定父题卡映射、状态、跳转与整卡移动。 |
 | [QuestionPracticeLayout.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/shared/QuestionPracticeLayout.java) | 练习内容和可调宽度大纲的共用 SplitPane。 |
+| [PracticeScoreText.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/shared/PracticeScoreText.java) | 统一练习汇总、历史卡片及确认提示的得分 / 总分文本，显示未知值并去除浮点显示误差。 |
 | [QuestionTypeCatalog.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/shared/QuestionTypeCatalog.java) | 桌面题型名称/编辑组件登记；检查重复登记和核心题型遗漏。 |
 
 ### quizforge-desktop-app / io.quizforge.desktop.ui.question.source
@@ -522,4 +530,86 @@
 
 桌面集成测试按 Markdown、题库编辑、作文编辑、练习、历史、来源、窗口退出、工作区和开发刷新拆分；WorkspaceUiTestSupport 共享临时工作区与窗口清理，FxTestRuntime 共享 JVM 的 JavaFX 初始化。Canvas 私有实现由同包测试覆盖，跨组件测试只使用测试专用驱动。
 
-当前盘点：250 个生产 Java 文件（包括包说明）。2026-10-02 将单选、多选规则分为两个独立类，共用选项数据、包内辅助与界面组件，保持题型 ID 和文件格式。项目地图、业务流程与当前能力边界见 [新人指南](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/new-developer-guide.md)，文件协议见 [题库格式](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/qbank-format.md)，新增题型清单见 [模板](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/templates/new-question-type.md)。
+Canvas 对齐值需使用引擎原生语义：工具栏的“两端对齐”对应 `rowFlex: "alignment"`，只拉满需要换行的行，段落末行保留自然间距；原生 `rowFlex: "justify"` 是分散对齐，连短的末行也会拉满。不要按英文名称直译后把两者混用。已有文档保留原格式，重新选中正文并点击“两端对齐”后保存才会更改其对齐值。
+
+Canvas 工具栏的“首行缩进 2 字符”与“取消首行缩进”在 `editor.js` 中处理当前段落或选区涉及的完整段落。当前引擎没有段落缩进字段，因此使用带 `extension.quizforgeFirstLineIndent` 标记的两个原生全角空格；字号变化会自然调整其宽度，练习和历史沿用原生文档渲染。重复设置不叠加，取消只移除带标记的行首空格，批量操作用一次原生插入形成一个撤销步骤。不要改整页边距或把文档转换为 HTML 后再保存。
+
+`CanvasDocumentView` 在同一个 Scene 的同步页面重建中复用刚脱离场景的只读渲染器，匹配预览 ID、内容、引用资源和渲染模式。切题后缓存最近 6 个已加载、正常显示的预览，超出上限淘汰最久未使用的预览；关闭窗口或替换 Scene 时释放缓存。缓存期间解绑旧页面的资源入口、错误处理和选择回调，并关闭完形填空弹窗；切回时绑定当前页面并同步答案。正文或引用资源变化时正常加载新内容，相同完形配置不重复绘制。缓存仅包含只读预览，不包含编辑窗口，也不跨 Scene 共享。预览首次加载完成前隐藏 WebView，避免未初始化的工具栏闪现。
+
+富文本预览按需创建 `CanvasEditorBridge`：只有首次附着到 Scene 且未命中缓存时才分配 WebView，未显示的标签页不提前分配。只读预览不保存用于脏状态检测的第二份序列化快照；编辑窗口仍保留快照以检测未保存修改。TEXT/RICH 内容转换时仅读取其引用的图片，插入图片时仅解码本次图片，避免重复读取整个题库的图片资源。
+
+当前盘点：282 个生产 Java 文件（包括包说明），其中 core 157、infrastructure 38、desktop-app 87。2026-10-02 将单选、多选规则分为两个独立类，共用选项数据、包内辅助与界面组件，保持题型 ID 和文件格式。项目地图、业务流程与当前能力边界见 [新人指南](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/new-developer-guide.md)，文件协议见 [题库格式](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/qbank-format.md)，新增题型清单见 [模板](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/templates/new-question-type.md)。
+
+## 完形填空第一版新增入口
+
+| 文件 | 作用 |
+| --- | --- |
+| [ClozeBlank.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/cloze/ClozeBlank.java) | 一个唯一空位的稳定 ID、父题内编号和固定四个选项。 |
+| [ClozePayload.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/cloze/ClozePayload.java) | 有序空位数组和全部选项的读取。 |
+| [ClozeAnswerSpec.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/cloze/ClozeAnswerSpec.java) | 按空位 ID 关联正确选项 ID。 |
+| [ClozeQuestionType.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/cloze/ClozeQuestionType.java) | 数字标记解析、连续空号、重复引用、默认题、独立复制和每空单选校验。 |
+| [ClozeEditorFields.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/objective/cloze/ClozeEditorFields.java) | 原生正文编辑、提前新增小题、固定四选项、正文与下方同步设置正确答案。 |
+| [ClozeQuestionCardView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/objective/cloze/ClozeQuestionCardView.java) | 正文空位与下方选项双向选择、单题分值、整题确认提交、得分和历史只读复用。 |
+
+点击层见 `editor-web/canvas/src/cloze-preview.js`；它使用原生 group 矩形定位空位，浮层限制在正文边界内并优先向空位上方展开，超出高度时内部滚动，不撑高正文。
+
+类型登记、Schema、编辑模型、练习快照/事务、文件路由和历史详情均扩展既有入口；保存与数据库连接没有新增旁路。
+
+### quizforge-core / io.quizforge.core.question.type.objective.reading
+
+| 文件 | 作用 |
+| --- | --- |
+| [ReadingItem.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/reading/ReadingItem.java) | 单道阅读小题的稳定身份、显示编号、题干和四个选项。 |
+| [ReadingPayload.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/reading/ReadingPayload.java) | 一篇文章下的有序小题，提供扁平选项读取。 |
+| [ReadingAnswerSpec.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/reading/ReadingAnswerSpec.java) | 按小题 ID 绑定正确选项。 |
+| [ReadingQuestionType.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/reading/ReadingQuestionType.java) | 默认五题、单题 2 分、独立复制、内容校验和每题单选规则。 |
+
+`QuestionBankEditorModel` 的阅读专属方法负责子题编辑、新增、删除、重排编号与子题资源回收。正文、解析和文件保存仍走共享入口。类型登记为 `READING`；公开 Schema 与示例包见 `docs/qbank-format.md`。
+
+### 阅读理解界面与历史快照
+
+| 文件 | 作用 |
+| --- | --- |
+| [ReadingQuestionSnapshot.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/ReadingQuestionSnapshot.java) | 冻结文章、小题、分值、解析和资源字节；历史独立恢复。 |
+| [ReadingEditorFields.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/objective/reading/ReadingEditorFields.java) | 原生富文本正文及小题题干编辑、固定四选项、正确答案、增删小题与统一解析。 |
+| [ReadingQuestionCardView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/objective/reading/ReadingQuestionCardView.java) | 文章在上、小题在下；独立单选、整题确认提交、锁定与重试、按小题定位、历史只读复用。 |
+
+大纲沿用 `QuestionOutlineView`、`HistoryQuestionOutlineView`，连续编号每一道小题。SQLite 仍用现有 ACTIVE 草稿、attempts 与历史归档，不新增表或迁移。
+
+### 段落匹配数据与规则
+
+| 文件 | 作用 |
+| --- | --- |
+| [MatchingBlank.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/matching/MatchingBlank.java) | 排序位置的稳定 ID、父题内编号和 locked 提示状态。 |
+| [MatchingOption.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/matching/MatchingOption.java) | 八个选项的稳定 ID 与 A–H 字母；正文位于共享题干。 |
+| [MatchingPayload.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/matching/MatchingPayload.java) | 恰好八个位置及八个选项元数据。 |
+| [MatchingAnswerSpec.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/matching/MatchingAnswerSpec.java) | 所有位置（含提示）的完整正确排列。 |
+| [MatchingQuestionType.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/objective/matching/MatchingQuestionType.java) | 八位置与三提示校验、标准字母交换、草稿提示保留、非提示位置计分和身份复制。 |
+| [MatchingEditorFields.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/objective/matching/MatchingEditorFields.java) | 共享正文与解析编辑、正确排列设置及每个位置的锁定按钮。 |
+| [MatchingQuestionCardView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/objective/matching/MatchingQuestionCardView.java) | 无锁图标/清空按钮的作答槽、普通字母可重复选择、确认提交及历史复用。 |
+
+`core/question/type/objective/matching` 包含 `MatchingBlank(id, number, locked)`、`MatchingOption(id, label)`、`MatchingPayload`、`MatchingAnswerSpec` 与 `MatchingQuestionType`。八个槽和 A–H 字母只存元数据；整篇题目及选项文本位于普通 `prompt`，解析位于 `analysis`。没有专用正文标记和选项资源。标准答案是含锁定提示的完整排列；草稿仅包含未锁定槽的位置映射，允许重复选择非提示字母，逐位置计分。
+
+`QuestionBankEditorModel.setMatchingCorrect` 自动交换两个未锁定槽的字母，`setMatchingLocked` 保留字母并调整提示状态；任何锁定字母不能被交换，保存时必须恰好锁定三个提示槽。题干仍使用共享 `setPrompt`，不生成或删除槽位。规则通过 `validateCorrectAssignments` 检查完整标准排列，通过 question-aware `validateAssignments` 检查草稿位置及提示保留字母，通过 `gradableCount/matchingCount/evaluateAssignments` 按非提示槽计分。
+
+桌面组件位于 `ui/question/objective/matching/MatchingEditorFields`、`MatchingQuestionCardView`。完整题干复用普通内容渲染，答案槽为独立控件。`MatchingPracticeAnswer` 保存映射，`MatchingQuestionSnapshot` 冻结正文、解析及其资源和锁定元数据；现有 ACTIVE、attempts、历史与大纲接入同一模型，无额外数据库表。大纲跳过锁定提示，仅给待答位置连续编号，保留原始槽位跳转映射。
+
+
+## 翻译题代码路径
+
+| 文件 | 作用 |
+| --- | --- |
+| [TranslationItem.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/subjective/translation/TranslationItem.java) | 按正文出现顺序编号的句子、稳定小题 ID 和派生纯文本。 |
+| [TranslationPayload.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/subjective/translation/TranslationPayload.java) | 有序句子小题数组。 |
+| [TranslationAnswerSpec.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/subjective/translation/TranslationAnswerSpec.java) | 每个小题 ID 对应可空的参考译文内容。 |
+| [TranslationQuestionType.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/question/type/subjective/translation/TranslationQuestionType.java) | {{句子}} 标记解析、顺序与内容校验、默认五句和复制身份。 |
+| [TranslationEditorFields.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/subjective/translation/TranslationEditorFields.java) | 正文标记编辑、单句参考译文、单句分值和整题解析。 |
+| [TranslationQuestionCardView.java](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/subjective/translation/TranslationQuestionCardView.java) | 句子画线/编号、独立译文草稿、整题确认提交、待评分和历史只读复用。 |
+
+`TRANSLATION` 位于 `core/question/type/subjective/translation`，界面位于 `desktop/ui/question/subjective/translation`。在共享富文本题干中用 `{{需要翻译的句子}}` 标记，按正文出现顺序生成小题，无需输入序号；预览隐藏标记、给句子加下划线并显示自动编号。`\{{literal}}` 为字面文本；空、嵌套、缺失结束符的标记会被拒绝。默认五句，每句 2 分；标记数量可以变化，保存至少保留一句。
+
+`TranslationPayload.items` 保存 `TranslationItem(id, number, text)`，`TranslationAnswerSpec.answers` 为每个 `itemId` 保存可空的 `referenceAnswer`（共享 TEXT/RICH/DOCUMENT）。正文编辑保留相同句子出现次数对应的 ID 与参考译文；新增或改写的句子生成新 ID、清空其参考译文，避免译文挂到其他句子。`QuestionBankEditorModel.setTranslationReference` 编辑单句参考译文，复制重新生成小题 ID。
+
+练习按句独立保存 `TranslationPracticeAnswer` 中的 `EssayPracticeAnswer`，可直接输入文本或打开富文本编辑器。整道大题二次确认后提交；缺少译文时提示未完成小题数。提交结果为 `UNSCORED`，分数为空，总分为单句分值乘句数；参考译文与解析在提交后显示。重试清空当前译文并保留已提交记录。
+
+`TranslationQuestionSnapshot` 冻结文章、每句参考译文、解析及资源字节；`translationPresentation` 优先用于历史，`translation` 提供逻辑回退。ACTIVE 草稿与历史均使用原始小题 ID；大纲按句展开、连续编号、按句区分未作答/草稿/待评分并跳转所属大题。没有新增数据库表或迁移。示例包：`examples/qbank-v2/translation-first-version.qbank`。

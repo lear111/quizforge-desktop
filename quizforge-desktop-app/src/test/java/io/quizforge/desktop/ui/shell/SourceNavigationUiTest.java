@@ -446,7 +446,7 @@ class SourceNavigationUiTest extends WorkspaceUiTestSupport {
         fx(() -> {
             open("题库/Java集合.qbank");
             assertInstanceOf(ChoiceCardView.class, shell.lookup("#practice-question-card"));
-            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-1")).fire(); submitAnswer();
             shell.applyCss(); shell.layout();
             var practice = (ChoiceCardView) shell.lookup("#practice-question-card");
             var presentation = practice.resultPresentation().orElseThrow();
@@ -510,7 +510,7 @@ class SourceNavigationUiTest extends WorkspaceUiTestSupport {
             open(sample.bankPath());
             assertNull(shell.lookup("#qbank-source-0"));
             ((RadioButton) shell.lookup("#option-0")).fire();
-            button("submit-answer").fire();
+            submitAnswer();
             Button source = button("qbank-source-0");
             assertEquals("SourceNav · 定义", source.getText());
             assertEquals(QuestionBankReferenceResolver.Status.EXACT_MATCH,
@@ -836,7 +836,7 @@ class SourceNavigationUiTest extends WorkspaceUiTestSupport {
         fx(() -> {
             open("题库/Java集合.qbank");
             ((RadioButton) shell.lookup("#option-1")).fire();
-            button("submit-answer").fire();
+            submitAnswer();
             button("next-question").fire();
             ((CheckBox) shell.lookup("#option-0")).fire();
             var id = practiceDbSession().id();

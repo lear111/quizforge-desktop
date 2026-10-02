@@ -154,3 +154,64 @@ input[type=color] {
   box-shadow: none;
   background: transparent;
 }
+.preview #paper .ce-page-container canvas {
+  background: transparent !important;
+}
+.preview #paper {
+  position: relative;
+}
+#cloze-hit-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.cloze-hit {
+  position: absolute;
+  pointer-events: auto;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.cloze-hit:focus-visible {
+  outline: 2px solid #715b99;
+  outline-offset: 1px;
+}
+.cloze-hit:disabled {
+  cursor: default;
+}
+#cloze-options-popup {
+  position: absolute;
+  z-index: 10;
+  box-sizing: border-box;
+  width: 260px;
+  max-width: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: white;
+  border: 1px solid #ded7e8;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px #0002;
+  font: 14px Arial, sans-serif;
+}
+.cloze-popup-option {
+  flex-shrink: 0;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  background: transparent;
+  border: 0;
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+.cloze-popup-option:hover,
+.cloze-popup-option.selected {
+  background: #eee8f6;
+  color: #715b99;
+}

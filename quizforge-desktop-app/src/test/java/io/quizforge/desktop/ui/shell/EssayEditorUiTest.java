@@ -26,6 +26,149 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class EssayEditorUiTest extends WorkspaceUiTestSupport {
 
+    @Test void practiceMouseDragMovesWholeReadingCardImmediatelyAndPreservesDraftsAndArchive() throws Exception {
+        var model=new io.quizforge.core.question.service.QuestionBankEditorModel(
+                new QuestionBank("qb_practice_move","Practice move",List.of(),List.of(),List.of()));
+        for(var type:List.of("ESSAY","READING","CLOZE","TRANSLATION"))model.addQuestion(type);
+        model.setStem(2,"Article {{1}} and {{2}}.");var original=model.bank();
+        fixture.write("题库/PracticeMove.qbank",new QuestionBankV2Codec().write(original));
+        fx(()->{
+            shell.refresh();open("题库/PracticeMove.qbank");
+            var provider=fixture.context.getBean(io.quizforge.core.port.PracticeRuntimeProvider.class);
+            var runtime=provider.open(fixture.alpha.id(),original);String archivedId=runtime.sessionId();
+            runtime.goTo(1);runtime.select(((io.quizforge.core.question.type.objective.reading.ReadingPayload)original.questions().get(1).payload()).items().getFirst().options().getFirst().id());
+            runtime.submit();runtime.restart();
+            var archived=provider.history(fixture.alpha.id()).loadArchivedSessionDetail(original.assetId(),archivedId);
+            String activeId=runtime.sessionId();
+            shell.tabs().closeAll();shell.tabs().openPreview(fixture.alpha.id(),"题库/PracticeMove.qbank");shell.applyCss();shell.layout();
+            button("authoring-question-2").fire();shell.applyCss();shell.layout();
+            ((RadioButton)shell.lookup("#practice-reading-option-1-0")).fire();
+            assertTrue(button("authoring-question-2").getStyleClass().contains("draft"));
+            // Drag the third reading child onto the second cloze child: all five reading items move.
+            dragOutlineCell(button("authoring-question-4"),button("authoring-question-8"),true);
+            var saved=new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader().read(fixture.alphaRoot.resolve("题库/PracticeMove.qbank"));
+            assertEquals(List.of(original.questions().get(0),original.questions().get(2),original.questions().get(1),original.questions().get(3)),saved.questions());
+            assertEquals(FileMode.BROWSE,shell.filePane().mode());assertNull(shell.lookup("#qbank-save"));
+            assertEquals(5,shell.lookupAll(".question-number-cell.current").size());
+            assertTrue(button("authoring-question-4").getStyleClass().contains("draft"));
+            assertTrue(((RadioButton)shell.lookup("#practice-reading-option-1-0")).isSelected());
+            var restored=provider.open(fixture.alpha.id(),saved);assertEquals(activeId,restored.sessionId());
+            assertEquals(archived,provider.history(fixture.alpha.id()).loadArchivedSessionDetail(original.assetId(),archivedId));
+            byte[] before=java.nio.file.Files.readAllBytes(fixture.alphaRoot.resolve("题库/PracticeMove.qbank"));
+            dragOutlineCell(button("authoring-question-5"),button("authoring-question-6"),false);
+            assertArrayEquals(before,java.nio.file.Files.readAllBytes(fixture.alphaRoot.resolve("题库/PracticeMove.qbank")));
+            // Drag the card ahead of the first essay, then ordinary clicking must still navigate.
+            dragOutlineCell(button("authoring-question-5"),button("authoring-question-1"),false);
+            var finalBank=new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader().read(fixture.alphaRoot.resolve("题库/PracticeMove.qbank"));
+            assertEquals(List.of(original.questions().get(1),original.questions().get(0),original.questions().get(2),original.questions().get(3)),finalBank.questions());
+            assertTrue(button("authoring-question-1").getStyleClass().contains("draft"));
+            var target=button("authoring-question-6");var point=target.localToScene(target.getWidth()/2,target.getHeight()/2);
+            outlineMouse(target,javafx.scene.input.MouseEvent.MOUSE_PRESSED,point.getX(),point.getY(),true);
+            outlineMouse(target,javafx.scene.input.MouseEvent.MOUSE_RELEASED,point.getX(),point.getY(),false);
+            shell.applyCss();shell.layout();assertNotNull(shell.lookup("#authoring-essay-metadata"));
+        },120);
+    }
+
+    @Test void practiceMouseDragMovesChoiceCardAndKeepsSubmittedResult() throws Exception {
+        var model=new io.quizforge.core.question.service.QuestionBankEditorModel(
+                new QuestionBank("qb_practice_choice_move","Choice move",List.of(),List.of(),List.of()));
+        for(int i=0;i<3;i++)model.addQuestion("SINGLE_CHOICE");var original=model.bank();
+        fixture.write("题库/PracticeChoiceMove.qbank",new QuestionBankV2Codec().write(original));
+        fx(()->{
+            shell.refresh();open("题库/PracticeChoiceMove.qbank");
+            ((RadioButton)shell.lookup("#option-0")).fire();submitAnswer();
+            dragOutlineCell(button("question-number-1"),button("question-number-3"),true);
+            var saved=new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader().read(fixture.alphaRoot.resolve("题库/PracticeChoiceMove.qbank"));
+            assertEquals(List.of(original.questions().get(1),original.questions().get(2),original.questions().get(0)),saved.questions());
+            assertTrue(button("question-number-3").getStyleClass().contains("correct"));
+            assertTrue(button("question-number-3").getStyleClass().contains("current"));
+            assertNotNull(shell.lookup("#practice-retry"));
+        },120);
+    }
+
+    private void dragOutlineCell(Button source,Button target,boolean after) {
+        var from=source.localToScene(source.getWidth()/2,source.getHeight()/2);
+        var to=target.localToScene(target.getWidth()*(after?0.8:0.2),target.getHeight()/2);
+        outlineMouse(source,javafx.scene.input.MouseEvent.MOUSE_PRESSED,from.getX(),from.getY(),true);
+        outlineMouse(source,javafx.scene.input.MouseEvent.MOUSE_DRAGGED,to.getX(),to.getY(),true);
+        assertTrue(source.getStyleClass().contains("reorder-source"));
+        outlineMouse(source,javafx.scene.input.MouseEvent.MOUSE_RELEASED,to.getX(),to.getY(),false);
+        shell.applyCss();shell.layout();
+    }
+
+    private static void outlineMouse(Button source,javafx.event.EventType<javafx.scene.input.MouseEvent> type,double x,double y,boolean down) {
+        var local=source.sceneToLocal(x,y);
+        var pick=new javafx.scene.input.PickResult(source,new javafx.geometry.Point3D(local.getX(),local.getY(),0),0);
+        javafx.event.Event.fireEvent(source,new javafx.scene.input.MouseEvent(type,x,y,x,y,javafx.scene.input.MouseButton.PRIMARY,1,
+                false,false,false,false,down,false,false,false,false,false,pick));
+    }
+
+    @Test void outlineMovesWholeMixedCardsRenumbersAndPersistsOrder() throws Exception {
+        var model = new io.quizforge.core.question.service.QuestionBankEditorModel(
+                new QuestionBank("qb_outline_move", "Move cards", List.of(), List.of(), List.of()));
+        for (var type : List.of("ESSAY","READING","CLOZE","TRANSLATION","MATCHING","ESSAY")) model.addQuestion(type);
+        model.setStem(2,"Article {{1}} and {{2}}.");
+        var original = model.bank();
+        fixture.write("题库/MoveMixed.qbank",new QuestionBankV2Codec().write(original));
+        fx(()->{
+            shell.refresh();open("题库/MoveMixed.qbank");
+            assertNotNull(button("authoring-question-4").getContextMenu());
+            button("file-mode-toggle").fire();shell.applyCss();shell.layout();
+            var readingCell=button("authoring-question-4"); // third child belongs to the single reading card
+            moveOutlineCard(readingCell,"outline-move-down");
+            assertEquals("3 / 6",((Label)shell.lookup("#qbank-editor-position")).getText());
+            assertEquals(5,shell.lookupAll(".question-number-cell.current").size());
+            for(int n=4;n<=8;n++)assertTrue(button("authoring-question-"+n).getStyleClass().contains("current"));
+            assertTrue(button("authoring-question-4").getTooltip().getText().contains("阅读第 1 小题"));
+            // The second cloze child moves both cloze children ahead of the essay.
+            moveOutlineCard(button("authoring-question-3"),"outline-move-up");
+            assertEquals("1 / 6",((Label)shell.lookup("#qbank-editor-position")).getText());
+            assertEquals(2,shell.lookupAll(".question-number-cell.current").size());
+            assertTrue(button("authoring-question-1").getTooltip().getText().contains("完形第 1 空"));
+            assertTrue(button("authoring-question-2").getTooltip().getText().contains("完形第 2 空"));
+            assertTrue(button("authoring-question-1").getContextMenu().getItems().getFirst().isDisable());
+            assertTrue(button("authoring-question-19").getContextMenu().getItems().getLast().isDisable());
+            for(int n=1;n<=19;n++)assertEquals(Integer.toString(n),button("authoring-question-"+n).getText());
+            button("qbank-save").fire();shell.applyCss();shell.layout();
+            assertEquals(FileMode.BROWSE,shell.filePane().mode());
+            var saved=new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader().read(fixture.alphaRoot.resolve("题库/MoveMixed.qbank"));
+            assertEquals(List.of(original.questions().get(2),original.questions().get(0),original.questions().get(1),
+                    original.questions().get(3),original.questions().get(4),original.questions().get(5)),saved.questions());
+            assertNotNull(button("authoring-question-2").getContextMenu());
+            shell.tabs().closeAll();shell.tabs().openPreview(fixture.alpha.id(),"题库/MoveMixed.qbank");shell.applyCss();shell.layout();
+            assertTrue(button("authoring-question-1").getTooltip().getText().contains("完形第 1 空"));
+            button("authoring-question-6").fire();shell.applyCss();shell.layout();
+            assertNotNull(shell.lookup("#practice-reading-card"));
+        },120);
+    }
+
+    @Test void ordinaryChoiceOutlineMovesCurrentCardAndSavesPendingOptionEdits() throws Exception {
+        var model = new io.quizforge.core.question.service.QuestionBankEditorModel(
+                new QuestionBank("qb_choice_move", "Move choices", List.of(), List.of(), List.of()));
+        for(int i=0;i<3;i++)model.addQuestion("SINGLE_CHOICE");
+        var original=model.bank();fixture.write("题库/MoveChoices.qbank",new QuestionBankV2Codec().write(original));
+        fx(()->{
+            shell.refresh();open("题库/MoveChoices.qbank");button("file-mode-toggle").fire();
+            button("question-number-3").fire();
+            ((TextField)shell.lookup("#qbank-option-0")).setText("Edited before moving");
+            moveOutlineCard(button("question-number-3"),"outline-move-up");
+            assertEquals("2 / 3",((Label)shell.lookup("#qbank-editor-position")).getText());
+            assertTrue(button("question-number-2").getStyleClass().contains("current"));
+            assertEquals("Edited before moving",((TextField)shell.lookup("#qbank-option-0")).getText());
+            button("qbank-save").fire();
+            var saved=new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader().read(fixture.alphaRoot.resolve("题库/MoveChoices.qbank"));
+            assertEquals(List.of(original.questions().get(0).id(),original.questions().get(2).id(),original.questions().get(1).id()),
+                    saved.questions().stream().map(io.quizforge.core.question.model.Question::id).toList());
+            assertEquals(new TextContent("Edited before moving"),saved.questions().get(1).choicePayload().options().getFirst().content());
+            assertNotNull(button("question-number-2").getContextMenu());
+        },120);
+    }
+
+    private void moveOutlineCard(Button cell,String action) {
+        cell.getContextMenu().getItems().stream().filter(item->action.equals(item.getId())).findFirst().orElseThrow().fire();
+        shell.applyCss();shell.layout();
+    }
+
     @Test void richChoiceOptionsInMixedBankRenderWithoutTextCast() throws Exception {
         var codec = new QuestionBankV2Codec();
         var original = codec.parse(QBankTestPackageBuilder.read(fixture.alphaRoot.resolve("题库/Java集合.qbank")))
@@ -79,7 +222,7 @@ class EssayEditorUiTest extends WorkspaceUiTestSupport {
             assertTrue(shell.lookup("#practice-question-card") instanceof ChoiceCardView, text(shell));
             assertEquals("第 2 / 3 题", ((Label)shell.lookup("#question-position")).getText());
             ((RadioButton)shell.lookup("#option-0")).fire();
-            assertFalse(button("submit-answer").isDisabled()); button("submit-answer").fire();
+            assertFalse(button("submit-answer").isDisabled()); submitAnswer();
             shell.applyCss(); shell.layout();
             assertEquals("回答正确", ((Label)shell.lookup("#question-result")).getText());
             assertNotNull(shell.lookup("#practice-retry"));
@@ -87,7 +230,7 @@ class EssayEditorUiTest extends WorkspaceUiTestSupport {
             shell.applyCss(); shell.layout();
             assertEquals("第 3 / 3 题", ((Label)shell.lookup("#question-position")).getText());
             ((CheckBox)shell.lookup("#option-0")).fire(); ((CheckBox)shell.lookup("#option-1")).fire();
-            button("submit-answer").fire(); button("next-question").fire();
+            submitAnswer(); button("next-question").fire();
             shell.applyCss(); shell.layout();
             assertEquals("共 3 题", ((Label)shell.lookup("#summary-total-count")).getText());
             assertEquals("2", ((Label)shell.lookup("#summary-correct-count")).getText());

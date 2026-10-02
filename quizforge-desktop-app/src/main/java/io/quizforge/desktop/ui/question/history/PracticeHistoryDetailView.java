@@ -1,6 +1,13 @@
 package io.quizforge.desktop.ui.question.history;
 
 import io.quizforge.core.practice.EssayQuestionSnapshot;
+import io.quizforge.core.practice.ReadingQuestionSnapshot;
+import io.quizforge.core.practice.MatchingQuestionSnapshot;
+import io.quizforge.core.practice.MatchingPracticeAnswer;
+import io.quizforge.core.practice.TranslationPracticeAnswer;
+import io.quizforge.core.practice.TranslationQuestionSnapshot;
+import io.quizforge.core.question.type.objective.matching.MatchingPayload;
+import io.quizforge.desktop.ui.question.objective.matching.MatchingQuestionCardView;
 import io.quizforge.core.practice.PracticeHistoryDetail;
 import io.quizforge.core.practice.PracticePayload;
 import io.quizforge.core.practice.PracticeSessionQuestion;
@@ -13,11 +20,13 @@ import io.quizforge.core.workspace.model.WorkspaceId;
 import io.quizforge.desktop.dev.DevelopmentRefreshable;
 import io.quizforge.desktop.ui.question.objective.choice.ChoiceCardView;
 import io.quizforge.desktop.ui.question.objective.choice.ChoicePresentationMapper;
+import io.quizforge.desktop.ui.question.objective.reading.ReadingQuestionCardView;
 import io.quizforge.desktop.ui.question.shared.QuestionCardLayout;
 import io.quizforge.desktop.ui.question.source.HistorySourceListView;
 import io.quizforge.desktop.ui.question.source.HistorySourceNavigationAdapter;
 import io.quizforge.desktop.ui.question.subjective.essay.EssayAnswerPane;
 import io.quizforge.desktop.ui.question.subjective.essay.EssayQuestionCardView;
+import io.quizforge.desktop.ui.question.subjective.translation.TranslationQuestionCardView;
 import io.quizforge.desktop.ui.shared.UiTheme;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -45,6 +54,9 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
     private final WorkspaceId workspace;
     private final HistorySourceNavigationAdapter sources;
     private HistorySourceListView sourceList;
+    private ReadingQuestionCardView readingCard;
+    private MatchingQuestionCardView matchingCard;
+    private TranslationQuestionCardView translationCard;
     private int questionIndex;
     private int attemptIndex;
     private final io.quizforge.core.question.model.QuestionBank currentBank;
@@ -78,7 +90,7 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
         QuestionCardLayout.configure(question);
         scroll = QuestionCardLayout.scroll(question);
         scroll.setId("history-question-scroll");
-        outline = new HistoryQuestionOutlineView(detail, this::showQuestion);
+        outline = new HistoryQuestionOutlineView(detail, (index, item) -> showQuestion(index, item));
         BorderPane readerColumn = new BorderPane(scroll);
         readerColumn.setMinWidth(320);
         readerColumn.setTop(headings);
@@ -106,6 +118,30 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
         render();
     }
 
+    private void showQuestion(int index, int itemNumber) {
+        if (index < 0 || index >= detail.questions().size()) return;
+        if (index != questionIndex) showQuestion(index);
+        else render();
+        if (matchingCard != null && itemNumber > 0) {
+            var target = matchingCard;
+            javafx.application.Platform.runLater(() -> {
+                if (matchingCard == target) target.focusBlank(itemNumber);
+            });
+        }
+        if (readingCard != null && itemNumber > 0) {
+            var target = readingCard;
+            javafx.application.Platform.runLater(() -> {
+                if (readingCard == target) target.focusItem(itemNumber);
+            });
+        }
+        if (translationCard != null && itemNumber > 0) {
+            var target = translationCard;
+            javafx.application.Platform.runLater(() -> {
+                if (translationCard == target) target.focusItem(itemNumber);
+            });
+        }
+    }
+
     private void showAttempt(int index) {
         if (index < 0 || index >= detail.questions().get(questionIndex).attempts().size()) return;
         attemptIndex = index;
@@ -116,12 +152,19 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
         outline.refresh(detail, questionIndex);
         question.getChildren().clear();
         sourceList = null;
+        readingCard = null;
+        matchingCard = null;
+        translationCard = null;
         if (detail.questions().isEmpty()) {
             question.getChildren().add(UiTheme.label("本轮没有题目", "muted"));
             return;
         }
         var row = detail.questions().get(questionIndex);
         boolean essay = QuestionTypes.isEssay(row.questionType());
+        boolean cloze = QuestionTypes.isCloze(row.questionType());
+        boolean reading = QuestionTypes.isReading(row.questionType());
+        boolean matching = QuestionTypes.isMatching(row.questionType());
+        boolean translation = QuestionTypes.isTranslation(row.questionType());
         var content = ChoicePresentationMapper.history(row);
         VBox context = new VBox(8);
         context.getStyleClass().add("history-question-context");
@@ -131,7 +174,7 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
         context.getChildren().add(finalState);
 
         if (row.draftAnswer() != null) {
-            Label draft = UiTheme.label(essay ? "未提交草稿" : "未提交选择：" + content.answerLabels(
+            Label draft = UiTheme.label(essay || cloze || reading || matching || translation ? "未提交草稿" : "未提交选择：" + content.answerLabels(
                     ChoicePresentationMapper.answerIds(row.draftAnswer())), "history-draft");
             draft.setId("history-draft");
             context.getChildren().add(draft);
@@ -142,7 +185,7 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
             Label noAttempt = UiTheme.label("本轮未提交", "muted");
             noAttempt.setId("history-no-attempt");
             context.getChildren().add(noAttempt);
-            card = essay?essayCard(row,row.draftAnswer(),false):ChoiceCardView.readOnly(content, questionIndex, detail.questions().size(), "history-",
+            card = translation?translationCard(row,row.draftAnswer(),false):matching?matchingCard(row,row.draftAnswer(),false):reading?readingCard(row,row.draftAnswer(),false):cloze?clozeCard(row,row.draftAnswer(),false):essay?essayCard(row,row.draftAnswer(),false):ChoiceCardView.readOnly(content, questionIndex, detail.questions().size(), "history-",
                     row.draftAnswer() == null ? Set.of() : ChoicePresentationMapper.answerIds(row.draftAnswer()), sourceList);
         } else {
             var attempt = row.attempts().get(attemptIndex);
@@ -161,7 +204,15 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
             FlowPane attempts = new FlowPane(16, 8, previousAttempt, nextAttempt);
             attempts.getStyleClass().add("history-attempt-navigation");
             context.getChildren().add(attempts);
-            if(essay){
+            if(translation){
+                card=translationCard(row,attempt.answer(),true);
+            }else if(matching){
+                card=matchingCard(row,attempt.answer(),true);
+            }else if(reading){
+                card=readingCard(row,attempt.answer(),true);
+            }else if(cloze){
+                card=clozeCard(row,attempt.answer(),true);
+            }else if(essay){
                 card=essayCard(row,attempt.answer(),true);
             }else{
                 var choice = ChoiceCardView.result(ChoicePresentationMapper.historyResult(row, attempt),
@@ -182,6 +233,97 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
     }
 
     public void refreshSources() { if (sourceList != null) sourceList.refresh(); }
+    private VBox translationCard(PracticeHistoryDetail.Question row,PracticePayload answer,boolean submitted){
+        var fields=QuestionContentData.map(row.contentSnapshot().value());
+        var stored=fields.get("translationPresentation");
+        if(!(stored instanceof java.util.Map<?,?>))stored=fields.get("translation");
+        var snapshot=TranslationQuestionSnapshot.from(new PracticePayload(stored));
+        var selected=TranslationPracticeAnswer.from(answer).answers();
+        translationCard=new TranslationQuestionCardView(snapshot.question(),questionIndex,detail.questions().size(),
+                snapshot.resources(),snapshot::open,"history-",()->selected,()->submitted,null,null,null,null);
+        if(row.draftAnswer()!=null && submitted){
+            var draftAnswers=TranslationPracticeAnswer.from(row.draftAnswer()).answers();
+            var draft=new VBox(12);draft.setId("history-translation-draft");
+            var payload=(io.quizforge.core.question.type.subjective.translation.TranslationPayload)snapshot.question().payload();
+            for(var item:payload.items()){
+                var saved=draftAnswers.get(item.id());
+                if(saved==null || saved.empty())continue;
+                draft.getChildren().addAll(UiTheme.label(item.number()+".","essay-section-title"),
+                        EssayAnswerPane.renderSavedAnswer(saved.payload(),"history-translation-draft-"+item.number()+"-"));
+            }
+            translationCard.getChildren().addAll(UiTheme.label("未提交草稿","essay-section-title"),draft);
+        }
+        if(row.sourceRefs().value() instanceof java.util.List<?> refs && !refs.isEmpty())translationCard.getChildren().add(sourceList);
+        return translationCard;
+    }
+    private VBox matchingCard(PracticeHistoryDetail.Question row,PracticePayload answer,boolean submitted){
+        var fields=QuestionContentData.map(row.contentSnapshot().value());
+        var stored=fields.get("matchingPresentation");
+        if(!(stored instanceof java.util.Map<?,?>))stored=fields.get("matching");
+        var snapshot=MatchingQuestionSnapshot.from(new PracticePayload(stored));
+        var selected=MatchingPracticeAnswer.from(answer).assignments();
+        matchingCard=new MatchingQuestionCardView(snapshot.question(),questionIndex,detail.questions().size(),
+                snapshot.resources(),snapshot::open,"history-",()->selected,()->submitted,null,null,null,null);
+        if(row.draftAnswer()!=null && submitted){
+            var draftSelected=MatchingPracticeAnswer.from(row.draftAnswer()).assignments();
+            var payload=(MatchingPayload)snapshot.question().payload();
+            var draft=new VBox(8);draft.setId("history-matching-draft");
+            for(var blank:payload.blanks()){
+                if(blank.locked())continue;
+                var chosen=draftSelected.get(blank.id());
+                payload.options().stream().filter(option->option.id().equals(chosen)).findFirst().ifPresent(option->
+                        draft.getChildren().add(UiTheme.label(blank.number()+". "+option.label(),"history-draft")));
+            }
+            matchingCard.getChildren().addAll(UiTheme.label("未提交草稿","essay-section-title"),draft);
+        }
+        if(row.sourceRefs().value() instanceof java.util.List<?> refs && !refs.isEmpty())matchingCard.getChildren().add(sourceList);
+        return matchingCard;
+    }
+
+    private VBox readingCard(PracticeHistoryDetail.Question row,PracticePayload answer,boolean submitted){
+        var fields=QuestionContentData.map(row.contentSnapshot().value());
+        var stored=fields.get("readingPresentation");
+        if(!(stored instanceof java.util.Map<?,?>)){
+            var fallback=new java.util.LinkedHashMap<String,Object>();
+            QuestionContentData.map(fields.get("reading")).forEach((key,value)->fallback.put((String)key,value));
+            fallback.putIfAbsent("resources",java.util.List.of());fallback.putIfAbsent("resourceData",java.util.Map.of());
+            stored=fallback;
+        }
+        var snapshot=ReadingQuestionSnapshot.from(new PracticePayload(stored));
+        var selected=answer==null?Set.<String>of():ChoicePresentationMapper.answerIds(answer);
+        readingCard=new ReadingQuestionCardView(snapshot.question(),questionIndex,detail.questions().size(),
+                snapshot.resources(),snapshot::open,"history-",()->selected,()->submitted,null,null,null,null);
+        if(row.draftAnswer()!=null && submitted){
+            var draftSelected=ChoicePresentationMapper.answerIds(row.draftAnswer());
+            var draft=new VBox(8);draft.setId("history-reading-draft");
+            for(var item:((io.quizforge.core.question.type.objective.reading.ReadingPayload)snapshot.question().payload()).items()){
+                for(int option=0;option<item.options().size();option++){
+                    var choice=item.options().get(option);
+                    if(draftSelected.contains(choice.id()))draft.getChildren().add(UiTheme.label(item.number()+". "+(char)('A'+option)+". "
+                            +QuestionContentData.plainText(choice.content()),"history-draft"));
+                }
+            }
+            readingCard.getChildren().addAll(UiTheme.label("未提交草稿","essay-section-title"),draft);
+        }
+        if(row.sourceRefs().value() instanceof java.util.List<?> refs && !refs.isEmpty())readingCard.getChildren().add(sourceList);
+        return readingCard;
+    }
+
+    private VBox clozeCard(PracticeHistoryDetail.Question row,PracticePayload answer,boolean submitted){
+        var fields=QuestionContentData.map(row.contentSnapshot().value());
+        var stored=fields.get("clozePresentation");
+        if(!(stored instanceof java.util.Map<?,?>)){
+            var fallback=new java.util.LinkedHashMap<String,Object>();
+            QuestionContentData.map(fields.get("cloze")).forEach((key,value)->fallback.put((String)key,value));
+            fallback.putIfAbsent("resources",java.util.List.of());fallback.putIfAbsent("resourceData",java.util.Map.of());stored=fallback;
+        }
+        var snapshot=io.quizforge.core.practice.ClozeQuestionSnapshot.from(new PracticePayload(stored));
+        var selected=answer==null?Set.<String>of():ChoicePresentationMapper.answerIds(answer);
+        var card=new io.quizforge.desktop.ui.question.objective.cloze.ClozeQuestionCardView(snapshot.question(),questionIndex,detail.questions().size(),
+                snapshot.resources(),snapshot::open,"history-",()->selected,()->submitted,null,null,null,null);
+        if(row.sourceRefs().value() instanceof java.util.List<?> refs && !refs.isEmpty())card.getChildren().add(sourceList);
+        return card;
+    }
 
     private VBox essayCard(PracticeHistoryDetail.Question row,PracticePayload answer,boolean submitted){
         boolean sameBank=currentBank!=null && currentContentId!=null && currentContentId.equals(detail.bankContentId());

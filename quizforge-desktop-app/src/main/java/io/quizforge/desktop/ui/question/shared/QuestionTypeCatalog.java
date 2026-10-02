@@ -14,7 +14,11 @@ public final class QuestionTypeCatalog {
     private static final Map<String, Binding> BINDINGS = bindings(List.of(
             new Binding("SINGLE_CHOICE", "单选题", ChoiceEditorFields::render),
             new Binding("MULTIPLE_CHOICE", "多选题", ChoiceEditorFields::render),
-            new Binding("ESSAY", "作文题", EssayEditorFields::render)));
+            new Binding("ESSAY", "作文题", EssayEditorFields::render),
+            new Binding("CLOZE", "完形填空", io.quizforge.desktop.ui.question.objective.cloze.ClozeEditorFields::render),
+            new Binding("READING", "阅读理解", io.quizforge.desktop.ui.question.objective.reading.ReadingEditorFields::render),
+            new Binding("MATCHING", "新题型·段落排序", io.quizforge.desktop.ui.question.objective.matching.MatchingEditorFields::render),
+            new Binding("TRANSLATION", "翻译题", io.quizforge.desktop.ui.question.subjective.translation.TranslationEditorFields::render)));
 
     private QuestionTypeCatalog() { }
 

@@ -4,7 +4,7 @@
 
 建议按以下顺序阅读：先看第 1～3 节建立项目地图，再看第 4～5 节理解数据和调用流程，第一次新增题型时按第 6 节逐步操作。需要查某个文件的完整职责时，使用 [逐文件代码导读](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/code-guide.md)。
 
-当前已实现单选、多选、作文题。下文的 `TRUE_FALSE` 判断题是教学示例，尚未加入正式题型登记。
+当前已实现单选、多选、作文、完形填空、阅读理解、段落匹配和翻译题。下文的 `TRUE_FALSE` 判断题是教学示例，尚未加入正式题型登记。
 
 ## 1. 先运行项目
 
@@ -97,7 +97,11 @@ flowchart TD
 | `question/model` | 所有题型共用的 `Question`、`QuestionBank`、分值和评分指导结构 | 放通用字段，不堆积某个题型的专有字段 |
 | `question/type` | 题型契约、登记表和校验上下文 | 从这里找到具体题型规则 |
 | `question/type/objective/choice` | 选择题数据、单选规则、多选规则及包内辅助 | 单选和多选已分别有独立规则文件 |
+| `question/type/objective/cloze` | 正文编号空位、四选项、每空标准答案 | 重复标签共享稳定空位身份 |
+| `question/type/objective/reading` | 一篇文章下的有序小题及四选项 | 文章编辑与增删小题分别执行 |
+| `question/type/objective/matching` | 八个排序位置、八个字母和锁定提示 | 标准答案为完整排列，草稿允许重复非提示字母 |
 | `question/type/subjective/essay` | 作文数据与规则 | 当前提交后待评分 |
+| `question/type/subjective/translation` | 顺序标记的句子及各句参考译文 | 按句保存答案，整题提交后待评分 |
 | `question/content` | TEXT、RICH、DOCUMENT 及内容节点 | 内容形式与题型分别建模 |
 | `question/resource` | 包内资源 ID、类型、位置、媒体类型与哈希 | 资源字节由存储适配器读取 |
 | `question/source` | Markdown 来源地址、命名锚点和引用解析 | 来源是可定位的引用，不是普通说明字符串 |
@@ -122,7 +126,7 @@ flowchart TD
 | desktop 的 `ui/shell`、`ui/workspace` | 主窗口、侧栏、文件树、标签页与文件命令 |
 | desktop 的 `ui/file` | 文件页入口和 Markdown/题库控制器 |
 | desktop 的 `ui/question/editor` | 整个题库编辑会话的界面 |
-| desktop 的 `ui/question/objective/choice`、`subjective/essay` | 题型编辑字段、题卡和展示模型 |
+| desktop 的 `ui/question/objective/choice`、`cloze`、`reading`、`matching`；`subjective/essay`、`translation` | 对应题型的编辑字段、练习题卡和历史复用组件 |
 | desktop 的 `ui/question/practice`、`history`、`source` | 练习、历史与来源导航 |
 | desktop 的 `ui/question/shared` | 题型名称/编辑组件登记、大纲和编辑上下文 |
 | desktop 的 `ui/content` | 内容渲染与 Canvas 编辑器入口 |
@@ -139,7 +143,7 @@ flowchart TD
 | 字段 | 含义 |
 | --- | --- |
 | `id` | 稳定题目 ID，采用 `q_` 前缀 |
-| `type` | 业务题型 ID，如 `SINGLE_CHOICE`、`MULTIPLE_CHOICE`、`ESSAY` |
+| `type` | 业务题型 ID，如 `SINGLE_CHOICE`、`CLOZE`、`READING`、`MATCHING`、`TRANSLATION`、`ESSAY` |
 | `prompt` | 题干内容对象 |
 | `payload` | 题型专有数据，如选择题选项 |
 | `answerSpec` | 标准答案配置；与用户作答分别保存 |
@@ -152,6 +156,17 @@ flowchart TD
 `QuestionBank` 包含资产 ID、标题、逻辑版本、共享材料、题目及资源表。这些模型采用不可变值；修改题目时由编辑模型构造新值。
 
 题型 ID 与数据标识是两个概念。单选和多选的 `type` 不同，但 `payload.kind` 和 `answerSpec.kind` 都是 `CHOICE`，因此可以共用选项数据结构。
+
+| 正式 type | 作答与计分单位 | 题库大纲 |
+| --- | --- | --- |
+| `SINGLE_CHOICE` / `MULTIPLE_CHOICE` | 选项 ID 集合完全匹配，整题分值 | 每张题卡一个编号 |
+| `CLOZE` | 每个唯一空位四选一，按答对空数计分 | 每个小题一个编号，重复标签不重复编号 |
+| `READING` | 每个小题四选一，按答对题数计分 | 按小题顺序展开，点击定位所属题卡的小题 |
+| `MATCHING` | 八位置排序、三个锁定提示，五个位置独立计分 | 只编号未锁定位置 |
+| `TRANSLATION` | 按正文 `{{句子}}` 顺序作答，提交待评分 | 每个句子一个编号 |
+| `ESSAY` | 整篇作文提交待评分，小作文也复用此类型 | 每张题卡一个编号 |
+
+`scoreSpec.defaultMaxScore` 在 CLOZE、READING、MATCHING、TRANSLATION 中表示单个小题分值，其余类型表示整题分值。题库里的小题 `number` 是父题内编号，大纲题号按题库顺序重新派生；身份和作答始终用稳定 ID，不能用显示题号作为数据库键。详细字段与示例包见 [题库文件格式](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/qbank-format.md)。
 
 ### 4.2 实际题库文件
 
@@ -221,6 +236,8 @@ Example.qbank
 
 题目内容编辑的“未保存”与练习作答的“草稿”属于两个会话。以后新增题型时，两条流程都要考虑，不能只实现作者编辑界面。
 
+练习与编辑模式的大纲都可拖动题号，或右键选择“上移整张题卡 / 下移整张题卡”。排序单位始终是 `QuestionBank.questions` 中的一张题卡：拖动阅读、完形、匹配或翻译的小题，会移动它所属的整个 `Question`，不改变内部小题顺序、身份、答案与资源。放到目标题号左半侧表示插到其所属题卡前方，右半侧表示插到后方。大纲重新按连续题型分组并连续编号。练习模式直接复用文件保存服务写入新顺序，同步 ACTIVE 题目顺序并保留草稿、提交结果及尝试记录，随后显示被移动的题卡；编辑模式仍需点击保存。归档历史保持原有顺序，不支持移动。
+
 全局数据库默认在 `%USERPROFILE%\.quizforge\quizforge.db`，保存工作区登记和 AI 配置。工作区的 `.quizforge/workspace.db` 是可重建资产索引，`.quizforge/quizforge.db` 保存练习与历史。重新扫描索引不应删除用户作答。旧 SQL 迁移保留，以维持已有数据库兼容。
 
 ## 5. 跟着一次操作阅读代码
@@ -249,7 +266,7 @@ QuestionBankEditorView
   → 校验、版本检查、暂存发布、扫描回读、完成
 ```
 
-[QuestionBankEditorView](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/editor/QuestionBankEditorView.java) 管题目列表、编辑会话、共用区域和保存/取消；题型字段由 `QuestionTypeCatalog` 分派。`ChoiceEditorFields`、`EssayEditorFields` 只负责自己的字段。
+[QuestionBankEditorView](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/editor/QuestionBankEditorView.java) 管题目列表、编辑会话、共用区域和保存/取消；题型字段由 `QuestionTypeCatalog` 分派。`ChoiceEditorFields`、`EssayEditorFields`、`ClozeEditorFields`、`ReadingEditorFields`、`MatchingEditorFields`、`TranslationEditorFields` 只负责自己的字段，共用正文、解析、分值和资源保存入口。
 
 题型组件通过 [QuestionEditorContext](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/shared/QuestionEditorContext.java) 获得编辑模型、题目索引、资源输入、窗口和刷新回调。`QuestionBankEditorModel.duplicateQuestion` 调用对应规则类的 `duplicate`，复制后题目与选项必须使用新 ID。
 
@@ -268,9 +285,11 @@ QuestionBankEditorView
 
 阅读入口分别是 [PersistentPracticeRuntime](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PersistentPracticeRuntime.java)、[PracticeSessionService](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeSessionService.java)、[PracticeQuestionSnapshotMapper](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-core/src/main/java/io/quizforge/core/practice/PracticeQuestionSnapshotMapper.java) 和 [PracticeHistoryDetailView](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/history/PracticeHistoryDetailView.java)。
 
-当前正确率为“正确题数 ÷ 已提交题数”。未提交草稿不进入分母，已提交待评分作文进入分母，零提交显示“—”。作文提交目前为 `UNSCORED`；人工/AI 评分尚未实现。
+当前统计统一使用得分与总分，已评分的最新提交累计得分；草稿、重试中和待评分题不累计得分。作文提交目前为 `UNSCORED`；人工/AI 评分尚未实现。旧历史缺少分值时显示“—”。
 
-**新增评分策略时要检查两条路径。** 内存 `QuestionBankPracticeSession` 调用题型的 `evaluate`；持久化 `PracticeSessionService.submitAnswer` 当前从冻结快照读取标准答案，直接进行选项集合完全匹配。仅修改规则类的 `evaluate`，不会自动改变持久化提交的判分方式。少选部分得分、数值误差、人工评分等需求，还需要扩展提交、结果、历史与统计。
+**新增评分策略时要检查两条路径。** 内存 `QuestionBankPracticeSession` 使用题型规则；持久化 `PracticeSessionService` 从冻结快照读取标准答案、总分和单题分。普通选择题为集合完全匹配，完形/阅读按正确小题数保存部分分，排序按未锁定位置判分，作文/翻译提交为待评分。仅修改规则类不会自动改变持久化提交的判分方式；新策略还需同步提交、结果、历史与统计。
+
+`PracticeQuestionSnapshotMapper` 为每张题卡保存顶层 `maxScore`，这是练习快照元数据，不是 `.qbank` 的新增题目字段。`PracticeSummary` 累计当前 SUBMITTED 状态的最新已评分 attempt.score，总分从所有快照读取；`PracticeScoreText` 统一练习卡片与历史的数字格式。旧 ACTIVE 在同版本打开时补齐分值元数据，逻辑比较忽略顶层元数据和展示快照，保留原有提交与草稿；归档记录不按当前题库补写或重算，旧历史分值未知时显示“—”。
 
 ## 6. 新增题型的固定五步
 
@@ -391,7 +410,7 @@ public final class TrueFalseQuestionType implements QuestionTypeDefinition {
 new SingleChoiceQuestionType(),
 new MultipleChoiceQuestionType(),
 new TrueFalseQuestionType(),  // 新增
-new EssayQuestionType()
+// 保留现有 Essay、Cloze、Reading、Matching、Translation 登记
 ```
 
 **B. 桌面组件登记**：在 [QuestionTypeCatalog](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/src/main/java/io/quizforge/desktop/ui/question/shared/QuestionTypeCatalog.java) 的绑定列表加入：
@@ -404,11 +423,11 @@ new Binding("TRUE_FALSE", "判断题", ChoiceEditorFields::render)
 
 **C. 公开文件约束**：修改 [qbank-v2.schema.json](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-infrastructure/src/main/resources/schema/qbank-v2.schema.json) 的 `$defs.question.properties.type.enum`，加入 `TRUE_FALSE`。
 
-当前 question 的 `allOf` 是“ESSAY 对应作文模型，否则对应 CHOICE”。本例继续使用 CHOICE，复用已有分支；恰好两个选项、一个答案的专有约束由 Java 规则类负责。若增加全新 Payload，就必须扩展 `$defs.payload`、`$defs.answer` 与 type/payload/answer 对应条件，不能让新类型落进旧 CHOICE 分支。
+当前 question 的 `allOf` 将 ESSAY、CLOZE、READING、MATCHING、TRANSLATION 分别映射到自己的 payload/answer 约束，最后的选择题分支使用 CHOICE。本例继续使用 CHOICE，复用已有分支；恰好两个选项、一个答案的专有约束由 Java 规则类负责。若增加全新 Payload，就必须扩展 `$defs.payload`、`$defs.answer` 与 type/payload/answer 对应条件，不能让新类型落进旧 CHOICE 分支。
 
 [QuestionBankV2Codec](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-infrastructure/src/main/java/io/quizforge/infrastructure/filesystem/qbank/QuestionBankV2Codec.java) 从核心登记表注册 Payload/AnswerSpec 的 JSON 子类型。本例不新增 `kind`。增加新结构时，序列化登记可以来自这里，但练习快照、编辑模型和历史支持仍需检查。
 
-`QuestionBankEditorModel.setType` 当前按 CHOICE/ESSAY 转换数据。转换成判断题可能保留原选择题的多个选项；产品若允许这种转换，应在该流程中明确调整或拒绝不兼容转换，不能默默丢弃内容。
+`QuestionBankEditorModel.setType` 对完形、阅读、排序和翻译有独立转换分支，普通选择题沿用 CHOICE 数据，作文使用 ESSAY。转换成判断题可能保留原选择题的多个选项；产品若允许这种转换，应在该流程中明确调整或拒绝不兼容转换，不能默默丢弃内容。
 
 ### 第五步：验证、补示例和文档
 
@@ -475,3 +494,42 @@ Canvas 源码在 [editor-web/canvas](C:/Users/wangg/OneDrive/Desktop/QuizForge/q
 - 已做与改动范围对应的检查，文档写明当前支持范围和实际结果。
 
 进一步阅读：[文档导航](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/README.md)、[逐文件代码导读](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/code-guide.md)、[题库文件格式与内容资源](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/qbank-format.md)、[新增题型模板](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/templates/new-question-type.md)。开发时优先使用当前手册和实际源码；协议细节集中维护在题库格式文档。
+
+## 完形填空第一版
+
+`CLOZE` 专属模型位于 `core/question/type/objective/cloze`，界面位于 `desktop/ui/question/objective/cloze`。正文继续使用 Canvas 编辑器；输入 `{{1}}`、`{{2}}` 后保存，自动补齐选项组。重复标签共享一个空位，`\{{1}}` 为字面文本，非数字标签不识别。小题按编号从 1 连续递增，可提前新增并在之后添加正文标签。每道小题固定四个 `test` 默认选项，按题号与 A–D 列横排；编辑预览与练习共用可点击空位，编辑时选择即设置正确答案。分值表示单题分值，得分按答对的小题数相乘。
+
+正文预览显示 `1._______`，选择后填入带下划线和状态颜色的选项文本。较长文本允许正文重新换行；点击区域由 Canvas 原生 group 矩形重新定位，弹出选项和下方完整选项使用同一选择状态。浮层限制在正文边界内、按空间向上或向下展开，过高时内部滚动，不撑高正文或挤动下方选项。作答复用选项 ID 列表，按空校验；每次选择保存 ACTIVE 草稿。整题二次确认后提交锁定，按唯一空位等分判分，重复标签不重复计分；重试清空本次选择并保留已提交 attempts。ClozeQuestionSnapshot 冻结正文、解析、选项、答案、分值和资源字节，历史不依赖当前题库。结果下方显示得分，并保留作者输入的答案与解析，不再生成重复的逐空答案清单。没有增加数据库表或迁移。
+
+示例为 `examples/qbank-v2/cloze-first-version.qbank`，含原生富文本正文、重复空位和后续单选题。复制示例到自己的工作区即可浏览/编辑/练习。新增题型登记需要重启应用，不能只依赖页面刷新。
+
+## 阅读理解接入说明
+
+阅读理解专属模型位于 `core/question/type/objective/reading`：`ReadingItem` 保留小题身份、编号、独立题干和四个选项，`ReadingPayload` 保留有序小题，`ReadingAnswerSpec` 绑定每道小题的正确选项，`ReadingQuestionType` 管理默认五题、单题 2 分、复制身份和每题单选约束。文章与子题题干均使用共享 `QuestionContent`，选项第一版为 TEXT。
+
+编辑操作使用 `QuestionBankEditorModel.setReadingPrompt/setReadingOption/setReadingCorrect/addReadingItem/deleteReadingItem`；修改文章继续用 `setPrompt`，不改变子题。共享资源清理扫描子题题干，不能因正文或解析编辑而删除仍被子题引用的资源。`QuestionTypes`、桌面题型目录、公开 Schema 和练习快照/事务均须同步接入。READING 的分值字段与 CLOZE 一样表示单题分值，评分与历史必须同时保存单题分、总分和部分得分。
+
+示例：`examples/qbank-v2/reading-first-version.qbank`。该文件遵循标准 ZIP `.qbank` 包格式，可以复制到测试工作区打开；不要以纯 JSON 替代真实包。
+
+阅读界面位于 `desktop/ui/question/objective/reading`，`ReadingEditorFields` 与 `ReadingQuestionCardView` 使用现有 Canvas、题库保存和作答命令。每次选择暂存到 ACTIVE，整篇阅读统一确认提交；得分按答对小题数乘单题分值。`ReadingQuestionSnapshot` 冻结文章、小题题干、解析及各自资源，历史直接使用只读阅读题卡。练习与历史大纲逐个显示小题，点击进入所属阅读大题并定位小题。新增类型登记后需要重启应用。
+
+四选项先尝试四列一行，再尝试两列两行，最后一列四行。`ReadingQuestionCardView.AdaptiveOptionGrid` 按当前字体测量每个选项完整文本，并计入单选按钮与边距；只有全部选项能单行显示时才采用四列或两列。因此两列下仍需折行的长选项会切为四行，窗口宽度或选项文本变化时重新判断。编辑、练习和历史共用这套布局。
+
+## 段落匹配接入说明
+
+`MATCHING` 专属模型位于 `core/question/type/objective/matching`。第一版固定八个答案槽和 A–H 八个字母，默认锁定第 1、4、6 槽作为提示，每个待答槽 2 分。完整文章和选项通过共享富文本题干输入，不解析正文标签，也不单独编辑选项正文。每槽设置正确字母后可锁定为已给出的提示，锁定三个槽就剩五个待作答位置，保存时必须恰好锁定三个提示槽。
+
+编辑 API 只有 `setMatchingCorrect` 和 `setMatchingLocked`：选择其他字母自动交换两个未锁定槽的答案，提示字母不能移动。标准答案保持八字母完整排列；草稿只保存未锁定槽到字母 ID 的映射，允许重复选择普通字母，排除提示位置与提示字母。练习隐藏锁图标和清空按钮，提交前通过下拉控件直接改选。编辑、练习和历史大纲只编号未锁定的位置，点击保留原始槽位映射；提示位置变化时重建大纲。规则使用 question-aware `validateAssignments` 和 `gradableCount/matchingCount/evaluateAssignments`，总分及得分都排除锁定提示。
+
+题干、解析、资源编辑仍走共享入口，冻结历史保留普通正文资源和槽位锁定状态。核心题型、桌面目录、Schema、作答命令、ACTIVE 草稿、历史与大纲一起登记。新增类型后重启应用，示例为 `examples/qbank-v2/matching-first-version.qbank`。
+
+
+## 翻译题接入
+
+`TRANSLATION` 位于 `core/question/type/subjective/translation`，界面位于 `desktop/ui/question/subjective/translation`。在共享富文本题干中用 `{{需要翻译的句子}}` 标记，按正文出现顺序生成小题，无需输入序号；预览隐藏标记、给句子加下划线并显示自动编号。`\{{literal}}` 为字面文本；空、嵌套、缺失结束符的标记会被拒绝。默认五句，每句 2 分；标记数量可以变化，保存至少保留一句。
+
+`TranslationPayload.items` 保存 `TranslationItem(id, number, text)`，`TranslationAnswerSpec.answers` 为每个 `itemId` 保存可空的 `referenceAnswer`（共享 TEXT/RICH/DOCUMENT）。正文编辑保留相同句子出现次数对应的 ID 与参考译文；新增或改写的句子生成新 ID、清空其参考译文，避免译文挂到其他句子。`QuestionBankEditorModel.setTranslationReference` 编辑单句参考译文，复制重新生成小题 ID。
+
+练习按句独立保存 `TranslationPracticeAnswer` 中的 `EssayPracticeAnswer`，可直接输入文本或打开富文本编辑器。整道大题二次确认后提交；缺少译文时提示未完成小题数。提交结果为 `UNSCORED`，分数为空，总分为单句分值乘句数；参考译文与解析在提交后显示。重试清空当前译文并保留已提交记录。
+
+`TranslationQuestionSnapshot` 冻结文章、每句参考译文、解析及资源字节；`translationPresentation` 优先用于历史，`translation` 提供逻辑回退。ACTIVE 草稿与历史均使用原始小题 ID；大纲按句展开、连续编号、按句区分未作答/草稿/待评分并跳转所属大题。没有新增数据库表或迁移。示例包：`examples/qbank-v2/translation-first-version.qbank`。

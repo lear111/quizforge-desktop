@@ -98,6 +98,7 @@ final class QuestionBankFileView implements FileView {
             if (browseContent instanceof QuestionPracticeLayout practiceLayout) {
                 QuestionBankEditorView editor = bankEditor;
                 editor.jumpTo(practiceLayout.outline().currentIndex());
+                practiceLayout.outline().setMoveAction(editor::moveQuestion);
                 editor.onQuestionChange((bank, selected) ->
                         practiceLayout.outline().showEditor(bank, selected, target -> {
                             editor.jumpTo(target);
@@ -106,6 +107,7 @@ final class QuestionBankFileView implements FileView {
                 practiceLayout.setContent(editorScroll);
             } else if(browseContent instanceof MixedQuestionPracticeView authoring) {
                 var editor=bankEditor;editor.jumpTo(authoring.currentIndex());
+                ((io.quizforge.desktop.ui.question.shared.QuestionOutlineView)authoring.outline()).setMoveAction(editor::moveQuestion);
                 editor.onQuestionChange(authoring::updateEditor);
                 authoring.showEditor(editorScroll,target->{editor.jumpTo(target);editorScroll.setVvalue(0);});
             } else {
@@ -136,14 +138,38 @@ final class QuestionBankFileView implements FileView {
 
     private void showBrowseContent() {
         if (browseContent instanceof QuestionPracticeLayout practiceLayout) {
+            practiceLayout.outline().setMoveAction(this::moveBankQuestion);
             setTop(null);
             practiceLayout.setHeader(header);
         } else if(browseContent instanceof MixedQuestionPracticeView authoring) {
+            ((io.quizforge.desktop.ui.question.shared.QuestionOutlineView)authoring.outline()).setMoveAction(this::moveBankQuestion);
             setTop(null);authoring.setHeader(header);
         } else {
             setTop(header);
         }
         setCenter(browseContent);
+    }
+
+    private void moveBankQuestion(int from,int to) {
+        if(mode!=FileMode.BROWSE || page!=Page.BROWSE || from==to)return;
+        try {
+            var model=new io.quizforge.core.question.service.QuestionBankEditorModel(current.file().questionBank());
+            model.moveQuestion(from,to);
+            var edited=model.bank();String movedId=edited.questions().get(to).id();
+            String path=current.file().entry().relativePath();
+            bankEdits.save(workspace,path,current.file().entry().contentId(),current.file().bankRevision(),edited,
+                    loader.resources(workspace,path));
+            // Existing synchronization updates order by stable question ID and keeps drafts/attempts.
+            var runtime=practice.open(workspace,edited,loader.resources(workspace,path));
+            for(int i=0;i<runtime.session().bank().questions().size();i++)
+                if(runtime.session().bank().questions().get(i).id().equals(movedId)){runtime.goTo(i);break;}
+            open(workspace,path);
+        } catch(RuntimeException failure) {
+            var alert=new Alert(Alert.AlertType.ERROR,failure.getMessage(),ButtonType.OK);
+            alert.setTitle("移动题卡失败");alert.setHeaderText("题卡移动未完成，请重新打开题库查看当前顺序");
+            if(getScene()!=null && getScene().getWindow()!=null)alert.initOwner(getScene().getWindow());
+            UiTheme.apply(alert);alert.show();
+        }
     }
 
     private void saveBank(io.quizforge.core.question.model.QuestionBank edited) {

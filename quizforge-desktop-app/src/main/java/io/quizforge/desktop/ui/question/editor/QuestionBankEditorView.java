@@ -75,6 +75,17 @@ public final class QuestionBankEditorView extends VBox implements DevelopmentRef
         render();
     }
 
+    public void moveQuestion(int from, int to) {
+        errors.getChildren().clear();
+        try {
+            if (from == to) return;
+            validateFields.forEach(Runnable::run);
+            model.moveQuestion(from, to);
+            index = to;
+            render();
+        } catch (RuntimeException error) { showError(error.getMessage()); }
+    }
+
     public void onQuestionChange(BiConsumer<QuestionBank, Integer> action) {
         onQuestionChange = action;
         onQuestionChange.accept(model.bank(), index);
@@ -97,7 +108,7 @@ public final class QuestionBankEditorView extends VBox implements DevelopmentRef
         sourceRows = null;
         validateFields.clear();
         body.getChildren().clear();
-        boolean essay = !model.bank().questions().isEmpty() && QuestionTypes.isEssay(model.bank().questions().get(index).type());
+        boolean essay = !model.bank().questions().isEmpty() && (QuestionTypes.isEssay(model.bank().questions().get(index).type()) || QuestionTypes.isCloze(model.bank().questions().get(index).type()) || QuestionTypes.isReading(model.bank().questions().get(index).type()) || QuestionTypes.isMatching(model.bank().questions().get(index).type()) || QuestionTypes.isTranslation(model.bank().questions().get(index).type()));
         getStyleClass().remove("essay-editor");
         if (essay) getStyleClass().add("essay-editor");
 

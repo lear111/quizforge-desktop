@@ -10,8 +10,16 @@ public final class QuestionTypes {
     private static final List<QuestionTypeDefinition> DEFINITIONS = List.of(
             new SingleChoiceQuestionType(),
             new MultipleChoiceQuestionType(),
-            new EssayQuestionType());
+            new EssayQuestionType(),
+            new io.quizforge.core.question.type.objective.cloze.ClozeQuestionType(),
+            new io.quizforge.core.question.type.objective.reading.ReadingQuestionType(),
+            new io.quizforge.core.question.type.objective.matching.MatchingQuestionType(),
+            new io.quizforge.core.question.type.subjective.translation.TranslationQuestionType());
     private QuestionTypes(){ }
+    public static boolean isCloze(String id){return "CLOZE".equals(id);}
+    public static boolean isReading(String id){return "READING".equals(id);}
+    public static boolean isMatching(String id){return "MATCHING".equals(id);}
+    public static boolean isTranslation(String id){return "TRANSLATION".equals(id);}
     public static List<QuestionTypeDefinition> definitions(){return DEFINITIONS;}
     public static boolean isChoice(String id) {
         return find(id).map(type -> type.payloadClass() ==

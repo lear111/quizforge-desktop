@@ -46,9 +46,9 @@ public final class SqliteWorkspacePracticeRuntimeProvider implements PracticeRun
                 + scan.issues().stream().map(issue -> issue.currentPath() + ": " + issue.detail())
                         .collect(java.util.stream.Collectors.joining("; ")));
         var choices = bank.questions().stream().filter(q -> QuestionText.supports(q)
-                || QuestionTypes.isEssay(q.type()) && q.stimulusRefs().isEmpty()).toList();
+                || (QuestionTypes.isEssay(q.type()) || QuestionTypes.isCloze(q.type()) || QuestionTypes.isReading(q.type()) || QuestionTypes.isMatching(q.type()) || QuestionTypes.isTranslation(q.type())) && q.stimulusRefs().isEmpty()).toList();
         if (choices.isEmpty()) throw new IllegalArgumentException("This bank has no supported practice questions");
-        // Choices and essays share one ACTIVE round and the full-file logical revision.
+        // All supported types share one ACTIVE round and the full-file logical revision.
         var practiceBank = choices.size() == bank.questions().size() ? bank
                 : new QuestionBank(bank.assetId(), bank.title(), bank.schemaVersion(),
                         bank.stimuli(), choices, bank.resources());

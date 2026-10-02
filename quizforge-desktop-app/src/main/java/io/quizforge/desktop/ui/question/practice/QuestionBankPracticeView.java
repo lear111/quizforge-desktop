@@ -98,6 +98,7 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
         actions.getStyleClass().add("practice-card-actions");
         actions.setAlignment(Pos.CENTER_LEFT);
         submit.setOnAction(event -> {
+            if(!QuestionCardLayout.confirmSubmission(this,0))return;
             submit.setDisable(true);
             command(runtime::submit);
         });
@@ -133,7 +134,7 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
         try {
             action.run();
             if (onChanged != null) onChanged.run();
-            if (session.finished() || !QuestionTypes.isEssay(session.current().type())) render();
+            if (session.finished() || !QuestionTypes.isEssay(session.current().type()) && !QuestionTypes.isCloze(session.current().type()) && !QuestionTypes.isReading(session.current().type()) && !QuestionTypes.isMatching(session.current().type()) && !QuestionTypes.isTranslation(session.current().type())) render();
         } catch (RuntimeException failure) {
             // The runtime is only hydrated after commit; repaint restores the persisted selection.
             render();
@@ -145,9 +146,12 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
 
     private void summary() {
         PracticeSummary summary = runtime.summary();
-        Label percentage = UiTheme.label(summary.accuracyPercent().isEmpty() ? "—" : summary.accuracyPercent().getAsInt() + "%",
-                "practice-summary-percentage");
-        percentage.setId("summary-percentage");
+        Label score = UiTheme.label(io.quizforge.desktop.ui.question.shared.PracticeScoreText.points(summary.score()),"practice-summary-score");
+        score.setId("summary-score");
+        Label maximum = UiTheme.label("/ "+io.quizforge.desktop.ui.question.shared.PracticeScoreText.points(summary.maxScore()),"practice-summary-max-score");
+        maximum.setId("summary-max-score");
+        VBox points = new VBox(3,UiTheme.label("得分","muted"),score,maximum);
+        points.setAlignment(Pos.CENTER);
 
         VBox legend = new VBox(14,
                 summaryStatus("正确", summary.correctCount(), "correct", "summary-correct-count"),
@@ -155,7 +159,7 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
                 summaryStatus("未作答", summary.unfinishedCount(), "unanswered", "summary-unanswered-count"));
         legend.getStyleClass().add("practice-summary-status-list");
         if(summary.unscoredCount()>0)legend.getChildren().add(summaryStatus("未评分",summary.unscoredCount(),"unanswered","summary-unscored-count"));
-        FlowPane results = new FlowPane(28, 20, summaryRing(summary, percentage), legend);
+        FlowPane results = new FlowPane(28, 20, summaryRing(summary, points), legend);
         results.getStyleClass().add("practice-summary-results");
         results.setMinWidth(0);
         results.setAlignment(Pos.CENTER);
@@ -198,7 +202,7 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
         getChildren().add(navigation);
     }
 
-    private StackPane summaryRing(PracticeSummary summary, Label percentage) {
+    private StackPane summaryRing(PracticeSummary summary, VBox points) {
         double center = 66;
         double radius = 52;
         Pane segments = new Pane();
@@ -215,7 +219,7 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
             start = addSummarySegment(segments, start, summary.incorrectCount(), summary.totalCount(), "incorrect");
             addSummarySegment(segments, start, summary.unfinishedCount()+summary.unscoredCount(), summary.totalCount(), "unanswered");
         }
-        StackPane ring = new StackPane(segments, percentage);
+        StackPane ring = new StackPane(segments, points);
         ring.setMinSize(132, 132);
         ring.setPrefSize(132, 132);
         ring.setMaxSize(132, 132);

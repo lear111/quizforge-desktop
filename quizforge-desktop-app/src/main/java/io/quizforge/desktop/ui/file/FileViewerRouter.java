@@ -57,7 +57,7 @@ final class FileViewerRouter {
                     : markdown.view(file.file().sourceText(), file.registeredMarkdown(), sourceActions, copyLink, openLink);
             case QUESTION_BANK -> file.empty()
                     ? UiTheme.quietState("该题库暂无题目", "开始编辑，添加内容。")
-                    : MixedQuestionPracticeView.containsEssay(file.file().questionBank())
+                    : MixedQuestionPracticeView.requiresMixedView(file.file().questionBank())
                         ? new MixedQuestionPracticeView(file.file().questionBank(),resources.apply(file),
                                 () -> practiceRuntime.apply(file, file.file().questionBank()), sources)
                     : io.quizforge.core.question.type.objective.choice.QuestionText.supports(file.file().questionBank()) ? practice(file)

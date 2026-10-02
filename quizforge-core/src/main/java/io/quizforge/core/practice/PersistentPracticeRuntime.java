@@ -54,6 +54,26 @@ public final class PersistentPracticeRuntime {
         var selected = session.selectionAfter(optionId);
         hydrate(service.saveDraft(sessionId, contentId, session.current().id(), selected));
     }
+    public java.util.Map<String,String> matchingAnswers(String questionId) {
+        var row = questionState(questionId);
+        var answer = row.sessionQuestion().practiceState() == PracticeSessionQuestion.State.SUBMITTED
+                ? row.attempts().getLast().answer() : row.sessionQuestion().draftAnswer();
+        return MatchingPracticeAnswer.from(answer).assignments();
+    }
+    public void assignMatching(String blankId, String optionId) {
+        var assignments = session.matchingAfter(blankId, optionId);
+        hydrate(service.saveMatchingDraft(sessionId, contentId, session.current().id(), assignments));
+    }
+    public java.util.Map<String,EssayPracticeAnswer> translationAnswers(String questionId) {
+        var row = questionState(questionId);
+        var answer = row.sessionQuestion().practiceState() == PracticeSessionQuestion.State.SUBMITTED
+                ? row.attempts().getLast().answer() : row.sessionQuestion().draftAnswer();
+        return TranslationPracticeAnswer.from(answer).answers();
+    }
+    public void assignTranslation(String itemId, EssayPracticeAnswer answer) {
+        var answers = session.translationAfter(itemId, answer);
+        hydrate(service.saveTranslationDraft(sessionId, contentId, session.current().id(), answers));
+    }
 
     public void submit() {
         hydrate(service.submitAnswer(sessionId, contentId, session.current().id()));

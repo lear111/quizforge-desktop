@@ -21393,6 +21393,201 @@ endobj
     window.__quizforgeCanvasFontCompatibility = true;
   }
 
+  // src/cloze-preview.js
+  var TOKEN = /\\?\{\{([1-9][0-9]*)\}\}/g;
+  var textTypes = /* @__PURE__ */ new Set([void 0, "text", "superscript", "subscript"]);
+  function transform(elements, config, groups) {
+    const result = [];
+    for (let i2 = 0; i2 < elements.length; ) {
+      if (!textTypes.has(elements[i2].type)) {
+        const element = { ...elements[i2++] };
+        if (element.valueList) element.valueList = transform(element.valueList, config, groups);
+        if (element.trList) element.trList = element.trList.map((row) => ({
+          ...row,
+          tdList: row.tdList.map((cell) => ({ ...cell, value: transform(cell.value, config, groups) }))
+        }));
+        result.push(element);
+        continue;
+      }
+      const runs = [];
+      let text = "";
+      while (i2 < elements.length && textTypes.has(elements[i2].type)) {
+        const element = elements[i2++];
+        runs.push({ start: text.length, end: text.length + element.value.length, element });
+        text += element.value;
+      }
+      const append = (start, end) => {
+        for (const run of runs) {
+          const left = Math.max(start, run.start), right = Math.min(end, run.end);
+          if (right > left) result.push({ ...run.element, value: text.slice(left, right) });
+        }
+      };
+      let position = 0;
+      for (const match of text.matchAll(TOKEN)) {
+        const blank = config.blanks.find((blank2) => blank2.number === Number(match[1]));
+        if (!blank && !match[0].startsWith("\\")) continue;
+        append(position, match.index);
+        if (match[0].startsWith("\\")) append(match.index + 1, match.index + match[0].length);
+        else {
+          const original = runs.find((run) => run.end > match.index).element;
+          const selected = blank.options.find((option) => option.id === blank.selected);
+          const group = `quizforge-cloze-${blank.number}-${groups.length}`;
+          groups.push({ id: group, blank });
+          const correct = blank.selected === blank.correct;
+          result.push({
+            ...original,
+            value: `${blank.number}.${selected ? selected.text : "_______"}`,
+            color: config.submitted ? selected ? correct ? "#26734a" : "#b14343" : "#777777" : selected ? "#715b99" : "#777777",
+            highlight: void 0,
+            underline: !!selected,
+            groupIds: [...original.groupIds || [], group]
+          });
+        }
+        position = match.index + match[0].length;
+      }
+      append(position, text.length);
+    }
+    return result;
+  }
+  function configureCloze(editor2, state2, configuration) {
+    if (!state2.clozeOriginal) state2.clozeOriginal = JSON.parse(JSON.stringify(editor2.command.getValue().data));
+    state2.clozeConfig = configuration;
+    const groups = [];
+    const data = JSON.parse(JSON.stringify(state2.clozeOriginal));
+    data.main = transform(data.main, configuration, groups);
+    state2.clozeGroups = groups;
+    const options = editor2.command.getOptions();
+    editor2.command.executeUpdateOptions({ ...options, group: { ...options.group, opacity: 0, activeOpacity: 0 } });
+    editor2.command.executeSetValue(data);
+    const paper = document.getElementById("paper");
+    let layer = document.getElementById("cloze-hit-layer");
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.id = "cloze-hit-layer";
+      paper.append(layer);
+    }
+    if (state2.clozeDismiss) document.removeEventListener("pointerdown", state2.clozeDismiss, true);
+    const close = () => {
+      var _a4;
+      (_a4 = document.getElementById("cloze-options-popup")) == null ? void 0 : _a4.remove();
+    };
+    state2.clozeDismiss = (event) => {
+      if (!event.target.closest("#cloze-options-popup,.cloze-hit")) close();
+    };
+    document.addEventListener("pointerdown", state2.clozeDismiss, true);
+    const open = (blank, rect) => {
+      var _a4;
+      close();
+      if (configuration.readonly || configuration.submitted) return;
+      const menu = document.createElement("div");
+      menu.id = "cloze-options-popup";
+      menu.setAttribute("role", "group");
+      const title = document.createElement("strong");
+      title.textContent = `\u7B2C ${blank.number} \u7A7A`;
+      menu.append(title);
+      blank.options.forEach((option, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "cloze-popup-option";
+        button.textContent = `${String.fromCharCode(65 + index)}. ${option.text}`;
+        button.setAttribute("aria-pressed", String(option.id === blank.selected));
+        button.classList.toggle("selected", option.id === blank.selected);
+        button.onclick = () => {
+          var _a5;
+          close();
+          (_a5 = window.quizforgeHost) == null ? void 0 : _a5.clozeSelected(blank.number, option.id);
+        };
+        menu.append(button);
+      });
+      const height = paper.clientHeight, gap = 4;
+      Object.assign(menu.style, { top: "0px", left: "0px", maxHeight: `${Math.max(1, height - gap * 2)}px` });
+      paper.append(menu);
+      menu.style.left = `${Math.max(0, Math.min(rect.x, paper.clientWidth - menu.offsetWidth))}px`;
+      const below = rect.y + rect.height + gap;
+      const preferred = below + menu.offsetHeight <= height - gap ? below : rect.y - menu.offsetHeight - gap;
+      menu.style.top = `${Math.max(0, Math.min(preferred, height - menu.offsetHeight))}px`;
+      (_a4 = menu.querySelector('button[aria-pressed="true"]')) == null ? void 0 : _a4.focus();
+    };
+    state2.clozeDraw = () => {
+      layer.replaceChildren();
+      groups.forEach((group) => {
+        var _a4;
+        for (const rect of editor2.command.getGroupRectList(group.id) || []) {
+          const hit = document.createElement("button");
+          hit.type = "button";
+          hit.className = "cloze-hit";
+          hit.dataset.blank = String(group.blank.number);
+          hit.setAttribute("aria-label", `\u7B2C ${group.blank.number} \u7A7A\uFF0C${((_a4 = group.blank.options.find((o2) => o2.id === group.blank.selected)) == null ? void 0 : _a4.text) || "\u672A\u4F5C\u7B54"}`);
+          hit.disabled = !!(configuration.readonly || configuration.submitted);
+          Object.assign(hit.style, { left: `${rect.x}px`, top: `${rect.y}px`, width: `${Math.max(1, rect.width)}px`, height: `${rect.height}px` });
+          hit.onclick = (event) => {
+            event.stopPropagation();
+            open(group.blank, rect);
+          };
+          layer.append(hit);
+        }
+      });
+    };
+    close();
+    state2.clozeDraw();
+    requestAnimationFrame(state2.clozeDraw);
+  }
+
+  // src/translation-preview.js
+  var TOKEN2 = /\\?\{\{([\s\S]+?)\}\}/g;
+  var textTypes2 = /* @__PURE__ */ new Set([void 0, "text", "superscript", "subscript"]);
+  function transform2(elements, sequence) {
+    const result = [];
+    for (let i2 = 0; i2 < elements.length; ) {
+      if (!textTypes2.has(elements[i2].type)) {
+        const element = { ...elements[i2++] };
+        if (element.valueList) element.valueList = transform2(element.valueList, sequence);
+        if (element.trList) element.trList = element.trList.map((row) => ({
+          ...row,
+          tdList: row.tdList.map((cell) => ({ ...cell, value: transform2(cell.value, sequence) }))
+        }));
+        result.push(element);
+        continue;
+      }
+      const runs = [];
+      let text = "";
+      while (i2 < elements.length && textTypes2.has(elements[i2].type)) {
+        const element = elements[i2++];
+        runs.push({ start: text.length, end: text.length + element.value.length, element });
+        text += element.value;
+      }
+      const append = (start, end, marked = false) => {
+        for (const run of runs) {
+          const left = Math.max(start, run.start), right = Math.min(end, run.end);
+          if (right > left) result.push({
+            ...run.element,
+            value: text.slice(left, right),
+            ...marked ? { underline: true } : {}
+          });
+        }
+      };
+      let position = 0;
+      for (const match of text.matchAll(TOKEN2)) {
+        append(position, match.index);
+        if (match[0].startsWith("\\")) append(match.index + 1, match.index + match[0].length);
+        else {
+          const original = runs.find((run) => run.end > match.index).element;
+          result.push({ ...original, value: `(${sequence.number++}) `, underline: false });
+          append(match.index + 2, match.index + match[0].length - 2, true);
+        }
+        position = match.index + match[0].length;
+      }
+      append(position, text.length);
+    }
+    return result;
+  }
+  function configureTranslation(editor2, state2) {
+    if (!state2.translationOriginal) state2.translationOriginal = JSON.parse(JSON.stringify(editor2.command.getValue().data));
+    const data = JSON.parse(JSON.stringify(state2.translationOriginal));
+    data.main = transform2(data.main, { number: 1 });
+    editor2.command.executeSetValue(data);
+  }
+
   // raw-svg:C:\Users\wangg\OneDrive\Desktop\QuizForge\quizforge_V2\quizforge-desktop-app\editor-web\canvas\src\icons\undo.svg
   var undo_default = '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M6 2.763v7.544l-4.29-3.73zM13 14v-3a4 4 0 00-4-4H6V6h3a5 5 0 015 5v3h-1z" fill="#3D4757"/></svg>';
 
@@ -21447,6 +21642,12 @@ endobj
   // raw-svg:C:\Users\wangg\OneDrive\Desktop\QuizForge\quizforge_V2\quizforge-desktop-app\editor-web\canvas\src\icons\justify.svg
   var justify_default = '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">\r\n  <path stroke="#3D4757" fill="#3D4757" d="M2 10.5H14M2 13.5H14" stroke-linecap="round" stroke-linejoin="miter">\r\n  </path>\r\n  <path stroke="#3D4757" fill="#3D4757" d="M14 3.5L12 1.5M14 3.5L12 5.5M14 3.5L2 3.5M4 1.5L2 3.5M2 3.5L4 5.5"\r\n    stroke-linecap="round" stroke-linejoin="miter">\r\n  </path>\r\n</svg>';
 
+  // raw-svg:C:\Users\wangg\OneDrive\Desktop\QuizForge\quizforge_V2\quizforge-desktop-app\editor-web\canvas\src\icons\indent.svg
+  var indent_default = '<svg height="16" viewBox="0 0 16 16" width="16" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#3d4757" stroke-linecap="round"><path d="M2 2h12M8 5h6M2 8h12M2 11h12M2 14h12M1 5h4m-2-2 2 2-2 2"/></g></svg>\n';
+
+  // raw-svg:C:\Users\wangg\OneDrive\Desktop\QuizForge\quizforge_V2\quizforge-desktop-app\editor-web\canvas\src\icons\outdent.svg
+  var outdent_default = '<svg height="16" viewBox="0 0 16 16" width="16" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#3d4757" stroke-linecap="round"><path d="M2 2h12M8 5h6M2 8h12M2 11h12M2 14h12M5 5H1m2-2L1 5l2 2"/></g></svg>\n';
+
   // raw-svg:C:\Users\wangg\OneDrive\Desktop\QuizForge\quizforge_V2\quizforge-desktop-app\editor-web\canvas\src\icons\list.svg
   var list_default = '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><g fill="none" fill-rule="evenodd"><path fill="#3D4757" d="M7 12h7v1H7zm0-5h7v1H7zm0-5h7v1H7zM3 4V2H2V1h2v3h1v1H2V4h1z"/><path d="M2 6h3v1H2V6zm0 3h3v1H2V9z" fill="#4F4F4F"/><path fill="#3D4757" fill-rule="nonzero" d="M4.5 6L5 7l-2.5 3L2 9z"/><path d="M4 14l-1-2H2v-1h3v1H4l1 2v1H2v-1h2z" fill="#3D4757"/></g></svg>';
 
@@ -21490,12 +21691,126 @@ endobj
     center: center_default,
     right: right_default,
     justify: justify_default,
+    indent: indent_default,
+    outdent: outdent_default,
     list: list_default,
     image: image_default,
     hyperlink: hyperlink_default,
     table: table_default,
     latex: latex_default
   };
+  var paragraphTextTypes = /* @__PURE__ */ new Set([void 0, "text", "superscript", "subscript"]);
+  var indentMark = "quizforgeFirstLineIndent";
+  function nativeUnits(elements) {
+    return elements.flatMap((element) => element.valueList ? nativeUnits(element.valueList) : paragraphTextTypes.has(element.type) ? P(element.value) : ["\uFFFC"]);
+  }
+  function setFirstLineIndent(enabled) {
+    var _a4, _b, _c;
+    if (PREVIEW || editor.command.getOptions().mode === "readonly") return;
+    const range = editor.command.getRange();
+    if (range.startIndex < 0 || range.endIndex < 0 || range.isCrossRowCol) return;
+    const paragraphs = editor.command.getRangeParagraph();
+    if (!(paragraphs == null ? void 0 : paragraphs.length) || !nativeUnits(paragraphs).length) {
+      if (enabled) editor.command.executeInsertElementList([{ value: "\u3000\u3000", extension: { [indentMark]: true } }]);
+      return;
+    }
+    const prefix = nativeUnits(editor.command.getSurroundElementList({ direction: "before", length: range.startIndex + 1 }) || []);
+    const boundary = prefix.lastIndexOf("\n");
+    const start = range.startIndex - (prefix.length - boundary - 1);
+    const end = start + nativeUnits(paragraphs).length;
+    const result = [];
+    const edits = [];
+    let offset = 0;
+    let atStart = true;
+    for (const element of paragraphs) {
+      if (!paragraphTextTypes.has(element.type)) {
+        if (atStart && enabled && ["hyperlink", "date"].includes(element.type)) {
+          const style = ((_a4 = element.valueList) == null ? void 0 : _a4[0]) || element;
+          result.push({
+            font: style.font,
+            size: style.size,
+            rowFlex: element.rowFlex,
+            rowMargin: element.rowMargin,
+            value: "\u3000\u3000",
+            extension: { [indentMark]: true }
+          });
+          edits.push({ index: start + offset, delta: 2 });
+        }
+        result.push(element);
+        offset += nativeUnits([element]).length;
+        atStart = false;
+        continue;
+      }
+      const parts = element.value.split("\n");
+      for (let i2 = 0; i2 < parts.length; i2++) {
+        if (i2) {
+          result.push({ ...element, value: "\n" });
+          offset++;
+          atStart = true;
+        }
+        const value = parts[i2];
+        if (!value) continue;
+        const marked = !!((_b = element.extension) == null ? void 0 : _b[indentMark]);
+        if (atStart && marked) {
+          if (!enabled) {
+            const padding = ((_c = value.match(/^\u3000{1,2}/)) == null ? void 0 : _c[0]) || "";
+            if (padding) edits.push({ index: start + offset, delta: -padding.length });
+            if (value.length > padding.length) result.push({ ...element, value: value.slice(padding.length) });
+            offset += P(value).length;
+            atStart = value.length === padding.length;
+            continue;
+          }
+        } else if (atStart && enabled) {
+          result.push({
+            font: element.font,
+            size: element.size,
+            rowFlex: element.rowFlex,
+            rowMargin: element.rowMargin,
+            value: "\u3000\u3000",
+            extension: { [indentMark]: true }
+          });
+          edits.push({ index: start + offset, delta: 2 });
+        }
+        result.push({ ...element, value });
+        offset += P(value).length;
+        atStart = false;
+      }
+    }
+    if (!edits.length) return;
+    editor.command.executeSetRange(start, end);
+    if (!result.length) editor.command.executeBackspace();
+    else editor.command.executeInsertElementList(result, { ignoreContextKeys: [
+      "font",
+      "size",
+      "bold",
+      "color",
+      "italic",
+      "highlight",
+      "underline",
+      "strikeout",
+      "rowFlex",
+      "rowMargin",
+      "width",
+      "height",
+      "level",
+      "titleId",
+      "title",
+      "listId",
+      "listType",
+      "listStyle",
+      "listLevel",
+      "areaId",
+      "area",
+      "controlId",
+      "controlComponent",
+      "tdId",
+      "trId",
+      "tableId"
+    ] });
+    const mapped = (index) => edits.reduce((position, edit) => index >= edit.index ? position + (edit.delta < 0 ? -Math.min(-edit.delta, index - edit.index) : edit.delta) : position, index);
+    editor.command.executeSetRange(mapped(range.startIndex), mapped(range.endIndex));
+    document.querySelector(".ce-inputarea").focus();
+  }
   function wireKeyboard() {
     if (state.keyboardHandler) {
       document.removeEventListener("keydown", state.keyboardHandler, true);
@@ -21662,6 +21977,7 @@ endobj
       editor.listener.contentChange = () => {
         state.changed++;
         reportHeight();
+        if (state.clozeDraw) requestAnimationFrame(state.clozeDraw);
         const fingerprint = JSON.stringify(editor.command.getValue().data);
         if (fingerprint === state.answerFingerprint) return;
         state.answerFingerprint = fingerprint;
@@ -21672,6 +21988,9 @@ endobj
       if (PREVIEW) {
         state.heightObserver = new ResizeObserver(reportHeight);
         state.heightObserver.observe(paper);
+        if (state.previewResize) window.removeEventListener("resize", state.previewResize);
+        state.previewResize = fitPreview;
+        window.addEventListener("resize", state.previewResize);
       }
       editor.listener.pageScaleChange = (scale) => {
         const bounded = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, scale));
@@ -21684,11 +22003,13 @@ endobj
         Math.min(MAX_ZOOM, editor.command.getOptions().scale)
       ));
       syncPaperLayout(true);
+      if (PREVIEW) fitPreview();
       wireKeyboard();
       wireClipboard();
       wireToolbar();
       wireZoom();
       editor.listener.rangeStyleChange = (style) => {
+        var _a4;
         for (const name of ["bold", "italic", "underline"]) {
           document.querySelector(`[data-command="${name}"]`).classList.toggle("selected", !!style[name]);
         }
@@ -21698,8 +22019,16 @@ endobj
         if (style.level !== void 0) document.querySelector('[data-select="heading"]').value = style.level || "";
         if (style.font && [...document.querySelector('[data-select="font"]').options].some((o2) => o2.value === style.font))
           document.querySelector('[data-select="font"]').value = style.font;
-        if (style.size && [...document.querySelector('[data-select="size"]').options].some((o2) => Number(o2.value) === style.size))
-          document.querySelector('[data-select="size"]').value = String(style.size);
+        if (style.size) {
+          const sizes = document.querySelector('[data-select="size"]');
+          (_a4 = sizes.querySelector("[data-current-size]")) == null ? void 0 : _a4.remove();
+          if (![...sizes.options].some((o2) => Number(o2.value) === style.size)) {
+            const current = new Option(String(style.size), String(style.size));
+            current.dataset.currentSize = "true";
+            sizes.add(current);
+          }
+          sizes.value = String(style.size);
+        }
       };
       document.documentElement.dataset.editorReady = "true";
     } catch (e3) {
@@ -21711,11 +22040,13 @@ endobj
   function previewOptions() {
     return {
       mode: "readonly",
-      width: CONTENT_WIDTH,
+      width: CONTENT_WIDTH + 2,
       height: 1,
-      margins: [0, 0, 0, 0],
+      margins: [0, 1, 0, 1],
+      marginIndicatorSize: 0,
       pageMode: "continuity",
       scale: 1,
+      background: { color: "transparent", image: "" },
       header: { disabled: true },
       footer: { disabled: true },
       pageNumber: { disabled: true },
@@ -21745,6 +22076,7 @@ endobj
     workspace.addEventListener("wheel", state.zoomHandler, { capture: true, passive: false });
   }
   function focusDocument() {
+    if (PREVIEW) fitPreview();
     if (!PREVIEW) {
       const scale = editor.command.getOptions().scale;
       editor.command.executePageScale(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, scale)));
@@ -21752,6 +22084,15 @@ endobj
       document.querySelector(".ce-inputarea").focus();
     }
     syncPaperLayout(true);
+    reportHeight();
+  }
+  function fitPreview() {
+    if (!PREVIEW || !editor) return;
+    const width = Math.max(1, document.documentElement.clientWidth);
+    const scale = Math.min(1, width / (CONTENT_WIDTH + 2));
+    if (Math.abs(editor.command.getOptions().scale - scale) > 1e-6) editor.command.executePageScale(scale);
+    syncPaperLayout();
+    if (state.clozeDraw) requestAnimationFrame(state.clozeDraw);
     reportHeight();
   }
   function syncPaperLayout(center = false) {
@@ -21772,7 +22113,7 @@ endobj
     if (!PREVIEW) return;
     requestAnimationFrame(() => {
       if (window.quizforgeHost && window.quizforgeHost.contentHeight)
-        window.quizforgeHost.contentHeight(document.getElementById("paper").scrollHeight);
+        window.quizforgeHost.contentHeight(document.getElementById("paper").clientHeight);
     });
   }
   function insertNativeImage(image) {
@@ -21798,12 +22139,16 @@ endobj
     changed: () => state.changed,
     configuration: () => JSON.stringify({ paperWidth: PAPER_WIDTH, margin: SIDE_MARGIN, contentWidth: CONTENT_WIDTH, pageMode: "continuity" }),
     load: (json) => {
+      state.clozeOriginal = null;
+      state.translationOriginal = null;
       if (PREVIEW) editor.command.executeUpdateOptions(previewOptions());
       editor.command.executeSetValue(JSON.parse(json));
       focusDocument();
       state.answerFingerprint = JSON.stringify(editor.command.getValue().data);
     },
     loadDocument: (json) => {
+      state.clozeOriginal = null;
+      state.translationOriginal = null;
       const document2 = JSON.parse(json);
       editor.command.executeUpdateOptions({ ...document2.options, mode: PREVIEW ? "readonly" : "edit", magnifier: { disabled: true }, ...PREVIEW ? previewOptions() : {} });
       editor.command.executeSetValue(document2.data);
@@ -21816,6 +22161,12 @@ endobj
     value: () => JSON.stringify(editor.command.getValue().data),
     mode: (value) => {
       editor.command.executeMode(value);
+    },
+    cloze: (json) => {
+      if (PREVIEW) configureCloze(editor, state, JSON.parse(json));
+    },
+    translation: () => {
+      if (PREVIEW) configureTranslation(editor, state);
     },
     insertImage: (json) => {
       insertNativeImage(JSON.parse(json));
@@ -21844,6 +22195,8 @@ endobj
       if (name === "highlight") return editor.command.executeHighlight(value);
       if (name === "heading") return editor.command.executeTitle(value || null);
       if (name === "align") return editor.command.executeRowFlex(value);
+      if (name === "indent") return setFirstLineIndent(true);
+      if (name === "outdent") return setFirstLineIndent(false);
       if (name === "list") return editor.command.executeList(value || null, value === "ol" ? "decimal" : "disc");
       if (name === "table") return editor.command.executeInsertTable(2, 2);
       if (name === "link") return editor.command.executeHyperlink({ url: value, valueList: [{ value }] });

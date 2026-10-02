@@ -28,7 +28,8 @@ class PracticeQuestionSnapshotMapperTest {
         assertEquals(QuestionText.analysis(question), snapshot.analysis());
         assertEquals(new PracticePayload(List.of(Map.of("id", "opt_a", "content", "数组"),
                 Map.of("id", "opt_b", "content", "链表"))), snapshot.options());
-        assertEquals(new PracticePayload(Map.of("correctOptionIds", List.of("opt_a", "opt_b"))), snapshot.correctAnswer());
+        assertEquals(new PracticePayload(Map.of("correctOptionIds", List.of("opt_a", "opt_b"),
+                "maxScore", question.scoreSpec().defaultMaxScore())), snapshot.correctAnswer());
         assertEquals(new PracticePayload(List.of(Map.of("documentAssetId", "doc_1", "documentContentId", "qfd:v2:revision",
                 "anchorName", "定义", "occurrence", 2, "documentTitle", "Java", "sectionTitle", "定义"))), snapshot.sourceRefs());
     }

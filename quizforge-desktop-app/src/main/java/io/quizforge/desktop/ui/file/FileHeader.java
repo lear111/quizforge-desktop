@@ -32,7 +32,7 @@ final class FileHeader extends HBox {
         mode = UiTheme.iconButton("book", "切换到编辑模式", toggle);
         mode.setId("file-mode-toggle");
         mode.setDisable(file.file().questionBank() != null
-                && !(MixedQuestionPracticeView.containsEssay(file.file().questionBank())
+                && !(MixedQuestionPracticeView.requiresMixedView(file.file().questionBank())
                     ? MixedQuestionPracticeView.supportsEditing(file.file().questionBank())
                     : io.quizforge.core.question.type.objective.choice.QuestionText.supports(file.file().questionBank())));
         if (file.supportsMode()) getChildren().add(mode);

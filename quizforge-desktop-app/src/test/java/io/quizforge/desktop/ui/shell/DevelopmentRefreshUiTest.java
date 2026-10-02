@@ -75,7 +75,7 @@ class DevelopmentRefreshUiTest extends WorkspaceUiTestSupport {
             assertFalse(button("submit-answer").isDisabled());
             assertEquals(session, practiceDbSession());
             assertEquals(before, practiceRows());
-            button("submit-answer").fire();
+            submitAnswer();
             var submitted = practiceRows();
             DevelopmentUiReloader.refreshNode(view);
             assertNotNull(shell.lookup("#answer-feedback"));

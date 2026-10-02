@@ -8,6 +8,9 @@ import javafx.geometry.Bounds;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -19,6 +22,21 @@ import javafx.scene.layout.VBox;
 public final class QuestionCardLayout {
     private static final PseudoClass COMPACT = PseudoClass.getPseudoClass("compact");
     private QuestionCardLayout() { }
+
+    public static boolean confirmSubmission(Node owner,int unanswered){
+        var cancel=new ButtonType("继续作答",ButtonBar.ButtonData.CANCEL_CLOSE);
+        var accept=new ButtonType("提交",ButtonBar.ButtonData.OK_DONE);
+        var dialog=new Alert(Alert.AlertType.CONFIRMATION,
+                "提交后本次作答将锁定，若要修改需要重新答题。",cancel,accept);
+        dialog.setTitle("确认提交");
+        dialog.setHeaderText(unanswered>0?"还有 "+unanswered+" 道小题未作答，确定提交吗？":"确认提交这道题的答案？");
+        dialog.getDialogPane().setId("question-submit-confirmation");
+        if(owner.getScene()!=null)dialog.initOwner(owner.getScene().getWindow());
+        UiTheme.apply(dialog);
+        ((Button)dialog.getDialogPane().lookupButton(accept)).setDefaultButton(false);
+        ((Button)dialog.getDialogPane().lookupButton(cancel)).setDefaultButton(true);
+        return dialog.showAndWait().orElse(cancel)==accept;
+    }
 
     public static void configure(VBox reader) {
         reader.getStyleClass().add("question-reader");
@@ -91,6 +109,7 @@ public final class QuestionCardLayout {
     public static Button navigation(String icon, String description, Runnable action) {
         Button button = UiTheme.iconButton(icon, description, action);
         button.getStyleClass().add("question-navigation-button");
+        button.visibleProperty().bind(button.disableProperty().not());
         return button;
     }
 

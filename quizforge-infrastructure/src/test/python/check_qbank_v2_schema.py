@@ -21,7 +21,10 @@ def logical_bank(relative):
                           for resource in manifest["resources"]], **body}
 
 
-for relative in ("examples/step7-practice/Java集合练习.qbank", "examples/qbank-v2/rich-foundation.qbank"):
+packages = ("examples/step7-practice/Java集合练习.qbank", "examples/qbank-v2/rich-foundation.qbank",
+            "examples/qbank-v2/cloze-first-version.qbank", "examples/qbank-v2/reading-first-version.qbank",
+            "examples/qbank-v2/matching-first-version.qbank", "examples/qbank-v2/translation-first-version.qbank")
+for relative in packages:
     validator.validate(logical_bank(relative))
 
 fixture = logical_bank("examples/qbank-v2/rich-foundation.qbank")
@@ -127,4 +130,10 @@ for wrong_type in ("SINGLE_CHOICE", "MULTIPLE_CHOICE"):
     invalid["questions"][0]["type"] = wrong_type
     assert not validator.is_valid(invalid), "Question type and payload must agree"
     cases += 1
-print(f"PASS: Draft 2020-12 schema, 2 packages and essay fixture, {cases} contract cases, all {len(expected_optional)} optional fields")
+for relative, expected_type in zip(packages[2:], ("CLOZE", "READING", "MATCHING", "TRANSLATION")):
+    candidate = logical_bank(relative)
+    index = next(i for i, item in enumerate(candidate["questions"]) if item["type"] == expected_type)
+    candidate["questions"][index]["type"] = "ESSAY"
+    assert not validator.is_valid(candidate), f"Mismatched {expected_type} payload accepted as ESSAY"
+    cases += 1
+print(f"PASS: Draft 2020-12 schema, {len(packages)} packages and essay fixture, {cases} contract cases, all {len(expected_optional)} optional fields")

@@ -254,7 +254,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(PracticeSession.View.SUMMARY, session().currentView());
         var restored = new PersistentPracticeRuntime(service(database), bank, codec.contentId(bank));
         assertTrue(restored.session().finished());
-        assertEquals(new QuestionBankPracticeSession.Result(2, 1, 1, 50), restored.session().result());
+        assertEquals(new QuestionBankPracticeSession.Result(2, 1, 1), restored.session().result());
     }
 
     @Test void retryClearsCurrentAnswerButPreservesInitialAttemptAcrossRebuild() {
@@ -324,10 +324,10 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(PracticeSession.View.SUMMARY, session().currentView());
         assertEquals(PracticeSession.Status.ACTIVE, session().status());
         assertTrue(runtime.session().finished());
-        assertEquals(new PracticeSummary(2, 0, 0, 0, 2, java.util.OptionalInt.empty()), runtime.summary());
+        assertEquals(new PracticeSummary(2, 0, 0, 0, 2, java.util.Optional.of(java.math.BigDecimal.valueOf(0)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))), runtime.summary());
         var restored = new PersistentPracticeRuntime(service(database), bank, codec.contentId(bank));
         assertTrue(restored.session().finished());
-        assertTrue(restored.summary().accuracyPercent().isEmpty());
+        assertEquals(java.math.BigDecimal.ZERO,restored.summary().score().orElseThrow());
         restored.previous();
         assertEquals(PracticeSession.View.QUESTION, session().currentView());
         assertEquals("q_two", session().currentQuestionId());
@@ -339,11 +339,11 @@ class PersistentPracticeRuntimeIntegrationTest {
     @Test void summaryUsesLatestSubmittedResultAndTreatsRetryingAsUnfinished() {
         runtime.select("opt_b"); runtime.submit(); runtime.goTo(1); runtime.select("opt_d");
         runtime.select("opt_e"); runtime.submit(); runtime.next();
-        assertEquals(new PracticeSummary(2, 2, 1, 1, 0, java.util.OptionalInt.of(50)), runtime.summary());
+        assertEquals(new PracticeSummary(2, 2, 1, 1, 0, java.util.Optional.of(java.math.BigDecimal.valueOf(1)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))), runtime.summary());
         runtime.goTo(0); runtime.retry(); runtime.goTo(1); runtime.next();
-        assertEquals(new PracticeSummary(2, 1, 1, 0, 1, java.util.OptionalInt.of(100)), runtime.summary());
+        assertEquals(new PracticeSummary(2, 1, 1, 0, 1, java.util.Optional.of(java.math.BigDecimal.valueOf(1)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))), runtime.summary());
         runtime.goTo(0); runtime.select("opt_a"); runtime.submit(); runtime.goTo(1); runtime.next();
-        assertEquals(new PracticeSummary(2, 2, 2, 0, 0, java.util.OptionalInt.of(100)), runtime.summary());
+        assertEquals(new PracticeSummary(2, 2, 2, 0, 0, java.util.Optional.of(java.math.BigDecimal.valueOf(2)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))), runtime.summary());
         assertEquals(2, attempts("q_one").size());
     }
 
@@ -430,7 +430,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         var entries = history.listArchived(bank.assetId());
         assertEquals(1, entries.size());
         assertEquals(archivedId, entries.getFirst().sessionId());
-        assertEquals(new PracticeSummary(2, 1, 1, 0, 1, java.util.OptionalInt.of(100)), entries.getFirst().summary());
+        assertEquals(new PracticeSummary(2, 1, 1, 0, 1, java.util.Optional.of(java.math.BigDecimal.valueOf(1)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))), entries.getFirst().summary());
         assertEquals(PracticeSession.Status.ACTIVE, session().status());
         runtime.select("opt_b"); runtime.submit(); // An ACTIVE round is never History.
         assertEquals(entries, history.listArchived(bank.assetId()));
@@ -441,11 +441,11 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(entries, history.listArchived(bank.assetId()));
     }
 
-    @Test void historyOrderingAndRetryingUnfinishedWithZeroAccuracy() {
+    @Test void historyOrderingAndRetryingUnfinishedWithZeroScore() {
         var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
         runtime.select("opt_b"); runtime.submit(); runtime.retry();
         String first = runtime.sessionId(); runtime.restart();
-        assertEquals(new PracticeSummary(2, 0, 0, 0, 2, java.util.OptionalInt.empty()),
+        assertEquals(new PracticeSummary(2, 0, 0, 0, 2, java.util.Optional.of(java.math.BigDecimal.valueOf(0)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))),
                 history.listArchived(bank.assetId()).getFirst().summary());
         var laterService = new PracticeSessionService(new SqlitePracticeTransaction(database),
                 Clock.fixed(NOW.plusSeconds(60), ZoneOffset.UTC));
@@ -454,7 +454,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         String second = later.sessionId(); later.restart();
         assertEquals(List.of(second, first), history.listArchived(bank.assetId()).stream()
                 .map(PracticeHistoryEntry::sessionId).toList());
-        assertEquals(new PracticeSummary(2, 1, 0, 1, 1, java.util.OptionalInt.of(0)),
+        assertEquals(new PracticeSummary(2, 1, 0, 1, 1, java.util.Optional.of(java.math.BigDecimal.valueOf(0)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))),
                 history.listArchived(bank.assetId()).getFirst().summary());
     }
 
@@ -704,17 +704,18 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(facts,attempts.listBySessionQuestion(row.id()));
     }
 
-    @Test void accuracyCountsSubmittedQuestionsIncludingUnscoredEssayButExcludesDrafts() {
+    @Test void scoresCountGradedAttemptsAndLeaveEssayPending() {
         runtime.select("opt_a");runtime.submit();
-        assertEquals(100,runtime.summary().accuracyPercent().orElseThrow());
+        assertEquals(java.math.BigDecimal.ONE,runtime.summary().score().orElseThrow());
         runtime.next();runtime.select("opt_d");
-        assertEquals(100,runtime.summary().accuracyPercent().orElseThrow());
+        assertEquals(java.math.BigDecimal.ONE,runtime.summary().score().orElseThrow());
         var essay=io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst();
-        var mixed=new QuestionBank("qb_accuracy","accuracy",List.of(),List.of(bank.questions().getFirst(),essay),List.of());
+        var mixed=new QuestionBank("qb_scores","scores",List.of(),List.of(bank.questions().getFirst(),essay),List.of());
         var active=new PersistentPracticeRuntime(service,mixed,codec.contentId(mixed));
         active.select("opt_a");active.submit();active.next();active.saveEssayDraft(essay.id(),new EssayPracticeAnswer("answer",null));active.submit();
         assertEquals(2,active.summary().submittedCount());assertEquals(1,active.summary().unscoredCount());
-        assertEquals(50,active.summary().accuracyPercent().orElseThrow());
+        assertEquals(java.math.BigDecimal.ONE,active.summary().score().orElseThrow());
+        assertEquals(new java.math.BigDecimal("21.25"),active.summary().maxScore().orElseThrow());
     }
 
     @Test void unsubmittedEssayDocumentAndEmbeddedImageSurviveDatabaseReopenAndClear() throws Exception {
@@ -806,6 +807,42 @@ class PersistentPracticeRuntimeIntegrationTest {
         try(var stream=saved.open(resource)){assertArrayEquals(bytes,stream.readAllBytes());}
         assertEquals(1,history.questions().getFirst().attempts().size());
         assertEquals("My answer",EssayPracticeAnswer.from(history.questions().getFirst().attempts().getFirst().answer()).text());
+    }
+
+    @Test void weightedScoresSurviveReopenAndArchivedTotalsRemainFrozen(){
+        var first=bank.questions().getFirst();var second=bank.questions().getLast();
+        var a=new Question(first.id(),first.type(),first.stimulusRefs(),first.prompt(),first.payload(),first.answerSpec(),new ScoreSpec(new java.math.BigDecimal("0.5")),first.evaluationSpec(),first.analysis(),first.sourceRefs());
+        var b=new Question(second.id(),second.type(),second.stimulusRefs(),second.prompt(),second.payload(),second.answerSpec(),new ScoreSpec(new java.math.BigDecimal("3.25")),second.evaluationSpec(),second.analysis(),second.sourceRefs());
+        var weighted=new QuestionBank(bank.assetId(),bank.title(),bank.stimuli(),List.of(a,b),bank.resources());
+        var active=new PersistentPracticeRuntime(service,weighted,codec.contentId(weighted));
+        active.select("opt_a");active.submit();active.next();active.select("opt_f");active.submit();active.next();
+        assertEquals(new java.math.BigDecimal("0.5"),active.summary().score().orElseThrow());
+        assertEquals(new java.math.BigDecimal("3.75"),active.summary().maxScore().orElseThrow());
+        var reopened=new PersistentPracticeRuntime(service(new SqliteDatabase(new QuizForgeDataDirectory(temp))),weighted,codec.contentId(weighted));
+        assertEquals(active.summary(),reopened.summary());
+        String archived=active.sessionId();active.restart();
+        service.openOrCreateActiveSession(bank,codec.contentId(bank));
+        var frozen=new PracticeHistoryService(new SqlitePracticeTransaction(database)).loadArchivedSessionDetail(bank.assetId(),archived).summary();
+        assertEquals(new java.math.BigDecimal("0.5"),frozen.score().orElseThrow());
+        assertEquals(new java.math.BigDecimal("3.75"),frozen.maxScore().orElseThrow());
+    }
+    @Test void addingScoreMetadataToLegacyActiveRoundKeepsSubmittedAttemptsAndDrafts() throws Exception {
+        runtime.select("opt_a");runtime.submit();runtime.next();runtime.select("opt_d");
+        var submitted=question("q_one");var draft=question("q_two");
+        for(var row:List.of(submitted,draft)){
+            var snapshot=row.snapshot();var fields=new java.util.LinkedHashMap<>(QuestionContentData.map(snapshot.correctAnswer().value()));fields.remove("maxScore");
+            new SqlitePracticeSessionQuestionRepository(database).updateSnapshot(runtime.sessionId(),row.questionId(),row.questionOrder(),
+                    new PracticeSessionQuestion.Snapshot(snapshot.questionType(),snapshot.stem(),snapshot.options(),new PracticePayload(fields),snapshot.analysis(),snapshot.sourceRefs()),NOW);
+        }
+        sql("UPDATE question_attempt SET score=NULL,max_score=NULL");
+        var oldAttempts=attempts("q_one");
+        var restored=new PersistentPracticeRuntime(service,bank,codec.contentId(bank));
+        assertEquals(runtime.sessionId(),restored.sessionId());
+        assertEquals(oldAttempts,restored.questionState("q_one").attempts());
+        assertEquals(submitted.id(),restored.questionState("q_one").sessionQuestion().id());
+        assertEquals(draft.draftAnswer(),restored.questionState("q_two").sessionQuestion().draftAnswer());
+        assertEquals(java.math.BigDecimal.ONE,restored.summary().score().orElseThrow());
+        assertEquals(new java.math.BigDecimal("2"),restored.summary().maxScore().orElseThrow());
     }
 
     private PracticeSession session() { return new SqlitePracticeSessionRepository(database).findById(runtime.sessionId()).orElseThrow(); }

@@ -135,6 +135,7 @@ public final class EssayAnswerPane extends VBox {
         submit.setText("提交答案");submit.setDisable(empty);
     }
     private void submit(){
+        if(!io.quizforge.desktop.ui.question.shared.QuestionCardLayout.confirmSubmission(this,0))return;
         try{
             if(practice!=null)practice.submit();
             locallySubmitted=true;showSubmission();changed.run();

@@ -44,14 +44,19 @@ public final class PracticeSessionService {
             var persistedRows=repositories.questions().findBySessionId(session.id());
             var persistedIds = persistedRows.stream()
                     .map(PracticeSessionQuestion::questionId).toList();
-            boolean incomplete=persistedRows.stream().filter(q->QuestionTypes.isEssay(q.snapshot().questionType())).anyMatch(q->{
+            boolean incomplete=persistedRows.stream().filter(q->QuestionTypes.isEssay(q.snapshot().questionType()) || QuestionTypes.isCloze(q.snapshot().questionType()) || QuestionTypes.isReading(q.snapshot().questionType()) || QuestionTypes.isMatching(q.snapshot().questionType()) || QuestionTypes.isTranslation(q.snapshot().questionType())).anyMatch(q->{
                 var fields=QuestionContentData.map(q.snapshot().correctAnswer().value());
-                if(!(fields.get("essayPresentation") instanceof Map<?,?> presentation))return true;
+                var key = QuestionTypes.isTranslation(q.snapshot().questionType()) ? "translationPresentation"
+                        : QuestionTypes.isMatching(q.snapshot().questionType()) ? "matchingPresentation"
+                        : QuestionTypes.isReading(q.snapshot().questionType()) ? "readingPresentation"
+                        : QuestionTypes.isCloze(q.snapshot().questionType()) ? "clozePresentation" : "essayPresentation";
+                if(!(fields.get(key) instanceof Map<?,?> presentation))return true;
                 return resources!=io.quizforge.core.port.QuestionResourceInput.NONE
                         && ((Map<?,?>)presentation.get("resourceData")).size()<((List<?>)presentation.get("resources")).size();
             });
+            boolean missingScores=persistedRows.stream().anyMatch(q->!QuestionContentData.map(q.snapshot().correctAnswer().value()).containsKey("maxScore"));
             if (!session.questionBankContentId().equals(contentId)
-                    || !persistedIds.equals(bank.questions().stream().map(Question::id).toList()) || incomplete) {
+                    || !persistedIds.equals(bank.questions().stream().map(Question::id).toList()) || incomplete || missingScores) {
                 synchronize(repositories, session, bank, contentId, now,resources);
             } else {
                 repositories.sessions().touch(session.id(), now);
@@ -123,10 +128,109 @@ public final class PracticeSessionService {
         });
     }
 
+    public ActivePracticeSnapshot saveMatchingDraft(String sessionId, String expectedContentId, String questionId,
+            Map<String,String> assignments) {
+        var answer = new MatchingPracticeAnswer(assignments);
+        return transactions.execute(repositories -> {
+            requireCurrent(repositories, sessionId, expectedContentId, questionId);
+            var question = requireAnswerable(repositories, sessionId, questionId);
+            if (!QuestionTypes.isMatching(question.snapshot().questionType()))
+                throw new IllegalArgumentException("Matching answer requires a matching question");
+            validateMatching(question.snapshot(), answer.assignments());
+            boolean retrying = question.practiceState() == PracticeSessionQuestion.State.RETRYING;
+            if (!retrying && repositories.attempts().countBySessionQuestion(question.id()) != 0)
+                throw new IllegalStateException("Initial answer already exists");
+            var state = retrying ? PracticeSessionQuestion.State.RETRYING
+                    : answer.empty() ? PracticeSessionQuestion.State.UNANSWERED : PracticeSessionQuestion.State.DRAFT;
+            var payload = answer.empty() ? null : answer.payload();
+            if (state == question.practiceState() && java.util.Objects.equals(payload, question.draftAnswer()))
+                return restore(repositories, sessionId);
+            Instant now = clock.instant();
+            repositories.questions().updateDraft(sessionId, questionId, payload, state, now);
+            repositories.sessions().touch(sessionId, now);
+            return restore(repositories, sessionId);
+        });
+    }
+
+    private Question validateMatching(PracticeSessionQuestion.Snapshot snapshot, Map<String,String> assignments) {
+        var data = QuestionContentData.map(snapshot.correctAnswer().value());
+        var question = MatchingQuestionSnapshot.from(new PracticePayload(data.get("matching"))).question();
+        io.quizforge.core.question.type.objective.matching.MatchingQuestionType.validateAssignments(question, assignments);
+        return question;
+    }
+    public ActivePracticeSnapshot saveTranslationDraft(String sessionId, String expectedContentId, String questionId,
+            Map<String,EssayPracticeAnswer> answers) {
+        var answer = new TranslationPracticeAnswer(answers);
+        return transactions.execute(repositories -> {
+            requireCurrent(repositories, sessionId, expectedContentId, questionId);
+            var question = requireAnswerable(repositories, sessionId, questionId);
+            validateTranslation(question.snapshot(), answers);
+            boolean retrying = question.practiceState() == PracticeSessionQuestion.State.RETRYING;
+            if (!retrying && repositories.attempts().countBySessionQuestion(question.id()) != 0)
+                throw new IllegalStateException("Initial answer already exists");
+            var state = retrying ? PracticeSessionQuestion.State.RETRYING
+                    : answer.empty() ? PracticeSessionQuestion.State.UNANSWERED : PracticeSessionQuestion.State.DRAFT;
+            var payload = answer.empty() ? null : answer.payload();
+            if (state == question.practiceState() && java.util.Objects.equals(payload, question.draftAnswer()))
+                return restore(repositories, sessionId);
+            Instant now = clock.instant();
+            repositories.questions().updateDraft(sessionId, questionId, payload, state, now);
+            repositories.sessions().touch(sessionId, now);
+            return restore(repositories, sessionId);
+        });
+    }
+    private Question validateTranslation(PracticeSessionQuestion.Snapshot snapshot, Map<String,EssayPracticeAnswer> answers) {
+        if (!QuestionTypes.isTranslation(snapshot.questionType())) throw new IllegalArgumentException("Not a translation question");
+        var data = QuestionContentData.map(snapshot.correctAnswer().value());
+        var source = TranslationQuestionSnapshot.from(new PracticePayload(data.get("translation"))).question();
+        QuestionBankPracticeSession.validateTranslations(source, answers);
+        return source;
+    }
+
     public ActivePracticeSnapshot submitAnswer(String sessionId, String expectedContentId, String questionId) {
         return transactions.execute(repositories -> {
             requireCurrent(repositories, sessionId, expectedContentId, questionId);
             var current = requireQuestion(repositories, sessionId, questionId);
+            if (QuestionTypes.isTranslation(current.snapshot().questionType())) {
+                var question = requireAnswerable(repositories, sessionId, questionId);
+                var answer = TranslationPracticeAnswer.from(question.draftAnswer());
+                var source = validateTranslation(question.snapshot(), answer.answers());
+                if (answer.empty()) throw new IllegalStateException("Write an answer first");
+                boolean retrying = question.practiceState() == PracticeSessionQuestion.State.RETRYING;
+                var attempts = repositories.attempts().listBySessionQuestion(question.id());
+                if (retrying ? attempts.isEmpty() : !attempts.isEmpty())
+                    throw new IllegalStateException("Practice attempt state is inconsistent");
+                var items = (io.quizforge.core.question.type.subjective.translation.TranslationPayload) source.payload();
+                double maxScore = source.scoreSpec().defaultMaxScore().doubleValue() * items.items().size();
+                Instant now = clock.instant();
+                repositories.attempts().append(new QuestionAttempt(id("pa_"), question.id(),
+                        repositories.attempts().nextAttemptNo(question.id()), retrying ? QuestionAttempt.Mode.RETRY : QuestionAttempt.Mode.INITIAL,
+                        answer.payload(), QuestionAttempt.Result.UNSCORED, null, maxScore, now));
+                repositories.questions().updateDraft(sessionId, questionId, null, PracticeSessionQuestion.State.SUBMITTED, now);
+                repositories.sessions().touch(sessionId, now);
+                return restore(repositories, sessionId);
+            }
+            if (QuestionTypes.isMatching(current.snapshot().questionType())) {
+                var question = requireAnswerable(repositories, sessionId, questionId);
+                var answer = MatchingPracticeAnswer.from(question.draftAnswer());
+                var source = validateMatching(question.snapshot(), answer.assignments());
+                if (answer.empty()) throw new IllegalStateException("Select an answer first");
+                var attempts = repositories.attempts().listBySessionQuestion(question.id());
+                boolean retrying = question.practiceState() == PracticeSessionQuestion.State.RETRYING;
+                if (retrying ? attempts.isEmpty() : !attempts.isEmpty())
+                    throw new IllegalStateException("Practice attempt state is inconsistent");
+                int gradable = io.quizforge.core.question.type.objective.matching.MatchingQuestionType.gradableCount(source);
+                double unit = source.scoreSpec().defaultMaxScore().doubleValue();
+                int matched = io.quizforge.core.question.type.objective.matching.MatchingQuestionType.matchingCount(source, answer.assignments());
+                Instant now = clock.instant();
+                repositories.attempts().append(new QuestionAttempt(id("pa_"), question.id(),
+                        repositories.attempts().nextAttemptNo(question.id()), retrying ? QuestionAttempt.Mode.RETRY : QuestionAttempt.Mode.INITIAL,
+                        answer.payload(), matched == gradable ? QuestionAttempt.Result.CORRECT : QuestionAttempt.Result.INCORRECT,
+                        unit * matched, unit * gradable, now));
+                repositories.questions().updateDraft(sessionId, questionId, null, PracticeSessionQuestion.State.SUBMITTED, now);
+                repositories.sessions().touch(sessionId, now);
+                return restore(repositories, sessionId);
+            }
             if (QuestionTypes.isEssay(current.snapshot().questionType())) {
                 if (current.practiceState() == PracticeSessionQuestion.State.SUBMITTED)
                     throw new IllegalStateException("Answer already submitted");
@@ -141,7 +245,8 @@ public final class PracticeSessionService {
                 repositories.attempts().append(new QuestionAttempt(id("pa_"), current.id(),
                         repositories.attempts().nextAttemptNo(current.id()), revision ? QuestionAttempt.Mode.REVISION
                                 : retry ? QuestionAttempt.Mode.RETRY : QuestionAttempt.Mode.INITIAL,
-                        answer.payload(), QuestionAttempt.Result.UNSCORED, null, null, now));
+                        answer.payload(), QuestionAttempt.Result.UNSCORED, null,
+                        ((Map<?,?>)current.snapshot().correctAnswer().value()).get("maxScore") instanceof Number maximum ? maximum.doubleValue() : null, now));
                 repositories.questions().updateDraft(sessionId, questionId, null, PracticeSessionQuestion.State.SUBMITTED, now);
                 repositories.sessions().touch(sessionId, now);
                 return restore(repositories, sessionId);
@@ -160,11 +265,21 @@ public final class PracticeSessionService {
             var correctData = (Map<String, Object>) question.snapshot().correctAnswer().value();
             var correct = PracticeRuntimeMapper.optionIds(new PracticePayload(correctData.get("correctOptionIds")));
             Instant now = clock.instant();
+            Double score=null,maxScore=null;
+            if(QuestionTypes.isChoice(question.snapshot().questionType()) && correctData.get("maxScore") instanceof Number maximum){
+                maxScore=maximum.doubleValue();score=selected.equals(correct)?maxScore:0.0;
+            }
+            if(QuestionTypes.isCloze(question.snapshot().questionType()) || QuestionTypes.isReading(question.snapshot().questionType())){
+                var data=QuestionContentData.map(correctData.get(QuestionTypes.isReading(question.snapshot().questionType()) ? "reading" : "cloze"));maxScore=((Number)data.get("maxScore")).doubleValue();
+                long matched=selected.stream().filter(correct::contains).count();
+                double unitScore=data.containsKey("unitScore")?((Number)data.get("unitScore")).doubleValue():maxScore/correct.size();
+                score=unitScore*matched;
+            }
             repositories.attempts().append(new QuestionAttempt(id("pa_"), question.id(),
                     repositories.attempts().nextAttemptNo(question.id()),
                     retrying ? QuestionAttempt.Mode.RETRY : QuestionAttempt.Mode.INITIAL,
                     answer(selected), selected.equals(correct) ? QuestionAttempt.Result.CORRECT : QuestionAttempt.Result.INCORRECT,
-                    null, null, now));
+                    score, maxScore, now));
             repositories.questions().updateDraft(sessionId, questionId, null, PracticeSessionQuestion.State.SUBMITTED, now);
             repositories.sessions().touch(sessionId, now);
             return restore(repositories, sessionId);
@@ -236,6 +351,28 @@ public final class PracticeSessionService {
     }
 
     private void validateSelection(PracticeSessionQuestion.Snapshot snapshot, Set<String> selected) {
+        if (QuestionTypes.isReading(snapshot.questionType())) {
+            var items = new java.util.HashSet<String>();
+            var ids = new java.util.HashSet<String>();
+            for (Object value : (List<?>) snapshot.options().value()) {
+                var option = (Map<?,?>) value;
+                var id = (String) option.get("id");
+                ids.add(id);
+                if (selected.contains(id) && !items.add((String) option.get("itemId")))
+                    throw new IllegalArgumentException("每道阅读小题只能选择一个选项");
+            }
+            if (!ids.containsAll(selected)) throw new IllegalArgumentException("Invalid reading option IDs");
+            return;
+        }
+        if(QuestionTypes.isCloze(snapshot.questionType())){
+            var blanks=new java.util.HashSet<String>();var ids=new java.util.HashSet<String>();
+            for(Object value:(List<?>)snapshot.options().value()){
+                var option=(Map<?,?>)value;var id=(String)option.get("id");ids.add(id);
+                if(selected.contains(id) && !blanks.add((String)option.get("blankId")))throw new IllegalArgumentException("每个空只能选择一个选项");
+            }
+            if(!ids.containsAll(selected))throw new IllegalArgumentException("Invalid cloze option IDs");
+            return;
+        }
         if (!QuestionTypes.isChoice(snapshot.questionType()))
             throw new IllegalStateException("Unsupported practice question type");
         Set<String> options = new java.util.HashSet<>();

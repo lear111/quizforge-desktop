@@ -1,6 +1,6 @@
 # QuizForge Desktop V2
 
-Java 21 + JavaFX 本地桌面题库应用，独立于 V1。当前保留工作区文件管理、Markdown 编辑与命名来源引用、单选/多选/作文编辑、练习草稿/提交/重做及归档历史。AI 仅保留设置、凭据和连接测试。
+Java 21 + JavaFX 本地桌面题库应用，独立于 V1。支持工作区文件管理、Markdown 编辑与命名来源引用，以及单选、多选、完形填空、阅读理解、段落排序、翻译、作文的编辑与练习。作答支持草稿、提交确认、重做和归档历史，统计统一使用得分。AI 仅保留设置、凭据和连接测试。
 
 ## 构建与运行
 
@@ -37,7 +37,7 @@ LiveUi 合并 Java、CSS 与 Vite 更新，需要支持增强类重定义的 JBR
 | quizforge-infrastructure | 本地文件与 ZIP、SQLite/Flyway、Windows DPAPI、DeepSeek HTTP | core |
 | quizforge-desktop-app | JavaFX 交互、内容组件和 Spring 组合入口 | core、infrastructure |
 
-题目按 model/type/content/resource/source/service 分工，具体题型分 objective/choice 与 subjective/essay。桌面 UI 按 shell/workspace/file/markdown/question/content/ai/shared 组织，开发刷新在 dev。旧 extension-api、default-extensions、Material 和标准文档生成链路已退出构建。
+题目按 model/type/content/resource/source/service 分工。客观题在 objective/choice、cloze、reading、matching，主观题在 subjective/essay、translation；桌面题型组件使用对应包结构。桌面 UI 按 shell/workspace/file/markdown/question/content/ai/shared 组织，开发刷新在 dev。旧 extension-api、default-extensions、Material 和标准文档生成链路已退出构建。
 
 ## 文件与数据
 
@@ -51,9 +51,11 @@ LiveUi 合并 Java、CSS 与 Vite 更新，需要支持增强类重定义的 JBR
 
 普通 Markdown 首次用于来源时登记 quizforge 身份，用户选择正文块并创建 qf:anchor。旧 study-document 与 qf:id 仍可读。源码类型已改为 REGISTERED_MARKDOWN，索引适配器保留历史 STANDARD_DOCUMENT 数据库文本，既有 SQL 迁移不改写。
 
-正确率口径：正确题数 / 已提交题数，包含待评分作文，草稿不计入；没有提交显示“—”。主观题可保存参考答案与评分指导，目前提交结果为 UNSCORED，人工/AI 评分流程未实现。
+练习与历史统一显示“得分 / 总分”：得分累计当前已提交的最新评分结果，总分按全部题目的分值计算，多小题题型按小题计分，锁定提示不计分。草稿、重试中及未评分题不累计得分；旧历史缺少分值信息时显示“—”。主观题可保存参考答案与评分指导，目前提交结果为 UNSCORED，人工/AI 评分流程未实现。
 
 ## 开发文档
+
+本阶段补齐考研英语题型、按实际顺序展开小题的大纲、整张题卡拖动排序，以及 Canvas 对齐、首行缩进和只读预览缓存。小作文复用 `ESSAY`；人工/AI 评分仍未实现。可直接打开 `examples/qbank-v2` 中四个新增题型的示例包验证编辑、练习与历史。
 
 完整目录见 [开发文档导航](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/README.md)。新人从 [项目结构与新增题型指南](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/new-developer-guide.md) 开始，实施新题型时填写 [五步模板](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/templates/new-question-type.md)。题库协议统一维护在 [文件格式与内容资源](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/qbank-format.md)。
 

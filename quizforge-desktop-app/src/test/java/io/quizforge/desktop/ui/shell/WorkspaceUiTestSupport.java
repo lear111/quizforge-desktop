@@ -98,6 +98,8 @@ abstract class WorkspaceUiTestSupport {
                 false, false, false, false, false, false, false, false, false, false, null);
     }
 
+    protected void submitAnswer(){io.quizforge.desktop.testing.FxTestRuntime.acceptSubmission(button("submit-answer"));}
+
     protected static void answerDialog(String label) {
         DialogPane pane = currentDialog();
         ButtonType choice = pane.getButtonTypes().stream()

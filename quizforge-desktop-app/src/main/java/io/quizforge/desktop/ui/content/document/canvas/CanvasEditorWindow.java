@@ -30,6 +30,7 @@ public final class CanvasEditorWindow {
     private final javafx.animation.PauseTransition draftDelay=new javafx.animation.PauseTransition(javafx.util.Duration.millis(450));
     private java.util.function.Consumer<ContentEditResult> draftSaver;
     private boolean draftDirty;
+    private java.util.function.Consumer<QuestionContent> contentValidator=ignored->{};
 
     CanvasEditorWindow(Window owner,String title,QuestionContent content,List<QBankResource> resources,QuestionResourceInput input) {
         session=new ContentEditSession(content,resources,input);
@@ -60,6 +61,11 @@ public final class CanvasEditorWindow {
     public static ContentEditResult openEditor(Window owner,String title,QuestionContent content,
             List<QBankResource> resources,QuestionResourceInput input) {
         var window=new CanvasEditorWindow(owner,title,content,resources,input);
+        window.stage.showAndWait();return window.result;
+    }
+    public static ContentEditResult openValidatedEditor(Window owner,String title,QuestionContent content,
+            List<QBankResource> resources,QuestionResourceInput input,java.util.function.Consumer<QuestionContent> validator){
+        var window=new CanvasEditorWindow(owner,title,content,resources,input);window.contentValidator=java.util.Objects.requireNonNull(validator);
         window.stage.showAndWait();return window.result;
     }
     public static ContentEditResult openEditor(Window owner,String title,QuestionContent content,
@@ -96,7 +102,7 @@ public final class CanvasEditorWindow {
     }
     private void save(){
         if(draftSaver!=null){if(persistDraft())stage.close();return;}
-        try{result=session.save(bridge.getContent());stage.close();}catch(RuntimeException failed){showError("保存失败："+failed.getMessage());}
+        try{var content=bridge.getContent();contentValidator.accept(content);result=session.save(content);stage.close();}catch(RuntimeException failed){showError("保存失败："+failed.getMessage());}
     }
     private void cancel(){
         if(draftSaver!=null){if(persistDraft())stage.close();return;}

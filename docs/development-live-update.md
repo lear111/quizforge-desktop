@@ -60,6 +60,8 @@ The agent is built locally from `tools/live-java`; no agent download is required
 JavaFX CSS updates remain immediate under `LiveCss`; copied file stylesheets
 also receive a cache-busting URL in Java-only mode.
 
+快捷键在 QuizForge 应用窗口中按下，用于重建当前页面；它不编译源码、不启动新进程，也不会补做新增题型登记或构造函数初始化。改变题型登记、缓存容量等静态/初始化配置后应重启应用。
+
 ## Boundaries requiring restart
 
 - POM/dependency changes, bootstrap/configuration code, schema/migration files,
@@ -113,5 +115,28 @@ probe files and logs stay under ignored `target/`.
 2026-10-01：reactor 与 LiveJava 模块表收敛为 core、infrastructure、desktop-app。刷新入口为 io.quizforge.desktop.dev.DevelopmentUiReloader，组件实现 DevelopmentRefreshable，代理不再依赖 ui 包中的旧 FQN 或私有方法反射。
 
 Canvas 源码在 quizforge-desktop-app/editor-web/canvas，构建输出在 src/main/resources/editor/canvas；JavaFX/Markdown 样式在 src/main/resources/styles。修改前端后执行 npm run build，普通启动使用这些包内文件。
+
+## 只读富文本预览缓存
+
+`CanvasDocumentView` 在首次附着到 Scene 时才创建 WebView；页面重建先尝试复用旧渲染器，切题后将已加载且正常显示的预览放入当前 Scene 的缓存。最多保留六个脱离场景的预览，当前仍显示的预览另计；单个题卡的正文、解析等分别占一个缓存项，不等于缓存六张题卡。
+
+缓存按预览 ID、内容、实际引用资源和渲染模式匹配。只更改答案时同步选择配置，不重新加载正文；正文或引用资源变化时加载新内容。缓存期间清除旧页面回调、资源入口和完形弹窗，恢复时绑定当前页面。超出上限、关闭窗口或替换 Scene 时释放缓存；未完成加载的预览不入缓存，编辑窗口不参与缓存。首次加载完成前隐藏 WebView，避免原生工具栏闪现。
+
+只读预览不保留脏状态检测所用的第二份序列化快照；原生编辑窗口仍保留快照。TEXT/RICH 转换只加载实际引用的图片，插入图片只读取本次图片。缓存命中减少页面重复加载，同时保留渲染器的内存；不同页面、图片和操作序列下的占用不能直接当作受控优化对比。
+
+## 内存排查
+
+先识别桌面进程；普通启动包含桌面入口，LiveJava 启动可能只显示 `@launch.args`，对应参数文件中的入口为 `io.quizforge.dev.QuizForgeDevLauncher`。VS Code 的 `org.eclipse.jdt.ls` 是编辑器服务，LiveWeb 的 node/Vite 和 esbuild 是开发子进程，统计时分别列出。
+
+```powershell
+# 在确认进程身份后替换此值，JAVA_HOME 指向当前 JDK/JBR
+$quizForgeProcessId = 12345
+Get-Process -Id $quizForgeProcessId | Select-Object Id,
+  @{Name='WorkingSetMiB';Expression={[math]::Round($_.WorkingSet64/1MB,1)}},
+  @{Name='PrivateCommitMiB';Expression={[math]::Round($_.PrivateMemorySize64/1MB,1)}}
+& "$env:JAVA_HOME/bin/jcmd.exe" $quizForgeProcessId GC.heap_info
+```
+
+工作集是驻留内存，私有提交是进程申请的私有内存，Java 堆只是其中一部分；WebKit、字体、图片、线程及 JVM 本身也占内存。`GC.heap_info` 不主动执行 Full GC。应用未默认启用 Native Memory Tracking，不能据此给出可靠的原生分项占用，也不能仅凭未强制回收的对象直方图判定泄漏。对比需使用相同启动模式、题库和切题序列，并记录 Java 堆、进程工作集及缓存状态。
 
 Test-QuizForgeLiveJavaUi.ps1 会把三个模块源码与 tools 复制到 target/live-java-ui-smoke/<run>/checkout，真实 Maven 编译与源码替换仅发生在副本。-WithLiveCss 开启副本 CSS 监听；-CanvasDevUrl http://127.0.0.1:5173 可验证已明确提供的本地 Vite 服务，探针不会停止外部服务器。调用方启动自己拥有的服务时需自行清理进程树。

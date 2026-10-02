@@ -46,7 +46,7 @@ class PracticeHistoryUiTest extends WorkspaceUiTestSupport {
     @Test void qbankHistoryCardsExcludeActiveAndDeleteOnlyAfterConfirmation() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank");
-            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-1")).fire(); submitAnswer();
             String archived = practiceDbSession().id();
             new io.quizforge.infrastructure.persistence.practice.SqlitePracticeSessionRepository(practiceDb())
                     .archive(archived, java.time.Instant.parse("2026-09-28T05:00:00Z"));
@@ -57,7 +57,7 @@ class PracticeHistoryUiTest extends WorkspaceUiTestSupport {
             shell.applyCss(); shell.layout();
             var card = (javafx.scene.layout.VBox) shell.lookup("#history-card-" + archived);
             assertNotNull(card);
-            assertTrue(text(card).contains("正确率 0%"));
+            assertTrue(text(card).contains("得分 0 / 2"));
             assertTrue(text(card).contains("2 道题"));
             assertEquals(1, ((javafx.scene.layout.TilePane) shell.lookup("#history-grid")).getChildren().size());
             assertNull(shell.lookup("#history-card-" + active));
@@ -125,9 +125,9 @@ class PracticeHistoryUiTest extends WorkspaceUiTestSupport {
         fx(() -> {
             open("题库/Java集合.qbank");
             var tab = shell.tabs().active();
-            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-1")).fire(); submitAnswer();
             button("practice-retry").fire();
-            ((RadioButton) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-0")).fire(); submitAnswer();
             button("next-question").fire();
             ((javafx.scene.control.CheckBox) shell.lookup("#option-0")).fire();
             String archived = practiceDbSession().id();
@@ -187,7 +187,7 @@ class PracticeHistoryUiTest extends WorkspaceUiTestSupport {
     @Test void historyOutlineUsesArchivedIncorrectState() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank");
-            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-1")).fire(); submitAnswer();
             String archived = practiceDbSession().id();
             new io.quizforge.infrastructure.persistence.practice.SqlitePracticeSessionRepository(practiceDb())
                     .archive(archived, java.time.Instant.parse("2026-09-28T05:00:00Z"));
@@ -205,7 +205,7 @@ class PracticeHistoryUiTest extends WorkspaceUiTestSupport {
     @Test void historyDetailShowsIncorrectAndRetryingWithEarlierAttempt() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank");
-            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-1")).fire(); submitAnswer();
             button("practice-retry").fire();
             ((RadioButton) shell.lookup("#option-0")).fire();
             String archived = practiceDbSession().id();

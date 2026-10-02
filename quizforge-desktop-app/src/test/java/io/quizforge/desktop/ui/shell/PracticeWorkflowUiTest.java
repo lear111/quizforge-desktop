@@ -22,6 +22,26 @@ import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
+    @Test void summaryDisplaysWeightedPointsAndFullTotalWithoutPercentages() throws Exception {
+        var reader=new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader();
+        var path=fixture.alphaRoot.resolve("题库/Java集合.qbank");var bank=reader.read(path);
+        var questions=new ArrayList<Question>();
+        for(int i=0;i<bank.questions().size();i++){
+            var q=bank.questions().get(i);
+            questions.add(new Question(q.id(),q.type(),q.stimulusRefs(),q.prompt(),q.payload(),q.answerSpec(),
+                    new io.quizforge.core.question.model.ScoreSpec(new java.math.BigDecimal(i==0?"2.5":"7.25")),q.evaluationSpec(),q.analysis(),q.sourceRefs()));
+        }
+        new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(path,
+                new QuestionBank(bank.assetId(),bank.title(),bank.stimuli(),questions,bank.resources()),io.quizforge.infrastructure.filesystem.qbank.ResourceContentProvider.NONE);
+        fx(()->{
+            open("题库/Java集合.qbank");((RadioButton)shell.lookup("#option-0")).fire();submitAnswer();
+            button("next-question").fire();button("next-question").fire();
+            assertEquals("2.5",((Label)shell.lookup("#summary-score")).getText());
+            assertEquals("/ 9.75",((Label)shell.lookup("#summary-max-score")).getText());
+            assertNull(shell.lookup("#summary-percentage"));
+            assertFalse(text(shell.lookup("#practice-summary")).contains("%"));
+        });
+    }
 
     @Test void questionBankDefaultsToPracticeAndReusesOneModeToggle() throws Exception {
         fx(() -> {
@@ -51,14 +71,14 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
             assertFalse(text(shell.filePane()).contains("以下哪些描述"));
             assertTrue(button("submit-answer").isDisabled());
             ((RadioButton) shell.lookup("#option-0")).fire();
-            button("submit-answer").fire();
+            submitAnswer();
             assertTrue(text(shell.lookup("#answer-feedback")).contains("回答正确"));
             assertEquals("Java集合 · section_list", button("qbank-source-0").getText());
             button("next-question").fire();
             assertNull(shell.lookup("#answer-feedback"));
             ((CheckBox) shell.lookup("#option-0")).fire();
             ((CheckBox) shell.lookup("#option-1")).fire();
-            button("submit-answer").fire();
+            submitAnswer();
             assertTrue(text(shell.lookup("#answer-feedback")).contains("回答正确"));
             button("previous-question").fire();
             assertTrue(text(shell.lookup("#answer-feedback")).contains("回答正确"));
@@ -70,7 +90,7 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
             byte[] before = Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
             open("题库/Java集合.qbank");
             ((RadioButton) shell.lookup("#option-1")).fire();
-            button("submit-answer").fire();
+            submitAnswer();
             assertTrue(text(shell.lookup("#answer-feedback")).contains("回答错误"));
             assertArrayEquals(before, Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
         });
@@ -81,13 +101,14 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
             byte[] before = Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
             open("题库/Java集合.qbank");
             ((RadioButton) shell.lookup("#option-1")).fire();
-            button("submit-answer").fire();
+            submitAnswer();
             button("next-question").fire();
             ((CheckBox) shell.lookup("#option-0")).fire();
             ((CheckBox) shell.lookup("#option-1")).fire();
-            button("submit-answer").fire();
+            submitAnswer();
             button("next-question").fire();
-            assertEquals("50%", ((Label) shell.lookup("#summary-percentage")).getText());
+            assertEquals("1", ((Label) shell.lookup("#summary-score")).getText());
+            assertEquals("/ 2", ((Label) shell.lookup("#summary-max-score")).getText());
             assertEquals("1", ((Label) shell.lookup("#summary-correct-count")).getText());
             assertEquals("1", ((Label) shell.lookup("#summary-incorrect-count")).getText());
             assertEquals("0", ((Label) shell.lookup("#summary-unanswered-count")).getText());
@@ -97,7 +118,8 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
             shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
             shell.applyCss(); shell.layout();
             assertNotNull(shell.lookup("#practice-summary"));
-            assertEquals("50%", ((Label) shell.lookup("#summary-percentage")).getText());
+            assertEquals("1", ((Label) shell.lookup("#summary-score")).getText());
+            assertEquals("/ 2", ((Label) shell.lookup("#summary-max-score")).getText());
             assertEquals("1", ((Label) shell.lookup("#summary-correct-count")).getText());
             assertTrue(shell.lookup("#question-outline").isVisible());
             assertArrayEquals(before, Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
@@ -107,7 +129,7 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
     @Test void retryQuestionHidesFeedbackKeepsAttemptsAndUpdatesOutlineAfterRetrySubmit() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank");
-            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-1")).fire(); submitAnswer();
             assertTrue(button("question-number-1").getStyleClass().contains("incorrect"));
             assertNotNull(shell.lookup("#answer-feedback"));
             assertNotNull(shell.lookup("#practice-retry"));
@@ -125,7 +147,7 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
             shell.applyCss(); shell.layout();
             assertNull(shell.lookup("#answer-feedback"));
             assertTrue(button("question-number-1").getStyleClass().contains("unsubmitted"));
-            ((RadioButton) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-0")).fire(); submitAnswer();
             assertTrue(button("question-number-1").getStyleClass().contains("correct"));
             assertEquals(2, attempts.listBySessionQuestion(row.id()).size());
             assertEquals(io.quizforge.core.practice.QuestionAttempt.Mode.RETRY,
@@ -137,7 +159,8 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
         fx(() -> {
             open("题库/Java集合.qbank");
             button("next-question").fire(); button("next-question").fire();
-            assertEquals("—", ((Label) shell.lookup("#summary-percentage")).getText());
+            assertEquals("0", ((Label) shell.lookup("#summary-score")).getText());
+            assertEquals("/ 2", ((Label) shell.lookup("#summary-max-score")).getText());
             assertEquals("0", ((Label) shell.lookup("#summary-correct-count")).getText());
             assertEquals("0", ((Label) shell.lookup("#summary-incorrect-count")).getText());
             assertEquals("2", ((Label) shell.lookup("#summary-unanswered-count")).getText());
@@ -157,7 +180,7 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
         fx(() -> {
             open("题库/Java集合.qbank");
             var tab = shell.tabs().active();
-            ((RadioButton) shell.lookup("#option-1")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-1")).fire(); submitAnswer();
             button("next-question").fire(); button("next-question").fire();
             String oldId = practiceDbSession().id();
             ((QuestionBankPracticeView) shell.lookup("#question-practice")).setRestartConfirmation(() -> false);
@@ -308,11 +331,13 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
             var card = (javafx.scene.layout.VBox) shell.lookup("#practice-question-card");
             double cardHeight = card.getHeight();
             assertEquals(720, card.getWidth(), 1);
-            var cardBounds = card.localToScene(card.getBoundsInLocal());
-            assertTrue(button("previous-question").localToScene(button("previous-question").getBoundsInLocal())
-                    .getMaxX() < cardBounds.getMinX());
-            assertTrue(button("next-question").localToScene(button("next-question").getBoundsInLocal())
-                    .getMinX() > cardBounds.getMaxX());
+            // Shadows extend beyond the boxes; verify the actual navigation layout.
+            var cardBounds = card.localToScene(card.getLayoutBounds());
+            assertFalse(button("previous-question").isVisible(), "The first card has no previous arrow");
+            assertTrue(button("next-question").isVisible());
+            var nextBounds = button("next-question").localToScene(button("next-question").getLayoutBounds());
+            assertTrue(nextBounds.getMinX() > cardBounds.getMaxX(),
+                    "The next arrow must sit outside the card: " + nextBounds + " / " + cardBounds);
             for (Button control : List.of(button("previous-question"), button("next-question"))) {
                 assertEquals("", control.getText());
                 assertNotNull(control.getTooltip());
@@ -343,8 +368,16 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
         fx(() -> {
             shell.refresh(); open(path);
             assertNotNull(shell.lookup("#question-outline"));
-            assertEquals(List.of("1", "3", "5"), outlineNumbers("single_choice"));
-            assertEquals(List.of("2", "4", "6"), outlineNumbers("multiple_choice"));
+            assertEquals(List.of("1"), outlineNumbers("single_choice"));
+            assertEquals(List.of("2"), outlineNumbers("multiple_choice"));
+            assertEquals(List.of("3"), outlineNumbers("single_choice-3"));
+            assertEquals(List.of("4"), outlineNumbers("multiple_choice-4"));
+            assertEquals(List.of("5"), outlineNumbers("single_choice-5"));
+            assertEquals(List.of("6"), outlineNumbers("multiple_choice-6"));
+            assertEquals(List.of("1", "2", "3", "4", "5", "6"),
+                    nodes(shell.lookup("#question-outline"), Button.class).stream()
+                            .filter(b -> b.getStyleClass().contains("question-number-cell"))
+                            .map(Button::getText).toList());
             assertTrue(text(shell.lookup("#question-outline-single_choice")).contains("单选题"));
             assertTrue(text(shell.lookup("#question-outline-multiple_choice")).contains("多选题"));
             assertTrue(button("question-number-1").getStyleClass().containsAll(List.of("unsubmitted", "current")));
@@ -398,13 +431,13 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
             open("题库/Java集合.qbank");
             byte[] before = Files.readAllBytes(fixture.alphaRoot.resolve("题库/Java集合.qbank"));
             ((RadioButton) shell.lookup("#option-1")).fire();
-            button("submit-answer").fire();
+            submitAnswer();
             assertTrue(button("question-number-1").getStyleClass().containsAll(List.of("incorrect", "current")));
             assertFalse(button("question-number-1").getStyleClass().contains("unsubmitted"));
             button("question-number-2").fire();
             ((CheckBox) shell.lookup("#option-0")).fire();
             ((CheckBox) shell.lookup("#option-1")).fire();
-            button("submit-answer").fire();
+            submitAnswer();
             assertTrue(button("question-number-2").getStyleClass().containsAll(List.of("correct", "current")));
             button("question-number-1").fire();
             assertTrue(button("question-number-1").getStyleClass().containsAll(List.of("incorrect", "current")));
@@ -441,7 +474,7 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
 
     @Test void questionOutlineReflowsWhileResizingWithoutLosingSelections() throws Exception {
         String[] types = new String[60];
-        for (int i = 0; i < types.length; i++) types[i] = i % 2 == 0 ? "SINGLE_CHOICE" : "MULTIPLE_CHOICE";
+        for (int i = 0; i < types.length; i++) types[i] = i < 30 ? "SINGLE_CHOICE" : "MULTIPLE_CHOICE";
         String path = outlineBank(types);
         fx(() -> {
             shell.refresh(); open(path); pulse(100);
@@ -562,7 +595,7 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
     @Test void editSaveThenPracticeRunsRevisionSyncAndPreservesOnlyNonSemanticAnswers() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank");
-            ((RadioButton) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-0")).fire(); submitAnswer();
             String id = practiceDbSession().id();
             button("file-mode-toggle").fire();
             shell.applyCss(); shell.layout();
@@ -584,7 +617,7 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
     @Test void leaveEditWithoutChangesReopensPracticeAndChecksActualFileRevision() throws Exception {
         fx(() -> {
             open("题库/Java集合.qbank");
-            ((RadioButton) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
+            ((RadioButton) shell.lookup("#option-0")).fire(); submitAnswer();
             button("file-mode-toggle").fire();
             var file = fixture.alphaRoot.resolve("题库/Java集合.qbank");
             var codec = new QuestionBankV2Codec();
@@ -609,7 +642,7 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
             try (var connection = db.openConnection(); var statement = connection.createStatement()) {
                 statement.execute("CREATE TRIGGER fail_submit BEFORE UPDATE OF practice_state ON practice_session_question WHEN NEW.practice_state = 'SUBMITTED' BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
             }
-            button("submit-answer").fire();
+            submitAnswer();
             assertNull(shell.lookup("#answer-feedback"));
             assertNotNull(shell.lookup("#practice-error"));
             assertTrue(((RadioButton) shell.lookup("#option-0")).isSelected());
@@ -622,7 +655,7 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
             var attempts = new io.quizforge.infrastructure.persistence.practice.SqliteQuestionAttemptRepository(db);
             assertTrue(attempts.listBySessionQuestion(row.id()).isEmpty());
             try (var connection = db.openConnection(); var statement = connection.createStatement()) { statement.execute("DROP TRIGGER fail_submit"); }
-            Button confirm = button("submit-answer"); confirm.fire(); confirm.fire();
+            Button confirm = button("submit-answer"); io.quizforge.desktop.testing.FxTestRuntime.acceptSubmission(confirm); confirm.fire();
             assertNotNull(shell.lookup("#answer-feedback"));
             assertEquals(1, attempts.listBySessionQuestion(row.id()).size());
         });

@@ -91,7 +91,7 @@ public final class PracticeHistoryView extends VBox implements DevelopmentRefres
         PracticeSummary summary = entry.summary();
         VBox card = new VBox(12,
                 UiTheme.label(date(entry.archivedAt()), "history-card-date"),
-                UiTheme.label("正确率 " + accuracy(summary), "history-card-accuracy"),
+                UiTheme.label(io.quizforge.desktop.ui.question.shared.PracticeScoreText.summary(summary), "history-card-score"),
                 UiTheme.label(summary.totalCount() + " 道题", "history-card-meta"),
                 UiTheme.label("正确 " + summary.correctCount() + " · 错误 " + summary.incorrectCount(), "history-card-meta"),
                 UiTheme.label("未完成 " + summary.unfinishedCount(), "history-card-meta"));
@@ -129,17 +129,13 @@ public final class PracticeHistoryView extends VBox implements DevelopmentRefres
         ButtonType confirm = new ButtonType("删除", ButtonBar.ButtonData.OK_DONE);
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
                 "将永久删除本次练习及其所有作答记录。此操作无法撤销。\n"
-                        + date(entry.archivedAt()) + " · " + entry.summary().totalCount() + " 道题 · 正确率 "
-                        + accuracy(entry.summary()), cancel, confirm);
+                        + date(entry.archivedAt()) + " · " + entry.summary().totalCount() + " 道题 · "
+                        + io.quizforge.desktop.ui.question.shared.PracticeScoreText.summary(entry.summary()), cancel, confirm);
         alert.setHeaderText("删除历史记录？");
         if (getScene() != null) alert.initOwner(getScene().getWindow());
         UiTheme.apply(alert);
         alert.getDialogPane().lookupButton(confirm).getStyleClass().add("quiet-danger");
         return alert.showAndWait().orElse(cancel) == confirm;
-    }
-
-    private String accuracy(PracticeSummary summary) {
-        return summary.accuracyPercent().isPresent() ? summary.accuracyPercent().getAsInt() + "%" : "—";
     }
 
     private String date(java.time.Instant instant) {

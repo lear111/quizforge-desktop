@@ -56,7 +56,7 @@ class QuestionBankPracticeSessionTest {
         session.select("opt_four");
         assertTrue(session.submit());
         session.next();
-        assertEquals(new QuestionBankPracticeSession.Result(2, 1, 1, 50), session.result());
+        assertEquals(new QuestionBankPracticeSession.Result(2, 1, 1), session.result());
     }
 
     @Test void summaryAllowsUnsubmittedQuestions() {
@@ -64,14 +64,14 @@ class QuestionBankPracticeSessionTest {
         session.next();
         session.next();
         assertTrue(session.finished());
-        assertEquals(new QuestionBankPracticeSession.Result(2, 0, 0, 0), session.result());
+        assertEquals(new QuestionBankPracticeSession.Result(2, 0, 0), session.result());
         session = new QuestionBankPracticeSession(bank());
         session.select("opt_one");
         session.submit();
         session.next();
         session.next();
         assertTrue(session.finished());
-        assertEquals(new QuestionBankPracticeSession.Result(2, 1, 0, 100), session.result());
+        assertEquals(new QuestionBankPracticeSession.Result(2, 1, 0), session.result());
     }
 
     @Test void inspectingOtherQuestionsDoesNotNavigateOrChangeSelectionsAndResults() {

@@ -37,6 +37,198 @@ class CanvasEditorWebViewTest {
         io.quizforge.desktop.testing.FxTestRuntime.start();
     }
 
+    @Test void firstLineIndentSupportsParagraphRangesUndoAndPracticePreview() throws Exception {
+        var loaded=new CountDownLatch(2);var finished=new CountDownLatch(1);var failure=new AtomicReference<Throwable>();
+        var edit=new AtomicReference<WebView>();var preview=new AtomicReference<WebView>();var stages=new java.util.ArrayList<Stage>();
+        Platform.runLater(()->{
+            for(var ref:List.of(edit,preview)){
+                ref.set(new WebView());var stage=new Stage();stages.add(stage);stage.setOpacity(0);
+                stage.setScene(new Scene(ref.get(),1000,700));stage.show();
+                ref.get().getEngine().getLoadWorker().stateProperty().addListener((o,a,b)->{
+                    if(b==Worker.State.SUCCEEDED || b==Worker.State.FAILED)loaded.countDown();
+                });
+                var page=new CanvasEditorPageLocator(null);
+                ref.get().getEngine().load(ref==edit ? page.editorUrl() : page.previewUrl());
+            }
+        });
+        assertTrue(loaded.await(30,TimeUnit.SECONDS));
+        Platform.runLater(()->{
+            try {
+                var engine=edit.get().getEngine();var readonly=preview.get().getEngine();
+                String capture="""
+                    window.painted=[];window.originalFill=CanvasRenderingContext2D.prototype.fillText;
+                    CanvasRenderingContext2D.prototype.fillText=function(text,x,y,...rest){
+                      const visible=String(text).replace(/^[\\s\\u200b]+/,'');
+                      if(this.canvas.closest('#paper') && visible)painted.push({x:x+this.measureText(String(text).slice(0,String(text).length-visible.length)).width,y});
+                      return originalFill.call(this,text,x,y,...rest);
+                    };
+                    window.rowStarts=()=>[...new Set(painted.map(g=>g.y))].sort((a,b)=>a-b)
+                      .map(y=>Math.min(...painted.filter(g=>g.y===y).map(g=>g.x)));
+                    """;
+                engine.executeScript(capture);readonly.executeScript(capture);
+                engine.executeScript("""
+                    window.p1='开头😀 stays unchanged.';
+                    window.p2='Reading opens a window to the world. '.repeat(9);
+                    window.p3='Third paragraph.';
+                    window.p1Length=Array.from(p1).length;
+                    window.canvasEditor.load(JSON.stringify({main:[{value:p1+'\\n'},{value:p2},{value:'Emphasis',bold:true,color:'#ff0000'},{value:'\\n'+p3+'\\nTail.'}]}));
+                    window.command=window.__quizforgeCanvasState.editor.command;
+                    window.originalText=window.canvasEditor.text();
+                    command.executeSetRange(p1Length+10,p1Length+10);
+                    document.querySelector('[title="首行缩进 2 字符"]').click();
+                    window.singleIndent=window.canvasEditor.value();
+                    """);
+                assertEquals(true,engine.executeScript("window.canvasEditor.text()===p1+'\\n\\u3000\\u3000'+p2+'Emphasis\\n'+p3+'\\nTail.'"));
+                engine.executeScript("document.querySelector('[title=\"首行缩进 2 字符\"]').click()");
+                assertEquals(true,engine.executeScript("singleIndent===window.canvasEditor.value()"),"Repeated clicks must not accumulate padding");
+                engine.executeScript("command.executeUndo()");
+                assertEquals(true,engine.executeScript("originalText===window.canvasEditor.text()"));
+                engine.executeScript("command.executeRedo();command.executeSetRange(p1Length+10,p1Length+p2.length+15);document.querySelector('[title=\"首行缩进 2 字符\"]').click()");
+                assertEquals(true,engine.executeScript("window.canvasEditor.text()===p1+'\\n\\u3000\\u3000'+p2+'Emphasis\\n\\u3000\\u3000'+p3+'\\nTail.'"),"Only the two selected paragraphs are indented");
+                assertEquals(true,engine.executeScript("JSON.parse(window.canvasEditor.value()).main.some(e=>e.bold && e.color==='#ff0000' && e.value==='Emphasis')"));
+                var saved=(String)engine.executeScript("window.canvasEditor.document()");
+                ((JSObject)engine.executeScript("window.canvasEditor")).call("loadDocument",saved);
+                ((JSObject)readonly.executeScript("window.canvasEditor")).call("loadDocument",saved);
+                assertEquals(engine.executeScript("window.canvasEditor.value()"),readonly.executeScript("window.canvasEditor.value()"));
+                engine.executeScript("painted=[];command.executeSetRange(0,0);window.starts=rowStarts()");
+                readonly.executeScript("painted=[];window.__quizforgeCanvasState.editor.command.executeSetRange(0,0);window.starts=rowStarts()");
+                for(var view:List.of(engine,readonly)){
+                    assertEquals(32,((Number)view.executeScript("starts[1]-starts[0]")).doubleValue(),0.5,"First line is indented by two full-width characters");
+                    assertEquals(0,((Number)view.executeScript("starts[2]-starts[0]")).doubleValue(),0.5,"Wrapped continuation lines stay flush left");
+                }
+                readonly.executeScript("window.canvasEditor.command('outdent');window.canvasEditor.command('indent')");
+                assertEquals(engine.executeScript("window.canvasEditor.value()"),readonly.executeScript("window.canvasEditor.value()"),"Practice preview stays readonly");
+                engine.executeScript("command.executeSelectAll();document.querySelector('[title=\"取消首行缩进\"]').click()");
+                assertEquals(engine.executeScript("originalText"),engine.executeScript("window.canvasEditor.text()"),"Removing indentation restores the original text");
+                engine.executeScript("command.executeUndo()");
+                assertEquals(true,engine.executeScript("window.canvasEditor.text().includes('\\n\\u3000\\u3000'+p3)"),"Batch removal is one undo step");
+                engine.executeScript("window.canvasEditor.load(JSON.stringify({main:[{value:''}]}));document.querySelector('[title=\"首行缩进 2 字符\"]').click()");
+                assertEquals("\u3000\u3000",engine.executeScript("window.canvasEditor.text()"));
+                engine.executeScript("document.querySelector('[title=\"取消首行缩进\"]').click()");
+                assertEquals("",engine.executeScript("window.canvasEditor.text()"),"Empty paragraphs can be indented before typing and cleared");
+            }catch(Throwable error){failure.set(error);}
+            finally{stages.forEach(Stage::close);finished.countDown();}
+        });
+        assertTrue(finished.await(20,TimeUnit.SECONDS));
+        if(failure.get()!=null)throw new AssertionError("First-line indentation failed",failure.get());
+    }
+
+    @Test void sizeDropdownKeepsSelectionStyleAndCanReturnToSixteen() throws Exception {
+        var loaded=new CountDownLatch(1);var finished=new CountDownLatch(1);
+        var failure=new AtomicReference<Throwable>();var web=new AtomicReference<WebView>();var stage=new AtomicReference<Stage>();
+        Platform.runLater(()->{
+            web.set(new WebView());stage.set(new Stage());stage.get().setOpacity(0);
+            stage.get().setScene(new Scene(web.get(),1000,700));stage.get().show();
+            web.get().getEngine().getLoadWorker().stateProperty().addListener((o,a,b)->{
+                if(b==Worker.State.SUCCEEDED || b==Worker.State.FAILED)loaded.countDown();
+            });
+            web.get().getEngine().load(new CanvasEditorPageLocator(null).editorUrl());
+        });
+        assertTrue(loaded.await(30,TimeUnit.SECONDS));
+        Platform.runLater(()->{
+            try {
+                var engine=web.get().getEngine();assertEquals(true,engine.executeScript("window.canvasEditor.ready()"));
+                engine.executeScript("""
+                    window.sizeTestError=null;window.sizeTestDone=false;
+                    (async()=>{
+                      const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+                      const expect=(ok,message)=>{if(!ok)throw new Error(message);};
+                      const sizes=document.querySelector('[data-select="size"]');
+                      const command=window.__quizforgeCanvasState.editor.command;
+                      const hasSize=size=>JSON.parse(window.canvasEditor.value()).main
+                        .filter(e=>e.value && e.value!=='\\u200b').every(e=>e.size===size);
+                      const choose=async value=>{
+                        sizes.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0}));sizes.focus();
+                        // Native selects emit change only when the chosen value differs.
+                        if(sizes.value!==value){sizes.value=value;sizes.dispatchEvent(new Event('change',{bubbles:true}));}
+                        await tick(); // Canvas reports range styles on the next event loop turn.
+                      };
+                      window.canvasEditor.load(JSON.stringify({main:[{value:'Selected text',font:'Georgia',size:24}]}));
+                      command.executeSelectAll();await tick();
+                      expect(sizes.value==='24','Selection should display 24, got '+sizes.value);
+                      const range=JSON.stringify(command.getRange());
+                      sizes.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0}));sizes.focus();
+                      expect(sizes.value==='24','Opening dropdown reset 24 to '+sizes.value);
+                      expect(document.querySelector('[data-select=font]').value==='Georgia','Font display was reset');
+                      expect(range===JSON.stringify(command.getRange()),'Opening dropdown changed the selection');
+                      await choose('16');expect(hasSize(16),'24 to 16 did not apply');
+                      await choose('18');expect(hasSize(18),'16 to 18 did not apply');
+                      await choose('16');expect(hasSize(16),'18 to 16 did not apply');
+                      window.canvasEditor.loadDocument(window.canvasEditor.document());await tick();
+                      expect(hasSize(16),'Size 16 did not survive native document reload');
+                      window.canvasEditor.load(JSON.stringify({main:[{value:'Pasted text',size:13}]}));
+                      command.executeSelectAll();await tick();
+                      expect(sizes.value==='13','Non-preset pasted size displayed '+sizes.value);
+                      await choose('16');expect(hasSize(16),'Pasted size 13 to 16 did not apply');
+                      expect(!sizes.querySelector('[data-current-size]'),'Temporary pasted size was not removed');
+                    })().catch(error=>{window.sizeTestError=String(error);}).finally(()=>{window.sizeTestDone=true;});
+                    """);
+                // Background WebKit can throttle timers; wait for completion instead of a fixed sleep.
+                var checks=new AtomicInteger();var pending=new javafx.animation.Timeline();
+                pending.getKeyFrames().add(new javafx.animation.KeyFrame(javafx.util.Duration.millis(100),event->{
+                    boolean complete=Boolean.TRUE.equals(engine.executeScript("window.sizeTestDone"));
+                    if(!complete && checks.incrementAndGet()<150)return;
+                    pending.stop();
+                    try{assertTrue(complete,"Canvas size checks did not finish");assertNull(engine.executeScript("window.sizeTestError"));}
+                    catch(Throwable error){failure.set(error);}
+                    finally{stage.get().close();finished.countDown();}
+                }));pending.setCycleCount(javafx.animation.Animation.INDEFINITE);pending.play();
+            }catch(Throwable error){failure.set(error);stage.get().close();finished.countDown();}
+        });
+        assertTrue(finished.await(20,TimeUnit.SECONDS));
+        if(failure.get()!=null)throw new AssertionError("Font size dropdown failed",failure.get());
+    }
+
+    @Test void justifyToolbarFillsWrappedLinesButKeepsLastLineNaturalAfterReload() throws Exception {
+        var loaded=new CountDownLatch(1);var finished=new CountDownLatch(1);
+        var failure=new AtomicReference<Throwable>();var web=new AtomicReference<WebView>();var stage=new AtomicReference<Stage>();
+        Platform.runLater(()->{
+            web.set(new WebView());stage.set(new Stage());stage.get().setOpacity(0);
+            stage.get().setScene(new Scene(web.get(),1000,700));stage.get().show();
+            web.get().getEngine().getLoadWorker().stateProperty().addListener((o,a,b)->{
+                if(b==Worker.State.SUCCEEDED || b==Worker.State.FAILED)loaded.countDown();
+            });
+            web.get().getEngine().load(new CanvasEditorPageLocator(null).editorUrl());
+        });
+        assertTrue(loaded.await(30,TimeUnit.SECONDS));
+        Platform.runLater(()->{
+            try {
+                var engine=web.get().getEngine();assertEquals(true,engine.executeScript("window.canvasEditor.ready()"));
+                // Observe actual Canvas text positions, including the troublesome short final row.
+                engine.executeScript("""
+                    window.painted=[];
+                    window.originalFillText=CanvasRenderingContext2D.prototype.fillText;
+                    CanvasRenderingContext2D.prototype.fillText=function(text,x,y,...rest){
+                      if(this.canvas.closest('#paper') && text!=='\\u200b')painted.push({text,x,y,width:this.measureText(text).width});
+                      return originalFillText.call(this,text,x,y,...rest);
+                    };
+                    window.rowWidths=()=>{
+                      const ys=[...new Set(painted.map(g=>g.y))].sort((a,b)=>a-b);
+                      return ys.map(y=>{const row=painted.filter(g=>g.y===y);return Math.max(...row.map(g=>g.x+g.width))-Math.min(...row.map(g=>g.x));});
+                    };
+                    window.canvasEditor.load(JSON.stringify({main:[{value:'Reading opens a window to the world. '.repeat(5)+'experience beauty.'}]}));
+                    window.__quizforgeCanvasState.editor.command.executeSelectAll();
+                    painted=[];window.canvasEditor.command('align','left');window.leftWidths=rowWidths();
+                    painted=[];document.querySelector('[title="两端对齐"]').click();window.alignedWidths=rowWidths();
+                    """);
+                assertTrue(((Number)engine.executeScript("alignedWidths.length")).intValue()>=2);
+                double inner=((Number)engine.executeScript("(()=>{const o=window.__quizforgeCanvasState.editor.command.getOptions();return (o.width-o.margins[1]-o.margins[3])*o.scale;})()")).doubleValue();
+                double first=((Number)engine.executeScript("alignedWidths[0]")).doubleValue();
+                double last=((Number)engine.executeScript("alignedWidths[alignedWidths.length-1]")).doubleValue();
+                double naturalLast=((Number)engine.executeScript("leftWidths[leftWidths.length-1]")).doubleValue();
+                assertEquals(inner,first,2,"Wrapped lines fill the available width");
+                assertEquals(naturalLast,last,0.5,"The last line keeps natural spacing");
+                assertTrue(last<inner*0.8,"The short final row must not stretch across the page");
+                assertTrue(Boolean.TRUE.equals(engine.executeScript("JSON.parse(window.canvasEditor.value()).main.some(e=>e.rowFlex==='alignment')")));
+                engine.executeScript("window.savedAlignment=window.canvasEditor.document();painted=[];window.canvasEditor.loadDocument(savedAlignment);window.reloadedWidths=rowWidths();");
+                assertEquals(last,((Number)engine.executeScript("reloadedWidths[reloadedWidths.length-1]")).doubleValue(),0.5);
+            }catch(Throwable error){failure.set(error);}
+            finally{stage.get().close();finished.countDown();}
+        });
+        assertTrue(finished.await(20,TimeUnit.SECONDS));
+        if(failure.get()!=null)throw new AssertionError("Two-end alignment rendering failed",failure.get());
+    }
+
     @Test void answerChangesAutosaveWithoutSaveClickAndBackFlushesFinalChange() throws Exception {
         var loaded=new CountDownLatch(1);var automatic=new CountDownLatch(1);var finished=new CountDownLatch(1);
         var failure=new AtomicReference<Throwable>();var window=new AtomicReference<CanvasEditorWindow>();
@@ -409,18 +601,23 @@ class CanvasEditorWebViewTest {
         String source=ContentJson.write(Map.of("version","1.0.4","options",Map.of("width",816,"height",640,
                 "margins",List.of(72,72,72,72),"pageMode","continuity","defaultFont","Arial","defaultSize",16),
                 "data",Map.of("main",List.of(Map.of("value","First\n\nSecond\n".repeat(8),"font","Georgia","size",24,"color","#ff0000"),
+                        Map.of("type","table","value","\n","colgroup",java.util.stream.IntStream.range(0,5).mapToObj(i->Map.of("width",134.4)).toList(),
+                                "trList",List.of(Map.of("height",42,"tdList",java.util.stream.IntStream.range(0,5).mapToObj(i->Map.of("colspan",1,"rowspan",1,"value",List.of(Map.of("value",(i+1)+". A")))).toList()))),
                         Map.of("type","image","value","data:image/png;base64,"+java.util.Base64.getEncoder().encodeToString(io.quizforge.infrastructure.testing.EssayTestBanks.image("png")),
                                 "width",672,"height",420,"imgDisplay","block")))));
         var session=new ContentEditSession(new TextContent(""),List.of(),resource->null);
         var content=session.stageDocument(source,"First\n\nSecond");
         Platform.runLater(()->{
             var view=new CanvasDocumentView(content,session.resources(),session::open,"test-");
-            web.set((WebView)view.getChildren().getFirst());stage.set(new Stage());stage.get().setOpacity(0);
+            stage.set(new Stage());stage.get().setOpacity(0);
+            var body=new javafx.scene.layout.VBox(12,view,new javafx.scene.control.Label("Below the expanded preview"));
+            stage.get().setScene(new Scene(UiTheme.scroll(body),600,360));
+            // ScrollPane attaches its content when its skin is created on showing.
+            stage.get().show();
+            web.set((WebView)view.getChildren().getFirst());
             web.get().getEngine().getLoadWorker().stateProperty().addListener((o,a,b)->{
                 if(b==Worker.State.SUCCEEDED || b==Worker.State.FAILED)loaded.countDown();
             });
-            var body=new javafx.scene.layout.VBox(12,view,new javafx.scene.control.Label("Below the expanded preview"));
-            stage.get().setScene(new Scene(UiTheme.scroll(body),700,360));stage.get().show();
         });
         assertTrue(loaded.await(30,TimeUnit.SECONDS));
         Platform.runLater(()->{
@@ -431,8 +628,19 @@ class CanvasEditorWebViewTest {
                 assertEquals(true,api.call("ready"));
                 assertEquals("none",engine.executeScript("getComputedStyle(document.getElementById('toolbar')).display"));
                 assertEquals("readonly",engine.executeScript("window.__quizforgeCanvasState.editor.command.getOptions().mode"));
+                assertEquals(true,engine.executeScript("window.__quizforgeCanvasState.editor.command.getOptions().scale<1"));
+                assertEquals(true,engine.executeScript("document.getElementById('paper').getBoundingClientRect().right<=document.documentElement.clientWidth+1"),"Full-width table and image must fit a narrow preview");
+                assertEquals(674,((Number)engine.executeScript("window.__quizforgeCanvasState.editor.command.getOptions().width")).intValue());
+                assertEquals(1,((Number)engine.executeScript("window.__quizforgeCanvasState.editor.command.getOptions().margins[1]")).intValue(),"Table border needs space inside the canvas");
                 var json=new com.fasterxml.jackson.databind.ObjectMapper();
-                assertEquals(json.readTree(source).path("data").path("main"),json.readTree((String)api.call("value")).path("main"));
+                var original=json.readTree(source).path("data").path("main");
+                var rendered=json.readTree((String)api.call("value")).path("main");
+                assertEquals(original.get(0),rendered.get(0));
+                assertEquals(original.get(1).path("colgroup"),rendered.get(1).path("colgroup"));
+                assertEquals(original.get(1).path("trList").get(0).path("tdList"),rendered.get(1).path("trList").get(0).path("tdList"));
+                assertEquals(original.get(2).path("value"),rendered.get(2).path("value"));
+                assertEquals(672,rendered.get(2).path("width").asDouble(),0.000001);
+                assertEquals(420,rendered.get(2).path("height").asDouble(),0.000001);
                 assertTrue(((Number)engine.executeScript("document.getElementById('paper').scrollHeight")).doubleValue()>200);
                 double contentHeight=((Number)engine.executeScript("document.getElementById('paper').scrollHeight")).doubleValue();
                 assertTrue(contentHeight>700,"Long text and image must expand beyond the outer viewport");

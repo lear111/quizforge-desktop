@@ -19,6 +19,31 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class QuestionBankEditorModelTest {
+    @Test void movesWholeCardsToFinalIndexesWithoutChangingNestedContentOrResources() {
+        var edit = new QuestionBankEditorModel(new QuestionBank("qb_reorder", "Reorder", List.of(), List.of(), List.of()));
+        for (var type : List.of("ESSAY", "READING", "CLOZE", "TRANSLATION", "MATCHING")) edit.addQuestion(type);
+        edit.setStem(2,"Passage {{1}} and {{2}}.");
+        var original = edit.bank();
+        var moved = new QuestionBankEditorModel(original);
+        moved.moveQuestion(1, 4);
+        assertTrue(moved.dirty());
+        assertEquals(List.of(original.questions().get(0),original.questions().get(2),original.questions().get(3),
+                original.questions().get(4),original.questions().get(1)),moved.bank().questions());
+        assertSame(original.questions().get(1),moved.bank().questions().getLast());
+        moved.moveQuestion(4, 0);
+        assertSame(original.questions().get(1),moved.bank().questions().getFirst());
+        assertEquals(original.assetId(),moved.bank().assetId());
+        assertEquals(original.resources(),moved.bank().resources());
+        assertEquals(original.stimuli(),moved.bank().stimuli());
+        new QuestionBankValidator().validate(moved.bank());
+        var unchanged = new QuestionBankEditorModel(original);
+        unchanged.moveQuestion(2,2);
+        assertFalse(unchanged.dirty());assertSame(original,unchanged.bank());
+        assertThrows(IndexOutOfBoundsException.class,()->unchanged.moveQuestion(-1,0));
+        assertThrows(IndexOutOfBoundsException.class,()->unchanged.moveQuestion(0,5));
+        assertSame(original,unchanged.bank());
+    }
+
     @Test void editsPreserveBankAndExistingQuestionIdentity() {
         var original = QuestionBankPracticeSessionTest.bank();
         var edit = new QuestionBankEditorModel(original);

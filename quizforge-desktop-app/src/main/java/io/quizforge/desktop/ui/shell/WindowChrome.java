@@ -5,6 +5,7 @@ import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.value.ChangeListener;
+import javafx.css.PseudoClass;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Cursor;
@@ -190,6 +191,10 @@ final class WindowChrome extends HBox {
         clip.heightProperty().bind(scene.heightProperty());
         var maximized = placementFor(stage).workAreaMaximized.or(stage.maximizedProperty())
                 .or(stage.fullScreenProperty());
+        var windowed = PseudoClass.getPseudoClass("windowed");
+        scene.getRoot().pseudoClassStateChanged(windowed, !maximized.get());
+        maximized.addListener((ignored, before, after) ->
+                scene.getRoot().pseudoClassStateChanged(windowed, !after));
         clip.arcWidthProperty().bind(Bindings.when(maximized).then(0.0).otherwise(20.0));
         clip.arcHeightProperty().bind(clip.arcWidthProperty());
         scene.getRoot().setClip(clip);

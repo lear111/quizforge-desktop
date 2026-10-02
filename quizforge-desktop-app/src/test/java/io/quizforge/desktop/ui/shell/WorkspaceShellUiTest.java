@@ -195,10 +195,11 @@ class WorkspaceShellUiTest extends WorkspaceUiTestSupport {
         fx(() -> {
             open("题库/Java集合.qbank");
             button("next-question").fire();
-            ((CheckBox) shell.lookup("#option-0")).fire(); button("submit-answer").fire();
+            ((CheckBox) shell.lookup("#option-0")).fire(); submitAnswer();
             assertNull(shell.lookup("#practice-summary"));
             button("next-question").fire();
-            assertEquals("0%", ((Label) shell.lookup("#summary-percentage")).getText());
+            assertEquals("0", ((Label) shell.lookup("#summary-score")).getText());
+            assertEquals("/ 2", ((Label) shell.lookup("#summary-max-score")).getText());
             assertEquals("1", ((Label) shell.lookup("#summary-incorrect-count")).getText());
             assertEquals("1", ((Label) shell.lookup("#summary-unanswered-count")).getText());
             String id = practiceDbSession().id();

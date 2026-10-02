@@ -51,7 +51,7 @@ class EssayCardViewTest {
                 new Scene(view,1000,700);view.applyCss();view.layout();
                 assertTrue(view.lookupAll(".authoring-essay-text").stream().filter(javafx.scene.control.Label.class::isInstance)
                         .map(javafx.scene.control.Label.class::cast).anyMatch(label->label.getText().equals("Restored essay draft")));
-                ((Button)view.lookup("#essay-submit-answer")).fire();
+                io.quizforge.desktop.testing.FxTestRuntime.acceptSubmission((Button)view.lookup("#essay-submit-answer"));
                 assertEquals(1,practice.summary().unscoredCount());
                 assertFalse(view.lookup("#essay-edit-answer").isVisible());
                 assertTrue(view.lookup("#essay-retry").isVisible());
@@ -106,7 +106,7 @@ class EssayCardViewTest {
                 answer,io.quizforge.core.practice.QuestionAttempt.Result.UNSCORED,null,null,now);
         var row=new io.quizforge.core.practice.PracticeHistoryDetail.Question("psq_old","q_old_essay",0,"ESSAY",snapshot.stem(),List.of(),List.of(),
                 snapshot.analysis(),snapshot.sourceRefs(),io.quizforge.core.practice.PracticeSessionQuestion.State.SUBMITTED,null,List.of(attempt),snapshot.correctAnswer());
-        var summary=new io.quizforge.core.practice.PracticeSummary(1,1,0,0,0,java.util.OptionalInt.empty());
+        var summary=new io.quizforge.core.practice.PracticeSummary(1,1,0,0,0,java.util.Optional.of(java.math.BigDecimal.ZERO),java.util.Optional.of(new java.math.BigDecimal("20.25")));
         var detail=new io.quizforge.core.practice.PracticeHistoryDetail("ps_old","Old",now,now,summary,List.of(row),revision);
         var result=new CompletableFuture<Void>();
         Platform.runLater(()->{
