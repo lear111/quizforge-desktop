@@ -88,7 +88,7 @@ class PracticeDraftModeUiTest extends WorkspaceUiTestSupport {
         assertEquals(frozen,snapshots.find(first.id()).orElseThrow());
     }
 
-    @Test void mixedBankUsesTheSameSurfaceAndReturnsToNormalForEssayWithoutLosingChoiceDrafts() throws Exception {
+    @Test void mixedBankUsesTheSameSurfaceForEssayAndCanReturnToNormalWithoutLosingChoiceDrafts() throws Exception {
         String choices=outlineBank("SINGLE_CHOICE","SINGLE_CHOICE");
         var codec=new io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec();
         var original=codec.parse(io.quizforge.infrastructure.testing.QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(choices)));
@@ -96,8 +96,11 @@ class PracticeDraftModeUiTest extends WorkspaceUiTestSupport {
                 original.questions().getFirst(),io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst(),original.questions().getLast()),List.of());
         String path="题库/MixedDraft.qbank";fixture.write(path,codec.write(bank));
         fx(()->openBank(path));var host=onFx(this::host);enter(host);choose(host,2);load(host,ink("mixed-A"));String q1=question(host);
-        fx(()->button("authoring-question-2").fire());await(()->!onFx(host::busy)&&onFx(host::mode)==PracticeSurfaceMode.NORMAL);
-        fx(()->{assertFalse(host.toggleButton().isVisible());assertNotNull(shell.lookup("#essay-answer-pane"));});
+        fx(()->button("authoring-question-2").fire());await(()->!onFx(host::busy)&&"ESSAY".equals(script(host,"window.sharedPractice.getViewState().question.type")));
+        assertEquals(PracticeSurfaceMode.DRAFT,onFx(host::mode));
+        assertTrue(document(host).strokes().isEmpty());
+        leave(host);
+        fx(()->{assertTrue(host.toggleButton().isVisible());assertNotNull(shell.lookup("#essay-answer-pane"));});
         fx(()->button("authoring-question-3").fire());enter(host);assertTrue(document(host).strokes().isEmpty());
         load(host,ink("mixed-B"));leave(host);fx(()->button("authoring-question-1").fire());enter(host);
         assertEquals(q1,question(host));assertEquals(ink("mixed-A"),document(host));

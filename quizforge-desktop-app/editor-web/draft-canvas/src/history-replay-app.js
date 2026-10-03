@@ -4,7 +4,7 @@ import { readHistoryReplay } from './history-replay.js';
 
 const object = document.querySelector('#question-card');
 const canvas = mountDraftCanvas(object, { accessMode: 'READ_ONLY' });
-const card = mountSharedQuestionRuntime(object, () => { throw new Error('History cannot mutate Practice'); }, () => false, { readOnly: true });
+const card = mountSharedQuestionRuntime(object, () => { throw new Error('History cannot mutate Practice'); }, () => false, { readOnly: true, focusTarget: node => canvas.focusElement(node) });
 let destroyed = false;
 window.draftCanvas = canvas;
 window.historyDraftReplay = Object.freeze({
@@ -16,6 +16,7 @@ window.historyDraftReplay = Object.freeze({
     canvas.loadDraft(JSON.stringify(replay.document));
   },
   bindHost() { if (!destroyed) window.historyHost.ready(); },
+  focusTarget: card.focusTarget,
   getViewState: card.getViewState,
   diagnostics() { return { accessMode: 'READ_ONLY', destroyed, canvas: canvas.diagnostics() }; },
   destroy() { if (destroyed) return; destroyed = true; card.destroy(); canvas.destroy(); }

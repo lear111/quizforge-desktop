@@ -23,6 +23,7 @@ public final class HistorySurfaceHost extends StackPane {
     private HistoryDraftWebView draft;
     private long selectionVersion;
     private boolean busy,destroyed;
+    private String pendingTarget;
     private Runnable onModeChanged=()->{};
     public HistorySurfaceHost(Node result,Runnable previousQuestion,Runnable nextQuestion,
             BooleanSupplier hasPrevious,BooleanSupplier hasNext){
@@ -43,12 +44,17 @@ public final class HistorySurfaceHost extends StackPane {
     public boolean busy(){return busy;}
     public void onModeChanged(Runnable action){onModeChanged=java.util.Objects.requireNonNull(action);}
     public void select(HistoryDraftAdapter.Replay replay){
-        selectionVersion++;selected=replay;busy=false;error.setText("");
+        selectionVersion++;pendingTarget=null;selected=replay;busy=false;error.setText("");
         if(draft!=null)draft.clear();
         if(!available())mode=HistorySurfaceMode.RESULT;
         if(mode==HistorySurfaceMode.DRAFT)loadSelected();else update();
     }
     private boolean available(){return selected!=null && selected.draft().status()!=HistoryDraftReplay.Status.MISSING;}
+    public void focusTarget(String targetId){
+        if(destroyed || mode!=HistorySurfaceMode.DRAFT || targetId==null)return;
+        if(busy){pendingTarget=targetId;return;}
+        if(draft!=null)draft.focusTarget(targetId);
+    }
     public void toggle(){
         if(destroyed || busy || !available())return;
         selectionVersion++;error.setText("");
@@ -65,6 +71,7 @@ public final class HistorySurfaceHost extends StackPane {
                 busy=false;
                 try{if(failure!=null)throw new IllegalStateException("历史草稿暂时无法载入",failure);
                     draft.load(selected.card(),selected.draft().document());
+                    if(pendingTarget!=null){draft.focusTarget(pendingTarget);pendingTarget=null;}
                 }catch(RuntimeException invalid){error.setText("此草稿使用当前版本暂不支持的格式，或暂时无法载入。");}
                 update();
             };

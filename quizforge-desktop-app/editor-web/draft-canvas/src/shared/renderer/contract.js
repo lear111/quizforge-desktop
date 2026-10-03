@@ -2,16 +2,20 @@
 /**
  * @typedef {Object} QuestionRendererInstance
  * @property {function(Object):void} update Apply the authoritative question DTO.
- * @property {function():{selectedOptionIds:string[]}} getAnswerIntent Semantic choice answer only.
+ * @property {function():Object} getAnswerIntent Type-specific semantic answer only; no DOM or grading.
  * @property {function('INTERACT'|'DISABLED'):void} setInteractionMode
  * @property {function(boolean):void} setReadOnly History capability cannot be upgraded.
  * @property {function():HTMLElement} renderResult Display the supplied Core result.
+ * @property {function():boolean} hasAnswer Whether there is a formal answer to submit.
+ * @property {function(string):HTMLElement|null} focusTarget Resolve stable child target within this parent.
+ * @property {function():Promise<void>} [flushAnswer] Drain pending TEXT edits before leave/submit.
+ * @property {function():Object|null} [pendingAnswerIntent] Synchronous host close-save guard.
  * @property {function():void} destroy Idempotent listener and control cleanup.
  *
  * @typedef {Object} QuestionRendererDefinition
  * @property {string} id Stable internal renderer identity.
  * @property {string} questionType Core type identity; never a fallback type.
- * @property {'SINGLE'|'MULTIPLE'} selectionMode Choice family presentation mode.
+ * @property {'SINGLE'|'MULTIPLE'|'COMPOSITE_SINGLE'|'ASSIGNMENT'|'TEXT_FIELDS'|'LONG_TEXT'} selectionMode Presentation family.
  * @property {function(Object):Object} parse Validate supported structured content.
  * @property {function(HTMLFormElement,Object,Object):QuestionRendererInstance} mount
  */

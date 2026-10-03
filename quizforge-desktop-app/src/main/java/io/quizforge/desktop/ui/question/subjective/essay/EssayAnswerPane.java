@@ -123,7 +123,19 @@ public final class EssayAnswerPane extends VBox {
         edit.setVisible(!submitted);edit.setManaged(!submitted);edit.setDisable(submitted);
         retry.setVisible(submitted);retry.setManaged(submitted);
         boolean empty=QuestionContentData.plainText(answer).isBlank() && QuestionContentData.resourceIds(answer).isEmpty();
-        if(empty){
+        if(!submitted && answer instanceof TextContent text) {
+            var field=new TextArea(text.text());field.setId("essay-text-answer");field.setWrapText(true);field.setPrefRowCount(6);
+            field.setPromptText("输入纯文本作答；也可使用“编辑作答”打开富文本编辑器。");
+            field.getStyleClass().add("authoring-essay-text");
+            field.textProperty().addListener((observable,before,value)->{
+                var next=new EssayPracticeAnswer(value,null);
+                try {
+                    if(practice!=null)practice.saveEssayDraft(question.id(),next);
+                    persisted=next;answer=new TextContent(value);submit.setDisable(next.empty());error.setText("");changed.run();
+                }catch(RuntimeException failure){error.setText("作答未保存："+failure.getMessage());}
+            });
+            preview.getChildren().setAll(field);
+        }else if(empty){
             String hint=question.essayPayload().placeholder();
             var label=UiTheme.label(hint==null || hint.isBlank()?"点击“编辑作答”，使用富文本编辑器完成作答。":hint,"essay-answer-empty");
             preview.getChildren().setAll(label);
@@ -142,6 +154,7 @@ public final class EssayAnswerPane extends VBox {
         }catch(RuntimeException failure){error.setText("答案未提交："+failure.getMessage());}
     }
     private void showSubmission(){
+        if(preview.lookup("#essay-text-answer") instanceof TextArea field){field.setEditable(false);field.setDisable(true);}
         edit.setVisible(false);edit.setManaged(false);edit.setDisable(true);
         retry.setVisible(true);retry.setManaged(true);
         feedback.getChildren().setAll(UiTheme.label(practice==null?"已提交 · 本页暂存，未评分":"已提交 · 已保存，未评分","muted"));

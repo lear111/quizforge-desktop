@@ -72,6 +72,7 @@ public final class SharedPracticeCanvasWebView {
         view.getEngine().load(pageUrl);
     }
 
+    public boolean focusTarget(String targetId) { activeCanvas(); return Boolean.TRUE.equals(practice.call("focusTarget", Objects.requireNonNull(targetId))); }
     public WebView view() { return view; }
     public CompletionStage<Void> ready() { return ready.minimalCompletionStage(); }
     public boolean isDestroyed() { return destroyed; }
@@ -146,6 +147,10 @@ public final class SharedPracticeCanvasWebView {
             throw new IllegalStateException("答案正在提交，请稍后关闭");
         if (practiceLoaded && adapter.viewModel().question().state() != SharedPracticeViewModel.State.SUBMITTED)
             {
+            try {
+                var pending=JSON.readTree((String)view.getEngine().executeScript("JSON.stringify(window.sharedPractice.pendingAnswerIntent())"));
+                if(pending!=null && !pending.isNull())applyAnswerIntent(pending,adapter.viewModel().question().type());
+            }catch(JsonProcessingException invalid){throw new IllegalStateException("Cannot save pending text answer",invalid);}
             var document = DraftCanvasJsonCodec.decode(getDraft());
             String json=DRAFT_JSON.encode(document);
             if (!json.equals(lastPersistedDraft)) {adapter.saveDraft(document);lastPersistedDraft=json;}
@@ -211,17 +216,7 @@ public final class SharedPracticeCanvasWebView {
                 requireIdentity(event, "sessionId", current.path("session").path("sessionId"));
                 requireIdentity(event, "sessionQuestionId", current.path("question").path("sessionQuestionId"));
                 switch (event.path("type").asText()) {
-                    case "ANSWER_CHANGED" -> {
-                        var ids = event.path("selectedOptionIds");
-                        if (!ids.isArray()) throw new IllegalArgumentException("selectedOptionIds must be an array");
-                        var selected = new LinkedHashSet<String>();
-                        for (var id : ids) {
-                            if (!id.isTextual() || id.asText().isBlank())
-                                throw new IllegalArgumentException("Option IDs must be nonblank strings");
-                            selected.add(id.asText());
-                        }
-                        adapter.answerChanged(selected);
-                    }
+                    case "ANSWER_CHANGED" -> applyAnswerIntent(event,current.path("question").path("type").asText());
                     case "DRAFT_CHANGED" -> {
                         var document = DraftCanvasJsonCodec.decode(event.path("document").toString());
                         adapter.saveDraft(document);
@@ -248,6 +243,37 @@ public final class SharedPracticeCanvasWebView {
             if ("SUCCESS".equals(status) && !"DRAFT_CHANGED".equals(event.path("type").asText()))
                 Platform.runLater(() -> { if (!destroyed && practiceLoaded) onChanged.run(); });
         }
+    }
+
+    private void applyAnswerIntent(JsonNode event,String questionType) {
+        if("ESSAY".equals(questionType)) {
+            var value=event.path("essayText");if(!value.isTextual())throw new IllegalArgumentException("essayText must be text");
+            adapter.essayChanged(value.asText());return;
+        }
+        if("TRANSLATION".equals(questionType)) {
+            var values=event.path("textAnswers");
+            if(!values.isObject())throw new IllegalArgumentException("textAnswers must be an object");
+            var answers=new java.util.LinkedHashMap<String,String>();
+            values.properties().forEach(entry->{if(!entry.getValue().isTextual())throw new IllegalArgumentException("Text answers must be strings");answers.put(entry.getKey(),entry.getValue().asText());});
+            adapter.textAnswersChanged(answers);return;
+        }
+        if("MATCHING".equals(questionType)) {
+            var values=event.path("assignments");
+            if(!values.isObject())throw new IllegalArgumentException("assignments must be an object");
+            var assignments=new java.util.LinkedHashMap<String,String>();
+            values.properties().forEach(entry->{if(!entry.getValue().isTextual())throw new IllegalArgumentException("Assignment IDs must be strings");assignments.put(entry.getKey(),entry.getValue().asText());});
+            adapter.assignmentsChanged(assignments);
+            return;
+        }
+        var ids = event.path("selectedOptionIds");
+        if (!ids.isArray()) throw new IllegalArgumentException("selectedOptionIds must be an array");
+        var selected = new LinkedHashSet<String>();
+        for (var id : ids) {
+            if (!id.isTextual() || id.asText().isBlank())
+                throw new IllegalArgumentException("Option IDs must be nonblank strings");
+            selected.add(id.asText());
+        }
+        adapter.answerChanged(selected);
     }
 
     private static String response(long operationSeq, String status, String viewModel, String message, String operationType, String draft) {

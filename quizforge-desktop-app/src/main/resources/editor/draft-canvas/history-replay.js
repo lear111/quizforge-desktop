@@ -562,6 +562,15 @@
       setMode,
       setZoom,
       fitCard,
+      focusElement(node) {
+        alive();
+        if (!root.contains(node)) throw new Error("Focus target outside question card");
+        finish(true);
+        const target = node.getBoundingClientRect(), bounds = viewport2.getBoundingClientRect();
+        model.pan(bounds.left + 24 - target.left, bounds.top + 24 - target.top);
+        render();
+        changed();
+      },
       onChange(listener) {
         alive();
         changeListeners.add(listener);
@@ -702,7 +711,8 @@
         synchronize();
         return;
       }
-      answerChanged(getAnswerIntent());
+      Promise.resolve(answerChanged(getAnswerIntent())).catch(() => {
+      });
     };
     if (!history) form.addEventListener("change", change);
     synchronize();
@@ -713,6 +723,14 @@
         synchronize();
       },
       getAnswerIntent,
+      hasAnswer() {
+        alive();
+        return question.selectedOptionIds.length > 0;
+      },
+      focusTarget() {
+        alive();
+        return null;
+      },
       setInteractionMode(next) {
         alive();
         if (!["INTERACT", "DISABLED"].includes(next)) throw new TypeError("Unknown interaction mode");
@@ -779,8 +797,522 @@
     }
   });
 
+  // src/shared/renderer/result.js
+  function resultSection(r) {
+    const section = element("section", "practice-result");
+    section.id = "practice-result";
+    section.hidden = !r;
+    if (r) {
+      section.append(element("p", `practice-result-${r.status.toLowerCase()}`, r.status === "UNSCORED" ? "\u5DF2\u63D0\u4EA4 \xB7 \u672A\u8BC4\u5206" : r.status === "CORRECT" ? "\u56DE\u7B54\u6B63\u786E" : "\u56DE\u7B54\u9519\u8BEF"));
+      if (r.score != null) section.append(element("p", "practice-earned-score", `\u5F97\u5206\uFF1A${r.score} / ${r.maxScore}`));
+      if (r.analysis.text) section.append(element("strong", "", "\u7B54\u6848\u4E0E\u89E3\u6790"), element("p", "practice-analysis", r.analysis.text));
+    }
+    return section;
+  }
+
+  // src/renderer/composite-selection/renderer.js
+  function mountCompositeSelection(form, initial, { mode, contentRoot, canInteract, answerChanged, renderPrompt: renderPrompt2 }) {
+    requireRendererMode(mode);
+    const history = mode === RendererMode.READ_ONLY_HISTORY;
+    let question = initial, readOnly = history, interaction = "INTERACT", destroyed2 = false;
+    const prompt = element("p", "practice-prompt");
+    if (renderPrompt2) renderPrompt2(prompt, question);
+    else prompt.textContent = question.prompt.text;
+    prompt.id = "practice-prompt";
+    contentRoot.append(prompt);
+    const groups = element("div", "composite-items");
+    question.presentation.items.forEach((item, n) => {
+      const section = element("section", "composite-item");
+      section.dataset.targetId = item.id;
+      section.tabIndex = -1;
+      section.append(element("h3", "", `${item.number}. ${item.prompt.text}`));
+      const field = element("fieldset", "practice-options");
+      field.append(element("legend", "", `\u7B2C ${item.number} \u9898`));
+      item.options.forEach((option, i) => {
+        const label = element("label", `practice-option feedback-${option.feedback.toLowerCase()}`);
+        label.dataset.optionId = option.id;
+        const input = element("input");
+        input.type = "radio";
+        input.name = `practice-child-${n}`;
+        input.value = option.id;
+        input.id = `practice-child-${n}-${i}`;
+        label.append(input, element("span", "practice-option-text", `${String.fromCharCode(65 + i)}. ${option.content.text}`));
+        field.append(label);
+      });
+      section.append(field);
+      groups.append(section);
+    });
+    form.append(groups);
+    function alive() {
+      if (destroyed2) throw new Error("Question renderer destroyed");
+    }
+    function sync() {
+      groups.querySelectorAll("input").forEach((input) => {
+        input.checked = question.selectedOptionIds.includes(input.value);
+        input.disabled = readOnly || interaction !== "INTERACT" || question.state === "SUBMITTED";
+        input.closest("label").classList.toggle("selected", input.checked);
+      });
+      prompt.querySelectorAll("select[data-child-id]").forEach((input) => {
+        var _a;
+        const item = question.presentation.items.find((i) => i.id === input.dataset.childId);
+        input.value = ((_a = item.options.find((o) => question.selectedOptionIds.includes(o.id))) == null ? void 0 : _a.id) || "";
+        input.disabled = readOnly || interaction !== "INTERACT" || question.state === "SUBMITTED";
+      });
+    }
+    function getAnswerIntent() {
+      alive();
+      return { selectedOptionIds: Array.from(groups.querySelectorAll("input:checked"), (i) => i.value) };
+    }
+    const change = (event) => {
+      if (!event.target.matches("input[type=radio],select[data-child-id]")) return;
+      if (destroyed2 || readOnly || interaction !== "INTERACT" || question.state === "SUBMITTED" || !canInteract()) {
+        sync();
+        return;
+      }
+      if (event.target.matches("select[data-child-id]")) {
+        const item = question.presentation.items.find((i) => i.id === event.target.dataset.childId);
+        groups.querySelectorAll("input").forEach((input) => {
+          if (item.options.some((o) => o.id === input.value)) input.checked = input.value === event.target.value;
+        });
+      }
+      Promise.resolve(answerChanged(getAnswerIntent())).catch(() => {
+      });
+    };
+    if (!history) {
+      form.addEventListener("change", change);
+      prompt.addEventListener("change", change);
+    }
+    sync();
+    return Object.freeze({
+      update(next) {
+        alive();
+        question = next;
+        sync();
+      },
+      getAnswerIntent,
+      hasAnswer() {
+        alive();
+        return question.selectedOptionIds.length > 0;
+      },
+      focusTarget(id2) {
+        alive();
+        const node = Array.from(groups.children).find((n) => n.dataset.targetId === id2);
+        if (!node) return null;
+        node.focus({ preventScroll: true });
+        return node;
+      },
+      setInteractionMode(next) {
+        alive();
+        if (!["INTERACT", "DISABLED"].includes(next)) throw new TypeError("Unknown interaction mode");
+        interaction = next;
+        sync();
+      },
+      setReadOnly(value) {
+        alive();
+        if (history && !value) throw new Error("History capability cannot be upgraded");
+        readOnly = Boolean(value);
+        sync();
+      },
+      renderResult() {
+        alive();
+        return resultSection(question.result);
+      },
+      destroy() {
+        if (destroyed2) return;
+        destroyed2 = true;
+        form.removeEventListener("change", change);
+        prompt.removeEventListener("change", change);
+        prompt.querySelectorAll("select").forEach((i) => i.disabled = true);
+        groups.querySelectorAll("input").forEach((i) => i.disabled = true);
+      }
+    });
+  }
+
+  // src/renderer/reading/index.js
+  var readingRenderer = Object.freeze({
+    id: "builtin.reading.v1",
+    questionType: "READING",
+    selectionMode: "COMPOSITE_SINGLE",
+    label: "\u9605\u8BFB\u7406\u89E3",
+    parse(q) {
+      var _a;
+      if (!Array.isArray((_a = q.presentation) == null ? void 0 : _a.items) || !q.presentation.items.length) throw new TypeError("Reading items are missing");
+      const items = q.presentation.items.map((item) => {
+        if (typeof item.id !== "string" || !item.id.trim() || !Number.isInteger(item.number) || item.number < 1) throw new TypeError("Invalid reading item identity");
+        const child = readChoiceQuestion({
+          ...q,
+          selectionMode: "SINGLE",
+          prompt: item.prompt,
+          options: item.options,
+          selectedOptionIds: q.selectedOptionIds.filter((id2) => item.options.some((o) => o.id === id2))
+        }, { selectionMode: "SINGLE" });
+        return { id: item.id, number: item.number, prompt: child.prompt, options: child.options };
+      });
+      if (new Set(items.map((i) => i.id)).size !== items.length) throw new TypeError("Reading child IDs must be unique");
+      const all = readChoiceQuestion({ ...q, selectionMode: "MULTIPLE", options: items.flatMap((i) => i.options) }, { selectionMode: "MULTIPLE" });
+      return { ...all, selectionMode: "COMPOSITE_SINGLE", presentation: { items } };
+    },
+    mount: mountCompositeSelection
+  });
+
+  // src/renderer/cloze/index.js
+  function renderPrompt(prompt, q, select) {
+    const marker = /(\\)?\{\{([1-9][0-9]*)}}/g;
+    let end = 0;
+    for (const match of q.prompt.text.matchAll(marker)) {
+      prompt.append(document.createTextNode(q.prompt.text.slice(end, match.index)));
+      end = match.index + match[0].length;
+      if (match[1]) {
+        prompt.append(document.createTextNode(match[0].slice(1)));
+        continue;
+      }
+      const item = q.presentation.items.find((i) => i.number === Number(match[2]));
+      if (!item) throw new TypeError("Unknown inline blank");
+      const input = element("select", "inline-blank");
+      input.dataset.childId = item.id;
+      input.setAttribute("aria-label", `\u7B2C ${item.number} \u7A7A`);
+      input.append(new Option(`${item.number}._______`, ""));
+      item.options.forEach((o) => input.append(new Option(`${item.number}.${o.content.text}`, o.id)));
+      prompt.append(input);
+    }
+    prompt.append(document.createTextNode(q.prompt.text.slice(end)));
+  }
+  var clozeRenderer = Object.freeze({
+    id: "builtin.cloze.v1",
+    questionType: "CLOZE",
+    selectionMode: "COMPOSITE_SINGLE",
+    label: "\u5B8C\u5F62\u586B\u7A7A",
+    parse(q) {
+      const parsed = readingRenderer.parse(q);
+      return { ...parsed, selectionMode: "COMPOSITE_SINGLE" };
+    },
+    mount(form, q, context) {
+      return mountCompositeSelection(form, q, { ...context, renderPrompt });
+    }
+  });
+
+  // src/renderer/matching/index.js
+  var matchingRenderer = Object.freeze({
+    id: "builtin.matching.v1",
+    questionType: "MATCHING",
+    selectionMode: "ASSIGNMENT",
+    label: "\u6BB5\u843D\u6392\u5E8F",
+    parse(q) {
+      const all = readChoiceQuestion({ ...q, selectionMode: "MULTIPLE", selectedOptionIds: [] }, { selectionMode: "MULTIPLE" });
+      const p = q.presentation;
+      if (!Array.isArray(p == null ? void 0 : p.slots) || !p.slots.length || typeof p.assignments !== "object" || !p.assignments) throw new TypeError("Missing matching presentation");
+      const ids = /* @__PURE__ */ new Set();
+      const slots = p.slots.map((s) => {
+        if (typeof s.id !== "string" || !s.id.trim() || ids.has(s.id) || !Number.isInteger(s.number) || typeof s.locked !== "boolean") throw new TypeError("Invalid assignment slot");
+        ids.add(s.id);
+        for (const id2 of [s.givenOptionId, s.selectedOptionId, s.correctOptionId]) if (id2 != null && !all.available.has(id2)) throw new TypeError("Unknown assignment option");
+        if (!["NONE", "CORRECT", "INCORRECT"].includes(s.feedback) || q.state !== "SUBMITTED" && s.feedback !== "NONE") throw new TypeError("Invalid slot feedback");
+        if (q.state !== "SUBMITTED" && s.correctOptionId != null) throw new TypeError("Unsubmitted correct assignment");
+        return { ...s };
+      });
+      const assignments = { ...p.assignments };
+      for (const [id2, option] of Object.entries(assignments)) if (!ids.has(id2) || !all.available.has(option)) throw new TypeError("Unknown assignment");
+      return { ...all, selectionMode: "ASSIGNMENT", presentation: { slots, assignments } };
+    },
+    mount(form, initial, { mode, contentRoot, canInteract, answerChanged }) {
+      requireRendererMode(mode);
+      const history = mode === RendererMode.READ_ONLY_HISTORY;
+      let q = initial, readOnly = history, interaction = "INTERACT", destroyed2 = false;
+      const prompt = element("p", "practice-prompt", q.prompt.text);
+      prompt.id = "practice-prompt";
+      contentRoot.append(prompt);
+      const area = element("div", "assignment-slots");
+      const reserved = new Set(q.presentation.slots.filter((s) => s.locked).map((s) => s.givenOptionId));
+      q.presentation.slots.forEach((slot, n) => {
+        const label = element("label", `assignment-slot feedback-${slot.feedback.toLowerCase()}`);
+        label.dataset.targetId = slot.id;
+        label.tabIndex = -1;
+        label.append(element("span", "", `${slot.number}.`));
+        const select = element("select");
+        select.dataset.slotId = slot.id;
+        select.id = `assignment-slot-${n}`;
+        select.setAttribute("aria-label", `\u7B2C ${slot.number} \u4E2A\u4F4D\u7F6E`);
+        select.append(new Option("\u2014", ""));
+        q.options.forEach((o) => {
+          const option = new Option(o.content.text, o.id);
+          option.disabled = reserved.has(o.id);
+          select.append(option);
+        });
+        label.append(select);
+        area.append(label);
+      });
+      form.append(area);
+      function alive() {
+        if (destroyed2) throw new Error("Question renderer destroyed");
+      }
+      function sync() {
+        area.querySelectorAll("select").forEach((input) => {
+          const slot = q.presentation.slots.find((s) => s.id === input.dataset.slotId);
+          input.value = slot.locked ? slot.givenOptionId : q.presentation.assignments[slot.id] || "";
+          input.disabled = slot.locked || readOnly || interaction !== "INTERACT" || q.state === "SUBMITTED";
+        });
+      }
+      function getAnswerIntent() {
+        alive();
+        const assignments = {};
+        area.querySelectorAll("select").forEach((i) => {
+          if (!q.presentation.slots.find((s) => s.id === i.dataset.slotId).locked && i.value) assignments[i.dataset.slotId] = i.value;
+        });
+        return { assignments };
+      }
+      const change = (event) => {
+        if (!event.target.matches("select")) return;
+        if (destroyed2 || readOnly || interaction !== "INTERACT" || q.state === "SUBMITTED" || !canInteract()) {
+          sync();
+          return;
+        }
+        Promise.resolve(answerChanged(getAnswerIntent())).catch(() => {
+        });
+      };
+      if (!history) form.addEventListener("change", change);
+      sync();
+      return Object.freeze({
+        update(next) {
+          alive();
+          q = next;
+          sync();
+        },
+        getAnswerIntent,
+        hasAnswer() {
+          alive();
+          return Object.keys(q.presentation.assignments).length > 0;
+        },
+        focusTarget(id2) {
+          alive();
+          const node = Array.from(area.children).find((n) => n.dataset.targetId === id2);
+          if (node) node.focus({ preventScroll: true });
+          return node || null;
+        },
+        setInteractionMode(next) {
+          alive();
+          if (!["INTERACT", "DISABLED"].includes(next)) throw new TypeError("Unknown interaction mode");
+          interaction = next;
+          sync();
+        },
+        setReadOnly(value) {
+          alive();
+          if (history && !value) throw new Error("History capability cannot be upgraded");
+          readOnly = Boolean(value);
+          sync();
+        },
+        renderResult() {
+          alive();
+          return resultSection(q.result);
+        },
+        destroy() {
+          if (destroyed2) return;
+          destroyed2 = true;
+          form.removeEventListener("change", change);
+          area.querySelectorAll("select").forEach((i) => i.disabled = true);
+        }
+      });
+    }
+  });
+
+  // src/renderer/text-answer/renderer.js
+  function mountTextAnswers(form, initial, { mode, contentRoot, canInteract, answerChanged, answerEdited, fields: providedFields, plainPrompt = false, answerPlaceholder = "\u5728\u8FD9\u91CC\u8F93\u5165\u8BD1\u6587", intent }) {
+    requireRendererMode(mode);
+    const history = mode === RendererMode.READ_ONLY_HISTORY;
+    let q = initial, readOnly = history, interaction = "INTERACT", destroyed2 = false, timer = null, dirty = false, saving = false, inFlight = null;
+    const fields = providedFields || q.presentation.items;
+    const prompt = element("p", "practice-prompt");
+    prompt.id = "practice-prompt";
+    const marker = /(\\)?\{\{([\s\S]*?)}}/g;
+    let end = 0, ordinal = 0;
+    for (const m of plainPrompt ? [] : q.prompt.text.matchAll(marker)) {
+      prompt.append(document.createTextNode(q.prompt.text.slice(end, m.index)));
+      end = m.index + m[0].length;
+      if (m[1]) {
+        prompt.append(document.createTextNode(m[0].slice(1)));
+        continue;
+      }
+      const item = fields[ordinal++];
+      if (!item) throw new TypeError("Translation target missing");
+      const sentence = element("u", "translation-sentence", `${item.number}. ${m[2]}`);
+      sentence.dataset.targetId = item.id;
+      prompt.append(sentence);
+    }
+    prompt.append(document.createTextNode(q.prompt.text.slice(end)));
+    contentRoot.append(prompt);
+    const area = element("div", "text-answer-items");
+    fields.forEach((item, n) => {
+      var _a;
+      const section = element("section", "text-answer-item");
+      section.dataset.targetId = item.id;
+      section.tabIndex = -1;
+      const label = element("label", "", `${item.number}. ${item.text}`);
+      const input2 = element("textarea");
+      input2.id = `text-answer-${n}`;
+      input2.dataset.itemId = item.id;
+      input2.rows = 5;
+      input2.value = item.answer.text;
+      input2.placeholder = answerPlaceholder;
+      label.htmlFor = input2.id;
+      section.append(label, input2);
+      if (((_a = item.reference) == null ? void 0 : _a.text) && q.state === "SUBMITTED") section.append(element("p", "practice-reference", `\u53C2\u8003\u7B54\u6848\uFF1A${item.reference.text}`));
+      area.append(section);
+    });
+    form.append(area);
+    function alive() {
+      if (destroyed2) throw new Error("Question renderer destroyed");
+    }
+    function sync() {
+      area.querySelectorAll("textarea").forEach((input2) => {
+        var _a, _b;
+        if (!dirty && !saving) input2.value = (((_b = (_a = q.presentation.items) == null ? void 0 : _a.find((i) => i.id === input2.dataset.itemId)) == null ? void 0 : _b.answer) || q.presentation.answer).text;
+        input2.disabled = readOnly || interaction !== "INTERACT" || q.state === "SUBMITTED";
+      });
+    }
+    function getAnswerIntent() {
+      alive();
+      if (intent) return intent(Array.from(area.querySelectorAll("textarea")));
+      const textAnswers = {};
+      area.querySelectorAll("textarea").forEach((i) => {
+        if (i.value.trim()) textAnswers[i.dataset.itemId] = i.value;
+      });
+      return { textAnswers };
+    }
+    function flushAnswer() {
+      alive();
+      clearTimeout(timer);
+      timer = null;
+      if (saving) return inFlight;
+      if (!dirty) return Promise.resolve();
+      const intent2 = getAnswerIntent();
+      dirty = false;
+      saving = true;
+      inFlight = Promise.resolve(answerChanged(intent2)).finally(() => {
+        saving = false;
+        inFlight = null;
+      });
+      return inFlight;
+    }
+    const input = (event) => {
+      if (!event.target.matches("textarea")) return;
+      if (destroyed2 || readOnly || interaction !== "INTERACT" || q.state === "SUBMITTED" || !canInteract()) {
+        sync();
+        return;
+      }
+      dirty = true;
+      answerEdited == null ? void 0 : answerEdited();
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        flushAnswer().catch(() => {
+        });
+      }, 300);
+    };
+    if (!history) form.addEventListener("input", input);
+    sync();
+    return Object.freeze({
+      update(next) {
+        alive();
+        q = next;
+        sync();
+      },
+      getAnswerIntent,
+      flushAnswer,
+      pendingAnswerIntent() {
+        alive();
+        return dirty ? getAnswerIntent() : null;
+      },
+      rejectAnswer() {
+        alive();
+        dirty = false;
+        sync();
+      },
+      hasAnswer() {
+        alive();
+        return Array.from(area.querySelectorAll("textarea")).some((i) => i.value.trim());
+      },
+      focusTarget(id2) {
+        alive();
+        const node = Array.from(area.children).find((n) => n.dataset.targetId === id2);
+        if (node) node.focus({ preventScroll: true });
+        return node || null;
+      },
+      setInteractionMode(next) {
+        alive();
+        if (!["INTERACT", "DISABLED"].includes(next)) throw new TypeError("Unknown interaction mode");
+        interaction = next;
+        sync();
+      },
+      setReadOnly(value) {
+        alive();
+        if (history && !value) throw new Error("History capability cannot be upgraded");
+        readOnly = Boolean(value);
+        sync();
+      },
+      renderResult() {
+        alive();
+        return resultSection(q.result);
+      },
+      destroy() {
+        if (destroyed2) return;
+        destroyed2 = true;
+        clearTimeout(timer);
+        form.removeEventListener("input", input);
+        area.querySelectorAll("textarea").forEach((i) => i.disabled = true);
+      }
+    });
+  }
+
+  // src/renderer/translation/index.js
+  var translationRenderer = Object.freeze({
+    id: "builtin.translation.v1",
+    questionType: "TRANSLATION",
+    selectionMode: "TEXT_FIELDS",
+    label: "\u7FFB\u8BD1",
+    parse(q) {
+      var _a;
+      if (!Array.isArray((_a = q.presentation) == null ? void 0 : _a.items) || !q.presentation.items.length) throw new TypeError("Missing translation items");
+      const ids = /* @__PURE__ */ new Set();
+      const items = q.presentation.items.map((i) => {
+        if (typeof i.id !== "string" || !i.id.trim() || ids.has(i.id) || !Number.isInteger(i.number) || typeof i.text !== "string") throw new TypeError("Invalid translation identity");
+        ids.add(i.id);
+        if (q.state !== "SUBMITTED" && i.reference != null) throw new TypeError("Unsubmitted reference answer");
+        return { ...i, answer: textContent(i.answer, "text answer"), reference: i.reference == null ? null : textContent(i.reference, "reference") };
+      });
+      return { prompt: textContent(q.prompt, "prompt"), options: [], available: /* @__PURE__ */ new Set(), selectedOptionIds: [], presentation: { items }, selectionMode: "TEXT_FIELDS" };
+    },
+    mount: mountTextAnswers
+  });
+
+  // src/renderer/essay/index.js
+  var essayRenderer = Object.freeze({
+    id: "builtin.essay.v1",
+    questionType: "ESSAY",
+    selectionMode: "LONG_TEXT",
+    label: "\u4F5C\u6587\u9898",
+    parse(q) {
+      var _a, _b, _c;
+      if (q.state !== "SUBMITTED" && ((_a = q.presentation) == null ? void 0 : _a.reference) != null) throw new TypeError("Unsubmitted reference answer");
+      return {
+        prompt: textContent(q.prompt, "prompt"),
+        options: [],
+        available: /* @__PURE__ */ new Set(),
+        selectedOptionIds: [],
+        selectionMode: "LONG_TEXT",
+        presentation: { answer: textContent((_b = q.presentation) == null ? void 0 : _b.answer, "essay answer"), reference: ((_c = q.presentation) == null ? void 0 : _c.reference) == null ? null : textContent(q.presentation.reference, "reference") }
+      };
+    },
+    mount(form, q, context) {
+      return mountTextAnswers(form, q, {
+        ...context,
+        fields: [{ id: q.questionId, number: 1, text: "\u6B63\u5F0F\u7B54\u6848", answer: q.presentation.answer, reference: q.presentation.reference }],
+        plainPrompt: true,
+        answerPlaceholder: "\u5728\u8FD9\u91CC\u8F93\u5165\u4F5C\u6587",
+        intent: (inputs) => ({ essayText: inputs[0].value })
+      });
+    }
+  });
+
   // src/shared/renderer/registry.js
-  var builtins = new Map([singleChoiceRenderer, multipleChoiceRenderer].map((renderer) => [renderer.questionType, renderer]));
+  var builtins = new Map([singleChoiceRenderer, multipleChoiceRenderer, readingRenderer, clozeRenderer, matchingRenderer, translationRenderer, essayRenderer].map((renderer) => [renderer.questionType, renderer]));
   var QuestionRendererRegistry = Object.freeze({
     types: Object.freeze([...builtins.keys()]),
     require(type) {
@@ -791,7 +1323,7 @@
   });
 
   // src/practice/contract.js
-  var states = /* @__PURE__ */ new Set(["UNANSWERED", "DRAFT", "SUBMITTED", "RETRYING"]);
+  var states = /* @__PURE__ */ new Set(["UNANSWERED", "DRAFT", "SUBMITTED", "RETRYING", "REVISING"]);
   function string(value, name) {
     if (typeof value !== "string") throw new TypeError(`${name} must be text`);
     return value;
@@ -814,17 +1346,17 @@
       throw new TypeError("Question position is invalid");
     const choice = definition.parse(q);
     const { options, available, selectedOptionIds: selected } = choice;
-    const maximum = number(q.maxScore, "question.maxScore");
+    const maximum = q.maxScore == null && ["TEXT_FIELDS", "LONG_TEXT"].includes(definition.selectionMode) ? null : number(q.maxScore, "question.maxScore");
     let result = null;
     if (q.state === "SUBMITTED") {
       const r = q.result;
-      if (!r || !["CORRECT", "INCORRECT"].includes(r.status) || !["INITIAL", "RETRY", "REVISION"].includes(r.attemptMode))
+      if (!r || !["CORRECT", "INCORRECT", "UNSCORED"].includes(r.status) || !["INITIAL", "RETRY", "REVISION"].includes(r.attemptMode))
         throw new TypeError("Submitted question requires an authoritative result");
       if (!Number.isInteger(r.attemptNo) || r.attemptNo < 1) throw new TypeError("Invalid attemptNo");
       result = {
         status: r.status,
-        score: number(r.score, "result.score"),
-        maxScore: number(r.maxScore, "result.maxScore"),
+        score: r.status === "UNSCORED" && r.score == null ? null : number(r.score, "result.score"),
+        maxScore: r.maxScore == null && r.status === "UNSCORED" ? null : number(r.maxScore, "result.maxScore"),
         attemptId: id(r.attemptId, "result.attemptId"),
         attemptNo: r.attemptNo,
         attemptMode: r.attemptMode,
@@ -842,6 +1374,7 @@
         questionId: id(q.questionId, "questionId"),
         type: definition.questionType,
         selectionMode: definition.selectionMode,
+        ...choice.presentation ? { presentation: choice.presentation } : {},
         index: q.index,
         total: q.total,
         prompt: textContent(q.prompt, "prompt"),
@@ -923,12 +1456,13 @@
       if (destroyed2) throw new Error("Shared Practice UI has been destroyed");
     }
     function controls() {
+      var _a, _b;
       if (!authoritative) return;
       renderer == null ? void 0 : renderer.update(authoritative.question);
       renderer == null ? void 0 : renderer.setReadOnly(readOnly);
       renderer == null ? void 0 : renderer.setInteractionMode(busy || authoritative.question.state === "SUBMITTED" || confirmation ? "DISABLED" : "INTERACT");
       const submit2 = root.querySelector("#practice-submit"), retry = root.querySelector("#practice-retry");
-      if (submit2) submit2.disabled = busy || !authoritative.question.selectedOptionIds.length;
+      if (submit2) submit2.disabled = busy || !((_b = (_a = renderer == null ? void 0 : renderer.hasAnswer) == null ? void 0 : _a.call(renderer)) != null ? _b : authoritative.question.selectedOptionIds.length);
       if (retry) retry.disabled = busy;
       root.querySelectorAll("#practice-confirmation button").forEach((button) => {
         button.disabled = busy;
@@ -943,16 +1477,17 @@
       root.setAttribute("aria-busy", String(busy));
     }
     function render(vm) {
+      var _a;
       renderer == null ? void 0 : renderer.destroy();
       const fragment = document.createDocumentFragment(), q = vm.question;
       const definition = QuestionRendererRegistry.require(q.type);
       const heading = element("div", "card-heading");
       heading.append(element("span", "tag", definition.label), element("span", "", `\u7B2C ${q.index + 1} / ${q.total} \u9898`));
-      const state = element("span", "practice-state", { UNANSWERED: "\u672A\u4F5C\u7B54", DRAFT: "\u5DF2\u9009\u62E9", SUBMITTED: "\u5DF2\u63D0\u4EA4", RETRYING: "\u91CD\u8BD5\u4E2D" }[q.state]);
+      const state = element("span", "practice-state", { UNANSWERED: "\u672A\u4F5C\u7B54", DRAFT: "\u5DF2\u9009\u62E9", SUBMITTED: "\u5DF2\u63D0\u4EA4", RETRYING: "\u91CD\u8BD5\u4E2D", REVISING: "\u4FEE\u8BA2\u4E2D" }[q.state]);
       state.id = "practice-state";
       state.dataset.state = q.state;
       const meta = element("div", "practice-meta");
-      meta.append(element("span", "practice-score", `\u5206\u503C\uFF1A${q.maxScore}`), state);
+      meta.append(element("span", "practice-score", `\u5206\u503C\uFF1A${(_a = q.maxScore) != null ? _a : "\u672A\u8BBE\u7F6E"}`), state);
       fragment.append(heading, meta);
       const form = element("form");
       form.id = "practice-form";
@@ -960,9 +1495,10 @@
         mode,
         contentRoot: fragment,
         canInteract: () => !busy && !confirmation && interactionAllowed(),
-        answerChanged: (intent) => {
-          emit("ANSWER_CHANGED", intent.selectedOptionIds).catch(() => {
-          });
+        answerChanged: (intent) => emit("ANSWER_CHANGED", intent),
+        answerEdited: () => {
+          const button = root.querySelector("#practice-submit");
+          if (button) button.disabled = busy || !renderer.hasAnswer();
         }
       });
       if (!readOnly) {
@@ -998,8 +1534,8 @@
       root.dataset.practiceState = q.state;
     }
     function renderAuthoritative(next, seq) {
-      var _a;
-      const focus = root.contains(document.activeElement) ? document.activeElement.id : null;
+      const focused = root.contains(document.activeElement) ? document.activeElement : null;
+      const focus = focused == null ? void 0 : focused.id, selection = (focused == null ? void 0 : focused.selectionStart) == null ? null : [focused.selectionStart, focused.selectionEnd];
       render(next);
       authoritative = next;
       if (seq !== void 0) ordering.complete(seq, true);
@@ -1007,7 +1543,11 @@
       confirmation = false;
       error = "";
       controls();
-      if (focus && interactionAllowed()) (_a = root.querySelector(`#${focus}`)) == null ? void 0 : _a.focus();
+      if (focus && interactionAllowed()) {
+        const node = document.getElementById(focus);
+        node == null ? void 0 : node.focus();
+        if (selection && (node == null ? void 0 : node.setSelectionRange)) node.setSelectionRange(...selection);
+      }
     }
     function parse(value) {
       try {
@@ -1035,7 +1575,7 @@
       renderAuthoritative(next);
     }
     function applyResponse(value) {
-      var _a, _b;
+      var _a, _b, _c;
       alive();
       if (readOnly) throw new Error("History card has no mutation responses");
       const response = typeof value === "string" ? JSON.parse(value) : value;
@@ -1062,13 +1602,14 @@
         busy = false;
         confirmation = false;
         error = response.error.message;
+        (_c = renderer == null ? void 0 : renderer.rejectAnswer) == null ? void 0 : _c.call(renderer);
         controls();
         settled(new Error(response.error.message));
       }
       return true;
     }
-    function emit(type, selectedOptionIds, document2) {
-      if (readOnly || destroyed2 || busy || !authoritative || !["DRAFT_CHANGED", "SUBMIT"].includes(type) && !interactionAllowed()) {
+    function emit(type, answerIntent, document2) {
+      if (readOnly || destroyed2 || busy || !authoritative || type === "RETRY" && !interactionAllowed()) {
         controls();
         return Promise.reject(new Error("Practice mutation unavailable"));
       }
@@ -1085,7 +1626,7 @@
         sessionQuestionId: authoritative.question.sessionQuestionId,
         operationSeq: seq
       };
-      if (type === "ANSWER_CHANGED") event.selectedOptionIds = selectedOptionIds;
+      if (type === "ANSWER_CHANGED") Object.assign(event, answerIntent);
       if (type === "DRAFT_CHANGED") event.document = document2;
       try {
         sendIntent(event);
@@ -1101,14 +1642,14 @@
       return reply;
     }
     const submit = (event) => {
-      var _a;
+      var _a, _b, _c;
       if (event.target.id !== "practice-form") return;
       event.preventDefault();
       if (readOnly) return;
-      if (busy || !interactionAllowed() || !(authoritative == null ? void 0 : authoritative.question.selectedOptionIds.length)) return;
+      if (busy || !interactionAllowed() || !((_b = (_a = renderer == null ? void 0 : renderer.hasAnswer) == null ? void 0 : _a.call(renderer)) != null ? _b : authoritative == null ? void 0 : authoritative.question.selectedOptionIds.length)) return;
       confirmation = true;
       controls();
-      (_a = root.querySelector("#practice-confirm-submit")) == null ? void 0 : _a.focus();
+      (_c = root.querySelector("#practice-confirm-submit")) == null ? void 0 : _c.focus();
     };
     const click = (event) => {
       var _a;
@@ -1120,6 +1661,9 @@
         confirmation = false;
         (_a = hooks.lockSubmit) == null ? void 0 : _a.call(hooks);
         Promise.resolve().then(() => {
+          var _a2;
+          return (_a2 = renderer == null ? void 0 : renderer.flushAnswer) == null ? void 0 : _a2.call(renderer);
+        }).then(() => idle()).then(() => {
           var _a2;
           return (_a2 = hooks.beforeSubmit) == null ? void 0 : _a2.call(hooks);
         }).then(() => {
@@ -1151,7 +1695,24 @@
         if (next.question.state !== "SUBMITTED") throw new Error("History requires a submitted Attempt");
         renderAuthoritative(next);
       },
-      whenIdle: idle,
+      focusTarget(targetId) {
+        var _a, _b;
+        alive();
+        if (typeof targetId !== "string" || !targetId.trim()) throw new TypeError("Target ID required");
+        const node = (_a = renderer == null ? void 0 : renderer.focusTarget) == null ? void 0 : _a.call(renderer, targetId);
+        if (node) (_b = hooks.focusTarget) == null ? void 0 : _b.call(hooks, node);
+        return Boolean(node);
+      },
+      async whenIdle() {
+        var _a;
+        await ((_a = renderer == null ? void 0 : renderer.flushAnswer) == null ? void 0 : _a.call(renderer));
+        await idle();
+      },
+      pendingAnswerIntent() {
+        var _a, _b;
+        alive();
+        return (_b = (_a = renderer == null ? void 0 : renderer.pendingAnswerIntent) == null ? void 0 : _a.call(renderer)) != null ? _b : null;
+      },
       async saveDraft(document2) {
         await idle();
         return emit("DRAFT_CHANGED", void 0, document2);
@@ -1200,7 +1761,7 @@
   var canvas = mountDraftCanvas(object3, { accessMode: "READ_ONLY" });
   var card = mountSharedQuestionRuntime(object3, () => {
     throw new Error("History cannot mutate Practice");
-  }, () => false, { readOnly: true });
+  }, () => false, { readOnly: true, focusTarget: (node) => canvas.focusElement(node) });
   var destroyed = false;
   window.draftCanvas = canvas;
   window.historyDraftReplay = Object.freeze({
@@ -1213,6 +1774,7 @@
     bindHost() {
       if (!destroyed) window.historyHost.ready();
     },
+    focusTarget: card.focusTarget,
     getViewState: card.getViewState,
     diagnostics() {
       return { accessMode: "READ_ONLY", destroyed, canvas: canvas.diagnostics() };

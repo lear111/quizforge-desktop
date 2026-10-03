@@ -73,6 +73,9 @@ public final class PersistentPracticeRuntime {
                 ? row.attempts().getLast().answer() : row.sessionQuestion().draftAnswer();
         return MatchingPracticeAnswer.from(answer).assignments();
     }
+    public void saveMatchingDraft(java.util.Map<String,String> assignments) {
+        hydrate(service.saveMatchingDraft(sessionId,contentId,session.current().id(),assignments));
+    }
     public void assignMatching(String blankId, String optionId) {
         var assignments = session.matchingAfter(blankId, optionId);
         hydrate(service.saveMatchingDraft(sessionId, contentId, session.current().id(), assignments));
@@ -82,6 +85,9 @@ public final class PersistentPracticeRuntime {
         var answer = row.sessionQuestion().practiceState() == PracticeSessionQuestion.State.SUBMITTED
                 ? row.attempts().getLast().answer() : row.sessionQuestion().draftAnswer();
         return TranslationPracticeAnswer.from(answer).answers();
+    }
+    public void saveTranslationDraft(java.util.Map<String,EssayPracticeAnswer> answers) {
+        hydrate(service.saveTranslationDraft(sessionId,contentId,session.current().id(),answers));
     }
     public void assignTranslation(String itemId, EssayPracticeAnswer answer) {
         var answers = session.translationAfter(itemId, answer);

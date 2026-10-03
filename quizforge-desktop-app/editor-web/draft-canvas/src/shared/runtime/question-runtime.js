@@ -25,7 +25,7 @@ export function mountSharedQuestionRuntime(root, sendIntent, interactionAllowed 
     renderer?.setReadOnly(readOnly);
     renderer?.setInteractionMode(busy || authoritative.question.state === 'SUBMITTED' || confirmation ? 'DISABLED' : 'INTERACT');
     const submit = root.querySelector('#practice-submit'), retry = root.querySelector('#practice-retry');
-    if (submit) submit.disabled = busy || !authoritative.question.selectedOptionIds.length;
+    if (submit) submit.disabled = busy || !(renderer?.hasAnswer?.() ?? authoritative.question.selectedOptionIds.length);
     if (retry) retry.disabled = busy;
     root.querySelectorAll('#practice-confirmation button').forEach(button => { button.disabled = busy; });
     const panel = root.querySelector('#practice-confirmation');
@@ -40,13 +40,13 @@ export function mountSharedQuestionRuntime(root, sendIntent, interactionAllowed 
     const definition = QuestionRendererRegistry.require(q.type);
     const heading = element('div', 'card-heading');
     heading.append(element('span', 'tag', definition.label), element('span', '', `第 ${q.index + 1} / ${q.total} 题`));
-    const state = element('span', 'practice-state', { UNANSWERED: '未作答', DRAFT: '已选择', SUBMITTED: '已提交', RETRYING: '重试中' }[q.state]);
+    const state = element('span', 'practice-state', { UNANSWERED: '未作答', DRAFT: '已选择', SUBMITTED: '已提交', RETRYING: '重试中', REVISING: '修订中' }[q.state]);
     state.id = 'practice-state'; state.dataset.state = q.state;
-    const meta = element('div', 'practice-meta'); meta.append(element('span', 'practice-score', `分值：${q.maxScore}`), state);
+    const meta = element('div', 'practice-meta'); meta.append(element('span', 'practice-score', `分值：${q.maxScore ?? '未设置'}`), state);
     fragment.append(heading, meta);
     const form = element('form'); form.id = 'practice-form';
     renderer = definition.mount(form, q, { mode, contentRoot: fragment, canInteract: () => !busy && !confirmation && interactionAllowed(),
-      answerChanged: intent => { emit('ANSWER_CHANGED', intent.selectedOptionIds).catch(() => {}); } });
+      answerChanged: intent => emit('ANSWER_CHANGED', intent), answerEdited: () => { const button=root.querySelector('#practice-submit'); if(button)button.disabled=busy||!renderer.hasAnswer(); } });
     if (!readOnly) {
     const actions = element('div', 'practice-actions');
     const button = element('button', q.state === 'SUBMITTED' ? 'practice-retry' : 'practice-submit', q.state === 'SUBMITTED' ? '↻  重试' : '✓  提交答案');
@@ -68,11 +68,12 @@ export function mountSharedQuestionRuntime(root, sendIntent, interactionAllowed 
     root.replaceChildren(fragment); root.dataset.practiceState = q.state;
   }
   function renderAuthoritative(next, seq) {
-    const focus = root.contains(document.activeElement) ? document.activeElement.id : null;
+    const focused = root.contains(document.activeElement) ? document.activeElement : null;
+    const focus = focused?.id, selection=focused?.selectionStart==null?null:[focused.selectionStart,focused.selectionEnd];
     render(next); authoritative = next;
     if (seq !== undefined) ordering.complete(seq, true);
     busy = false; confirmation = false; error = ''; controls();
-    if (focus && interactionAllowed()) root.querySelector(`#${focus}`)?.focus();
+    if (focus && interactionAllowed()) {const node=document.getElementById(focus);node?.focus();if(selection&&node?.setSelectionRange)node.setSelectionRange(...selection);}
   }
   function parse(value) {
     try { return readPractice(value); }
@@ -119,19 +120,19 @@ export function mountSharedQuestionRuntime(root, sendIntent, interactionAllowed 
         throw new TypeError('Failed response requires an error message');
       ordering.complete(seq, false);
       // No permanent optimistic state and no failed response replacing authoritative Practice state.
-      busy = false; confirmation = false; error = response.error.message; controls();
+      busy = false; confirmation = false; error = response.error.message; renderer?.rejectAnswer?.(); controls();
       settled(new Error(response.error.message));
     }
     return true;
   }
-  function emit(type, selectedOptionIds, document) {
-    if (readOnly || destroyed || busy || !authoritative || (!['DRAFT_CHANGED', 'SUBMIT'].includes(type) && !interactionAllowed())) { controls(); return Promise.reject(new Error('Practice mutation unavailable')); }
+  function emit(type, answerIntent, document) {
+    if (readOnly || destroyed || busy || !authoritative || (type === 'RETRY' && !interactionAllowed())) { controls(); return Promise.reject(new Error('Practice mutation unavailable')); }
     const seq = ordering.begin();
     const reply = new Promise((resolve, reject) => { pendingReply = { resolve, reject }; });
     busy = true; error = ''; controls();
     const event = { type, sessionId: authoritative.session.sessionId,
       sessionQuestionId: authoritative.question.sessionQuestionId, operationSeq: seq };
-    if (type === 'ANSWER_CHANGED') event.selectedOptionIds = selectedOptionIds;
+    if (type === 'ANSWER_CHANGED') Object.assign(event, answerIntent);
     if (type === 'DRAFT_CHANGED') event.document = document;
     try { sendIntent(event); }
     catch (failure) {
@@ -145,7 +146,7 @@ export function mountSharedQuestionRuntime(root, sendIntent, interactionAllowed 
     if (event.target.id !== 'practice-form') return;
     event.preventDefault();
     if (readOnly) return; // Also prevent native form navigation on a read-only history card.
-    if (busy || !interactionAllowed() || !authoritative?.question.selectedOptionIds.length) return;
+    if (busy || !interactionAllowed() || !(renderer?.hasAnswer?.() ?? authoritative?.question.selectedOptionIds.length)) return;
     confirmation = true; controls(); root.querySelector('#practice-confirm-submit')?.focus();
   };
   const click = event => {
@@ -156,7 +157,7 @@ export function mountSharedQuestionRuntime(root, sendIntent, interactionAllowed 
       confirmation = false;
       // Lock canvas edits throughout capture/save ACK/submit, including asynchronous transports.
       hooks.lockSubmit?.();
-      Promise.resolve().then(() => hooks.beforeSubmit?.()).then(() => {
+      Promise.resolve().then(() => renderer?.flushAnswer?.()).then(() => idle()).then(() => hooks.beforeSubmit?.()).then(() => {
         busy = false; return emit('SUBMIT');
       }).catch(failure => { busy = false; error = failure.message; controls(); })
         .finally(() => hooks.afterSubmit?.());
@@ -173,7 +174,9 @@ export function mountSharedQuestionRuntime(root, sendIntent, interactionAllowed 
       if (next.question.state !== 'SUBMITTED') throw new Error('History requires a submitted Attempt');
       renderAuthoritative(next);
     },
-    whenIdle: idle,
+    focusTarget(targetId) { alive(); if (typeof targetId !== 'string' || !targetId.trim()) throw new TypeError('Target ID required'); const node = renderer?.focusTarget?.(targetId); if (node) hooks.focusTarget?.(node); return Boolean(node); },
+    async whenIdle() { await renderer?.flushAnswer?.(); await idle(); },
+    pendingAnswerIntent() { alive(); return renderer?.pendingAnswerIntent?.() ?? null; },
     async saveDraft(document) { await idle(); return emit('DRAFT_CHANGED', undefined, document); },
     getOperationState() { alive(); return ordering.getState(); },
     getViewState() { alive(); return authoritative ? JSON.parse(JSON.stringify(authoritative)) : null; },

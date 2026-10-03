@@ -29,11 +29,11 @@ Set-Location ../../..
 
 LiveUi 合并 Java、CSS 与 Vite 更新，需要支持增强类重定义的 JBR 21。普通 JDK 21 可用于 Maven 编译与普通启动。详见 [开发热更新说明](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/development-live-update.md)。
 
-Practice Draft Mode v1 已嵌入正式浏览区：当前 TEXT 单选/多选题右上角点击“草稿 / 退出草稿”，原地切换 JavaFX 题卡与 Draft Canvas。沿用当前 Session、作答状态及 Workspace SQLite，切题前等待保存确认，逐题恢复笔迹与视口。提交冻结、重试清空继续复用 Core 持久化流程。详见 [正式模式说明](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/PRACTICE_DRAFT_MODE.md) 和 [验收记录](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/PRACTICE_DRAFT_MODE_ACCEPTANCE.md)。独立开发入口 `.\tools\Start-SharedPracticeCanvas.ps1` 仍保留，默认使用 `target/draft-persistence-acceptance/practice.db`，可通过 `-Database` 指定隔离路径；正式页面不依赖它。
+Practice Draft Mode v1 已嵌入正式浏览区：当前七种正式 TEXT 题型右上角点击“草稿 / 退出草稿”，原地切换 JavaFX 题卡与 Draft Canvas。沿用当前 Session、作答状态及 Workspace SQLite，切题前等待保存确认，逐题恢复笔迹与视口。提交冻结、重试清空继续复用 Core 持久化流程。详见 [正式模式说明](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/PRACTICE_DRAFT_MODE.md) 和 [验收记录](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/PRACTICE_DRAFT_MODE_ACCEPTANCE.md)。独立开发入口 `.\tools\Start-SharedPracticeCanvas.ps1` 仍保留，默认使用 `target/draft-persistence-acceptance/practice.db`，可通过 `-Database` 指定隔离路径；正式页面不依赖它。
 
 History Draft Replay v1 已接入正式历史详情：按当前 Attempt 显示“草稿 / 返回结果”，冻结题目、答案和笔迹一起回放。只读 Canvas 与 Practice 共用渲染器和 CSS，平移缩放不写库；无快照的旧历史继续显示原结果。详见 [History Replay 架构](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/HISTORY_DRAFT_REPLAY.md)。
 
-Shared Question Renderer Contract v1 已拆分 Runtime、静态 registry 和 Choice renderer，单选/多选在 Active 与只读 History 复用同一实现，Core 仍负责判分与 Attempts。详见 [Renderer Contract](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/SHARED_RENDERER_CONTRACT.md) 与 [验收](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/SHARED_RENDERER_ACCEPTANCE.md)。
+Shared Renderer Coverage v1 已接入七种正式题型：SINGLE_CHOICE、MULTIPLE_CHOICE、READING、CLOZE、MATCHING、TRANSLATION、ESSAY。各题型在 Active 与只读 History 复用同一 Runtime 和 renderer，父题共用一个 Draft，内部小题由通用 focusTarget 定位。Core 仍负责判分与 Attempts，翻译/作文保持 UNSCORED，Shared 本轮仅保证 TEXT。详见 [Renderer Contract](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/SHARED_RENDERER_CONTRACT.md) 与 [验收](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/SHARED_RENDERER_COVERAGE_ACCEPTANCE.md)。
 
 ## 模块与目录
 

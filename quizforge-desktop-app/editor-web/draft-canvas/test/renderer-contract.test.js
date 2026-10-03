@@ -21,8 +21,8 @@ for (const [type, mode] of [['SINGLE_CHOICE','SINGLE'],['MULTIPLE_CHOICE','MULTI
   });
 }
 test('registry never silently falls back for unknown types', () => {
-  assert.deepEqual(QuestionRendererRegistry.types,['SINGLE_CHOICE','MULTIPLE_CHOICE']);
-  assert.throws(() => readPractice(view('READING')),/Unsupported question type/);
+  assert.deepEqual(QuestionRendererRegistry.types,['SINGLE_CHOICE','MULTIPLE_CHOICE','READING','CLOZE','MATCHING','TRANSLATION','ESSAY']);
+  assert.throws(() => readPractice(view('UNKNOWN')),/Unsupported question type/);
 });
 test('capabilities explicitly distinguish ACTIVE and READ_ONLY_HISTORY', () => {
   assert.equal(requireRendererMode(RendererMode.ACTIVE),'ACTIVE');

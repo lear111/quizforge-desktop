@@ -177,6 +177,11 @@ listen($('#load-json'), 'click', () => {
 const api = Object.freeze({
   getDraft() { alive(); finish(true); return JSON.stringify(model.getDraft()); },
   loadDraft, setMode, setZoom, fitCard,
+  focusElement(node) {
+    alive(); if (!root.contains(node)) throw new Error('Focus target outside question card');
+    finish(true); const target = node.getBoundingClientRect(), bounds = viewport.getBoundingClientRect();
+    model.pan(bounds.left + 24 - target.left, bounds.top + 24 - target.top); render(); changed();
+  },
   onChange(listener) { alive(); changeListeners.add(listener); return () => changeListeners.delete(listener); },
   setEditable(value) { alive(); finish(true); editable = Boolean(value); },
   diagnostics() { return { supportedPointerEvents: typeof PointerEvent !== 'undefined', counts: { ...counts }, events: events.map(e => ({ ...e })), accessMode, mode, destroyed }; },

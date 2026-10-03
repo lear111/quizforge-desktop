@@ -49,8 +49,9 @@ class EssayCardViewTest {
             try{
                 var view=new MixedQuestionPracticeView(bank,QuestionResourceInput.NONE,()->practice,refs->null);
                 new Scene(view,1000,700);view.applyCss();view.layout();
-                assertTrue(view.lookupAll(".authoring-essay-text").stream().filter(javafx.scene.control.Label.class::isInstance)
-                        .map(javafx.scene.control.Label.class::cast).anyMatch(label->label.getText().equals("Restored essay draft")));
+                assertTrue(view.lookupAll(".authoring-essay-text").stream().anyMatch(node ->
+                        node instanceof javafx.scene.control.Label label && label.getText().equals("Restored essay draft")
+                        || node instanceof javafx.scene.control.TextArea field && field.getText().equals("Restored essay draft")));
                 io.quizforge.desktop.testing.FxTestRuntime.acceptSubmission((Button)view.lookup("#essay-submit-answer"));
                 assertEquals(1,practice.summary().unscoredCount());
                 assertFalse(view.lookup("#essay-edit-answer").isVisible());

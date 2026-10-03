@@ -1,95 +1,92 @@
-# Shared Question Renderer Contract v1
+# Shared Question Renderer Contract v1 / Coverage v1
 
-本阶段支持 `SINGLE_CHOICE + TEXT` 和 `MULTIPLE_CHOICE + TEXT`，用于正式 Active DRAFT 和 History DRAFT。NORMAL / History RESULT 继续使用原 JavaFX 页面。当前注册表是静态内置映射，没有插件注册、动态加载或 `.qfx`。
+七种正式题型在 Active DRAFT 和 History DRAFT 中使用同一套 Runtime、Bridge、WebView Host、Canvas 和 SQLite 草稿持久化。NORMAL / History RESULT 保留现有 JavaFX 页面。内容范围为 TEXT；未知内容明确显示 `Unsupported content`，不压平或丢弃。
 
-## 分层与所有权
+作文 NORMAL 在现有 TEXT answer 路径中提供多行输入，与 DRAFT 共用 Core 正式答案；原有“编辑作答”富文本入口保留。这里不迁移 DOCUMENT 答案，也不把草稿笔迹当作作文答案。
+
+## 分层
 
 ```text
-Java Surface Host / semantic Bridge
-  Shared Runtime (src/shared/runtime/question-runtime.js)
-    QuestionRendererRegistry
-      SINGLE_CHOICE   → Choice family, SINGLE, radio
-      MULTIPLE_CHOICE → Choice family, MULTIPLE, checkbox
-  Canvas Core / World geometry / DraftAutosave
+Core QuestionTypeDefinition / PracticeSessionService
+    ↓ authoritative ViewModel / semantic Bridge
+Shared Runtime
+    ↓ QuestionRendererRegistry
+    ├── SINGLE_CHOICE
+    ├── MULTIPLE_CHOICE
+    ├── READING
+    ├── CLOZE
+    ├── MATCHING
+    ├── TRANSLATION
+    └── ESSAY
+Draft Canvas / World / DraftAutosave
+History Replay / immutable AttemptDraftSnapshot
 ```
 
 | 层 | 职责 |
 | --- | --- |
-| Core `QuestionTypeDefinition` | 题型业务结构、答案约束、判分和题库校验；Practice service 管理状态、Attempts 与事务 |
-| Java ViewModel / adapter | 将 Core 的真实 type、答案、结果映射成展示 DTO；提交前不暴露正确答案或解析 |
-| Shared Runtime / Bridge | 加载、身份校验、操作顺序、二次确认、提交/重试命令、错误和销毁；协调 autosave ACK barrier |
-| Question Renderer | 消费结构化内容 DTO，创建题干和选项 DOM，收集语义答案、应用可交互/只读能力，展示 Core 结果 |
-| Canvas Core | 同一 World 中的卡片几何和笔迹、工具、视口；不认识业务题型或判分规则 |
+| Core QuestionTypeDefinition | 数据、题库校验、答案约束和业务判分 |
+| PracticeSessionService | 权威答案、状态转换、Attempt、SQLite 事务 |
+| Shared ViewModel | 公共 shell + sealed、题型独立 presentation；Active / History 共用 frozen-content projection |
+| Shared Question Renderer | 跨平台展示、语义 answer intent、只读结果、小题 focus target |
+| Draft Canvas | 与题型无关的草稿纸、World 坐标、固定逻辑宽度、笔迹、平移、缩放 |
+| History Replay | 选中 Attempt 的题目/答案/结果 + 对应 Frozen DraftSnapshot 的只读投影 |
 
-**Renderer ≠ QuestionTypeDefinition。** Renderer 负责共享界面的交互与展示，不能创建 Attempt、计算分数或直接访问持久化。这个边界可为将来的 Extension Runtime 提供基础；本阶段没有实现扩展运行时。
+注册表是静态内置映射。没有动态加载或外部注册。
 
-## 定义与实例合同
+## 公共 shell 与题型 presentation
 
-`src/shared/renderer/contract.js` 定义 capability mode。`registry.js` 通过 `require(questionType)` 返回冻结的内置定义：
+保持 `schemaVersion: 1.0`。公共 shell 包含 sessionId、bankAssetId/contentId、sessionQuestionId、questionId、type、index/total、TEXT prompt、state、maxScore、result。旧 Choice DTO 和 selectionMode 兼容。复合题、排序和文本题的结构放在各自 presentation 中，不把所有类型的数据塞进万能 payload。
 
-```js
-{
-  id: 'builtin.multiple-choice.v1',
-  questionType: 'MULTIPLE_CHOICE',
-  selectionMode: 'MULTIPLE',
-  label: '多选题',
-  parse(question),
-  mount(form, question, { mode, contentRoot, canInteract, answerChanged })
-}
-```
+| type | family | presentation / answer intent |
+| --- | --- | --- |
+| SINGLE_CHOICE | SINGLE | options / `{selectedOptionIds}`；一个 radio |
+| MULTIPLE_CHOICE | MULTIPLE | options / `{selectedOptionIds}`；多个 checkbox |
+| READING | COMPOSITE_SINGLE | passage + items(id, number, prompt, options)；每个 item 独立单选，父答案仍是 option ID 集合 |
+| CLOZE | COMPOSITE_SINGLE | passage + blank children；正文 `{{n}}` 显示内联选择框，重复标签同步同一个 blank ID |
+| MATCHING | ASSIGNMENT | slots(id, number, locked, givenOptionId, selectedOptionId, feedback) + assignments；intent `{assignments: {blankId: optionId}}` |
+| TRANSLATION | TEXT_FIELDS | items(id, number, sentence, TEXT answer, submitted reference)；intent `{textAnswers: {itemId: text}}` |
+| ESSAY | LONG_TEXT | TEXT formal answer + submitted reference；intent `{essayText}`，与草稿纸 JSON 无关 |
 
-`mount` 返回实例：
+显示编号只用于展示/查找 stable target，不用于业务身份。Matching 的三处固定提示由 Core 提供；普通选项可重复，固定提示字母不可再选，宿主 Core 仍执行最终校验。JS 不判分。
 
-| 操作 | 约定 |
+提交前 result=null，feedback=NONE；Reading/Cloze 不发送正确答案，Matching 只发送固定提示，Translation/Essay 不发送参考答案或解析。提交后显示 Core 原有结果；Translation/Essay `UNSCORED` 保留 null score，不变成 0 分。maxScore 也保留原有 nullable 语义。
+
+## Renderer 实例合同
+
+`parse(question)` 校验受支持的展示内容；`mount(form, question, context)` 创建实例。
+
+| 方法 | 约定 |
 | --- | --- |
-| `update(question)` | 应用完整的权威题目 DTO，恢复选择和 disabled 状态 |
-| `getAnswerIntent()` | 仅返回 `{ selectedOptionIds: [...] }`，不带答案判定或 DOM 信息 |
-| `setInteractionMode('INTERACT' / 'DISABLED')` | 提交、确认或宿主禁止交互时禁用控件；Canvas 工具另由 `canInteract()` 守卫 |
-| `setReadOnly(boolean)` | History 创建时锁定只读，不能随后升级为 ACTIVE |
-| `renderResult()` | 展示宿主供应的 result/score/feedback/analysis，不在 JS 判分 |
-| `destroy()` | 移除 answer listener，禁用旧控件；重复销毁安全 |
+| update(question) | 应用 Core 权威状态；不能重新判分 |
+| getAnswerIntent() | 返回题型所属的语义答案，不带 DOM、显示编号或评分 |
+| hasAnswer() | 有正式答案时允许打开提交确认；不要求全部做完 |
+| setInteractionMode(INTERACT / DISABLED) | 控制交互，绘图工具仍由 canInteract 守卫 |
+| setReadOnly(boolean) | History 创建时锁定只读，不能升级为 Active |
+| renderResult() | 只展示宿主供应的 result/score/feedback/analysis/reference |
+| focusTarget(stableId) | 定位父题卡内部的 target；找不到返回 null，无状态转换 |
+| flushAnswer()（文本家族） | 把尚未 debounce 的文本送给共享队列，等待 Core ACK |
+| pendingAnswerIntent()（文本家族） | 宿主同步 close-save guard 捕获未发送的文本 |
+| destroy() | 清理监听、文本定时器、禁用旧控件，重复销毁安全 |
 
-Runtime 在刷新/替换 renderer 前销毁旧实例；关闭时同时释放根部 submit/click listener。History 使用同一 Choice renderer，只将 mode 设置为 `READ_ONLY_HISTORY`，没有第二套题型实现。
+Runtime 对外提供通用 `focusTarget(targetId)`。Java 大纲将小题编号解析为 stable ID；同父题只平移视口，不 unload/reload Runtime，不换 sessionQuestionId 或 Draft。History 也使用同一接口，查看视口变化不写回冻结快照。
 
-## 静态 registry 与 Choice family
+## 身份、持久化和提交 barrier
 
-`src/renderer/single-choice/index.js` 和 `multiple-choice/index.js` 各自保留 type/id。两者共享 `choice/contract.js` 和 `choice/renderer.js`；SINGLE 使用 radio 且最多选一项，MULTIPLE 使用 checkbox 且答案为唯一已知 option ID 的集合。
-
-未知 type 抛出 `Unsupported question type`，加载处显示明确错误并移除旧题控件。没有 SINGLE fallback。未知内容 kind 抛出 `Unsupported content`，不会压平成字符串、丢弃节点或转换为图片。Java 正式入口也只为两种受支持 TEXT 题型启用 Draft。
-
-## MULTIPLE ViewModel
-
-沿用 schemaVersion `1.0`；新增 `selectionMode` 为兼容的展示字段。没有该字段的旧 SINGLE DTO 仍可按真实 type 解析，显式矛盾的 mode 会被拒绝。
-
-```json
-{
-  "schemaVersion": "1.0",
-  "session": { "sessionId": "...", "bankAssetId": "qb_...", "bankContentId": "qfb:v2:..." },
-  "question": {
-    "sessionQuestionId": "...", "questionId": "q_...",
-    "type": "MULTIPLE_CHOICE", "selectionMode": "MULTIPLE", "index": 0, "total": 1,
-    "prompt": { "kind": "TEXT", "text": "选择所有适用的描述" },
-    "options": [
-      { "id": "opt_a", "content": { "kind": "TEXT", "text": "A 内容" }, "feedback": "NONE" },
-      { "id": "opt_b", "content": { "kind": "TEXT", "text": "B 内容" }, "feedback": "NONE" },
-      { "id": "opt_c", "content": { "kind": "TEXT", "text": "C 内容" }, "feedback": "NONE" },
-      { "id": "opt_d", "content": { "kind": "TEXT", "text": "D 内容" }, "feedback": "NONE" }
-    ],
-    "selectedOptionIds": ["opt_a", "opt_c"], "state": "DRAFT", "maxScore": 1, "result": null
-  }
-}
+```text
+Question Card = PracticeSessionQuestion = Active Draft Canvas
+Submit = QuestionAttempt = Frozen DraftSnapshot
 ```
 
-提交前 result 为 null、feedback 为 NONE，不传 correctOptionIds/analysis。提交后 Core 提供真实 status/score/maxScore/Attempt identity 和正确答案/解析。Java 不认识 radio、checkbox 或 DOM selector，只处理 type 和 selectedOptionIds。
+ReadingItem / ClozeBlank / MatchingSlot / TranslationItem 不生成子级 Draft 或 Attempt。一张题卡允许自然增高，Canvas 继续固定 logical width 并使用既有 World 变换。
 
-## Active / History 与 Canvas
+`ANSWER_CHANGED` / `DRAFT_CHANGED` / `SUBMIT` / `RETRY` 继续经过同一个带 operationSeq 和父题身份校验的 FIFO 队列。Canvas autosave 保持 500ms debounce。文本输入使用 300ms debounce，提交/离开先 flush 文本并等待 ACK，再捕获末笔、flush Canvas 并等待 ACK，最后调用 Core Submit。宿主同步关闭 guard 也保存尚未 debounce 的正式 TEXT 答案。
 
-Active 的选择通过 `ANSWER_CHANGED` 回到原 Core draftAnswer；`SUBMIT` 等待末笔捕获及保存 ACK 后，在同一事务冻结 AttemptDraftSnapshot。`RETRY` 清空工作答案及当前画布，旧 Attempt 和快照不变。每题隔离键仍为 sessionQuestionId，冻结键为 attemptId。
+Retry 使用现有 Core 命令：清正式工作答案与 Active Canvas，旧 Attempt 和 Frozen Snapshot 保持不变。Core 已有 REVISING 状态/REVISION Attempt 可被合同投影；本轮不发明新的 Revision 入口或工作流。
 
-History adapter 从选中 Attempt 的冻结题目、答案和结果构造 DTO，从相同 attemptId 读取 DraftSnapshot。不能使用最新题库或 Active Draft 覆盖历史。
+## History / 兼容
 
-History renderer 不订阅 answer change，不显示 Submit/Retry；Runtime 不发送 mutation；只读页面只暴露 ReadyHost，不创建 Practice channel 或 autosave。Canvas READ_ONLY 仅允许平移、缩放、Fit，不允许绘画、擦除或导入，不将查看视口变化保存回数据库。
+History 只读取选中 attemptId 对应的 frozen question、answer、result 和 DraftSnapshot；不读取当前题库来覆盖它。七种题型共用 Active renderer，mode=`READ_ONLY_HISTORY`。没有 answer listener、Submit/Retry、Practice channel 或 autosave；Canvas 只允许 Pan/Zoom/Fit/target focus。
 
-保留 Draft document `1.0` / layout `1` 以及 World card/ink 共用变换。原 SINGLE DOM 层级与 CSS 保留，checkbox 复用同一选项样式。没有新的草稿格式、表、migration 或 Canvas 实现。
+旧 Attempt 没有 DraftSnapshot 时保留 RESULT，不制造空草稿。旧题库/历史中的 RICH、DOCUMENT、图片和已有 Canvas document answer 不转换为 TEXT，明确显示 unsupported。NORMAL / RESULT 仍使用原有内容能力。
 
-验收证据与 29 项覆盖见 [SHARED_RENDERER_ACCEPTANCE.md](SHARED_RENDERER_ACCEPTANCE.md)。
+实现和验证证据见 [SHARED_RENDERER_COVERAGE_ACCEPTANCE.md](SHARED_RENDERER_COVERAGE_ACCEPTANCE.md)。上一阶段 Choice 验收保留在 [SHARED_RENDERER_ACCEPTANCE.md](SHARED_RENDERER_ACCEPTANCE.md)。

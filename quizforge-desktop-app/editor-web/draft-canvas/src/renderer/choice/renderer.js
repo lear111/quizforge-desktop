@@ -33,7 +33,7 @@ export function mountChoiceRenderer(form, initial, { mode, definition, contentRo
     if (destroyed || readOnly || interaction !== 'INTERACT' || question.state === 'SUBMITTED' || !canInteract()) {
       synchronize(); return;
     }
-    answerChanged(getAnswerIntent());
+    Promise.resolve(answerChanged(getAnswerIntent())).catch(()=>{});
   };
   // History has no answer event subscription at all, even if synthetic events are dispatched.
   if (!history) form.addEventListener('change', change);
@@ -41,6 +41,8 @@ export function mountChoiceRenderer(form, initial, { mode, definition, contentRo
   return Object.freeze({
     update(next) { alive(); question = next; synchronize(); },
     getAnswerIntent,
+    hasAnswer() { alive(); return question.selectedOptionIds.length > 0; },
+    focusTarget() { alive(); return null; },
     setInteractionMode(next) { alive(); if (!['INTERACT', 'DISABLED'].includes(next)) throw new TypeError('Unknown interaction mode'); interaction = next; synchronize(); },
     setReadOnly(value) { alive(); if (history && !value) throw new Error('History capability cannot be upgraded'); readOnly = Boolean(value); synchronize(); },
     renderResult() {

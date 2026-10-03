@@ -114,7 +114,7 @@ public final class QuestionOutlineView extends VBox {
                     cell.getStyleClass().add("question-number-cell");
                     int itemNumber=blank+1;
                     cell.setOnAction(event -> {
-                        if((QuestionTypes.isReading(questions.get(index).type()) || QuestionTypes.isMatching(questions.get(index).type()) || QuestionTypes.isTranslation(questions.get(index).type())) && itemJump!=null)itemJump.accept(index,itemNumber);
+                        if((QuestionTypes.isReading(questions.get(index).type()) || QuestionTypes.isCloze(questions.get(index).type()) || QuestionTypes.isMatching(questions.get(index).type()) || QuestionTypes.isTranslation(questions.get(index).type())) && itemJump!=null)itemJump.accept(index,itemNumber);
                         else this.jump.accept(index);
                     });
                     cells.add(new Cell(index, blank, cell));

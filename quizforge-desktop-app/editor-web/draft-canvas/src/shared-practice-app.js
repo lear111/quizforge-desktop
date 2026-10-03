@@ -16,6 +16,7 @@ function restoreDraft(value) {
   finally { mute = false; }
 }
 const practice = mountSharedQuestionRuntime(object, channel.send, () => canvas.diagnostics().mode === 'INTERACT' && !submitting && !transitioning, {
+  focusTarget(node) { canvas.focusElement(node); },
   lockSubmit() { submitting = true; submissionIdle = new Promise(resolve => { finishSubmission = resolve; }); canvas.setEditable(false); },
   async beforeSubmit() { autosave.changed(canvas.getDraft()); await autosave.flush(); },
   afterSubmit() { submitting = false; canvas.setEditable(editable() && !transitioning); finishSubmission?.(); },

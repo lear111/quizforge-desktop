@@ -25,24 +25,25 @@ public final class HistoryDraftAdapter {
         if (draft.status()!=HistoryDraftReplay.Status.READY) return new Replay(draft,null);
         try { return new Replay(draft,card(question,attempt)); }
         catch (IllegalArgumentException | IllegalStateException invalid) {
-            return new Replay(HistoryDraftReplay.unavailable("此历史题卡暂不支持草稿回放。"),null);
+            return new Replay(HistoryDraftReplay.unavailable("此历史题卡暂不支持草稿回放："+invalid.getMessage()),null);
         }
     }
     private SharedPracticeViewModel card(PracticeHistoryDetail.Question row, PracticeHistoryDetail.Attempt attempt) {
-        var selected=List.copyOf(ChoicePresentationMapper.answerIds(attempt.answer()));
-        var options=row.options().stream().map(option -> new SharedPracticeViewModel.Option(option.id(),
-                new SharedPracticeViewModel.Text("TEXT",option.content()),row.correctOptionIds().contains(option.id())
-                ?SharedPracticeViewModel.Feedback.CORRECT:selected.contains(option.id())
-                ?SharedPracticeViewModel.Feedback.INCORRECT:SharedPracticeViewModel.Feedback.NONE)).toList();
-        if (attempt.score()==null || attempt.maxScore()==null || detail.bankContentId()==null
-                || !List.of("CORRECT","INCORRECT").contains(attempt.result().name()))
-            throw new IllegalArgumentException("Shared history requires scored choice metadata");
+        var selected=("MATCHING".equals(row.questionType()) || "TRANSLATION".equals(row.questionType()) || "ESSAY".equals(row.questionType()))?List.<String>of():List.copyOf(ChoicePresentationMapper.answerIds(attempt.answer()));
+        var metadata = row.contentSnapshot()==null ? java.util.Map.of() : (java.util.Map<?,?>)row.contentSnapshot().value();
+        var flatOptions = new io.quizforge.core.practice.PracticePayload(row.options().stream().map(o->java.util.Map.of("id",o.id(),"content",o.content())).toList());
+        var projected = SharedPracticeViewModel.project(row.questionType(),new SharedPracticeViewModel.Text("TEXT",row.stem()), flatOptions, metadata, selected, row.correctOptionIds(), true, attempt.answer());
+        var options=projected.options();
+        if (detail.bankContentId()==null
+                || !List.of("CORRECT","INCORRECT","UNSCORED").contains(attempt.result().name()))
+            throw new IllegalArgumentException("Shared history requires authoritative Attempt metadata");
         var result=new SharedPracticeViewModel.Result(attempt.result().name(),attempt.score(),attempt.maxScore(),
                 attempt.attemptId(),attempt.attemptNo(),attempt.mode().name(),row.correctOptionIds(),
                 new SharedPracticeViewModel.Text("TEXT",row.analysis()==null?"":row.analysis()));
         return new SharedPracticeViewModel("1.0",new SharedPracticeViewModel.Session(detail.sessionId(),bankAssetId,detail.bankContentId()),
                 new SharedPracticeViewModel.Question(row.sessionQuestionId(),row.questionId(),row.questionType(),
-                        detail.questions().indexOf(row),detail.questions().size(),new SharedPracticeViewModel.Text("TEXT",row.stem()),
-                        options,selected,SharedPracticeViewModel.State.SUBMITTED,attempt.maxScore(),result));
+                        detail.questions().indexOf(row),detail.questions().size(),projected.prompt(),
+                        options,selected,SharedPracticeViewModel.State.SUBMITTED,attempt.maxScore(),result,
+                        SharedPracticeViewModel.selectionModeFor(row.questionType()), projected.presentation()));
     }
 }

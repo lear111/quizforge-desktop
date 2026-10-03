@@ -94,7 +94,7 @@ class MultipleChoiceDraftUiTest extends WorkspaceUiTestSupport {
 
     @Test void unsupportedTypesAndContentShowExplicitErrorsInsteadOfSingleFallbackAndDrawingBlocksSelection() throws Exception {
         String path=choiceBank("MULTIPLE_CHOICE");fx(()->openBank(path));var host=onFx(this::host);enter(host);
-        script(host,"window.validRendererView=window.sharedPractice.getViewState();window.unsupportedView=JSON.parse(JSON.stringify(window.validRendererView));window.unsupportedView.question.type='READING';try{window.sharedPractice.refreshPractice(window.unsupportedView)}catch(e){}");
+        script(host,"window.validRendererView=window.sharedPractice.getViewState();window.unsupportedView=JSON.parse(JSON.stringify(window.validRendererView));window.unsupportedView.question.type='UNKNOWN';try{window.sharedPractice.refreshPractice(window.unsupportedView)}catch(e){}");
         assertTrue(((String)script(host,"document.querySelector('#practice-unsupported').textContent")).contains("Unsupported question type"));
         assertEquals(0,((Number)script(host,"document.querySelectorAll('input').length")).intValue());
         script(host,"window.sharedPractice.refreshPractice(window.validRendererView);window.unsupportedView=JSON.parse(JSON.stringify(window.validRendererView));window.unsupportedView.question.prompt={kind:'RICH',document:{}};try{window.sharedPractice.refreshPractice(window.unsupportedView)}catch(e){}");

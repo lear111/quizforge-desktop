@@ -36,6 +36,21 @@ public final class SharedPracticeAdapter {
                 session.currentQuestionId(), selectedOptionIds));
     }
 
+    public synchronized SharedPracticeViewModel essayChanged(String text) {
+        var answer=new io.quizforge.core.practice.EssayPracticeAnswer(text,null);
+        if(runtime!=null){runtime.saveEssayDraft(runtime.session().current().id(),answer);return viewModel();}
+        var session=snapshot.session();return apply(()->service.saveEssayDraft(session.id(),session.questionBankContentId(),session.currentQuestionId(),answer));
+    }
+    public synchronized SharedPracticeViewModel textAnswersChanged(java.util.Map<String,String> answers) {
+        var converted=new java.util.LinkedHashMap<String,io.quizforge.core.practice.EssayPracticeAnswer>();
+        answers.forEach((id,text)->converted.put(id,new io.quizforge.core.practice.EssayPracticeAnswer(text,null)));
+        if(runtime!=null){runtime.saveTranslationDraft(converted);return viewModel();}
+        var session=snapshot.session();return apply(()->service.saveTranslationDraft(session.id(),session.questionBankContentId(),session.currentQuestionId(),converted));
+    }
+    public synchronized SharedPracticeViewModel assignmentsChanged(java.util.Map<String,String> assignments) {
+        if(runtime!=null){runtime.saveMatchingDraft(assignments);return viewModel();}
+        var session=snapshot.session();return apply(()->service.saveMatchingDraft(session.id(),session.questionBankContentId(),session.currentQuestionId(),assignments));
+    }
     public synchronized SharedPracticeViewModel submit() {
         if (runtime != null) { runtime.submit(); return viewModel(); }
         var session = snapshot.session();

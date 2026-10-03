@@ -97,7 +97,12 @@ public final class PracticeSurfaceHost extends StackPane {
         return finish(draft.flushPendingDraft(),()->{runtime.refresh();mode=PracticeSurfaceMode.NORMAL;refreshNormal.run();});
     }
     /** Existing normal/outline/navigation commands all pass through this barrier before changing Core position. */
-    public void navigate(Runnable action) {
+    public void focusTarget(String targetId) {
+        if(busy || destroyed || mode!=PracticeSurfaceMode.DRAFT || !loaded)return;
+        try { draft.focusTarget(targetId); } catch(RuntimeException failure) {showError(failure);}
+    }
+    public void navigate(Runnable action) { navigate(action,null); }
+    public void navigate(Runnable action,String targetId) {
         if(busy || destroyed)return;
         if(mode==PracticeSurfaceMode.NORMAL){
             try {if(draft!=null && loaded){draft.unloadCurrent();loaded=false;}action.run();updateChrome();}
@@ -109,7 +114,7 @@ public final class PracticeSurfaceHost extends StackPane {
             action.run();
             if(!supported()){mode=PracticeSurfaceMode.NORMAL;updateChrome();return;}
             busy=true;
-            finish(draft.reloadCurrent(),()->{loaded=true;});
+            finish(draft.reloadCurrent(),()->{loaded=true;if(targetId!=null)draft.focusTarget(targetId);});
         });
     }
     private CompletionStage<Void> finish(CompletionStage<Void> operation,Runnable success) {

@@ -281,7 +281,7 @@ class HistoryReadingViewTest {
             ((Button)outline.lookup("#question-number-5")).fire();
             assertEquals(List.of(0,5),targets.getLast());
             ((Button)outline.lookup("#question-number-6")).fire();
-            assertEquals(List.of(1,0),targets.getLast());
+            assertEquals(List.of(1,1),targets.getLast());
             session.submit();outline.refresh();
             assertTrue(outline.lookup("#question-number-2").getStyleClass().contains("unscored"));
             assertTrue(outline.lookup("#question-number-1").getStyleClass().contains("unsubmitted"));

@@ -36,6 +36,7 @@ public final class HistoryDraftWebView {
         });
         view.getEngine().load(page.toExternalForm());
     }
+    public boolean focusTarget(String targetId){requireFx();if(destroyed || replay==null)return false;return Boolean.TRUE.equals(replay.call("focusTarget",Objects.requireNonNull(targetId)));}
     public WebView view(){return view;}
     public CompletionStage<Void> ready(){return ready.minimalCompletionStage();}
     public boolean isDestroyed(){return destroyed;}

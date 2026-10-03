@@ -19,7 +19,7 @@ const practiceHtml = (await readFile(resolve(root, 'shared-practice.html'), 'utf
   .replace('<script type="module" src="./src/shared-practice-app.js"></script>',
     '<link rel="stylesheet" href="shared-practice.css"><script defer src="shared-practice.js"></script>');
 await writeFile(resolve(output, 'shared-practice.html'), practiceHtml);
-console.log('Local Shared Practice SINGLE_CHOICE / MULTIPLE_CHOICE: shared runtime, static renderer registry');
+console.log('Local Shared Practice: seven built-in renderers, shared runtime and static registry');
 await build({ absWorkingDir: root, entryPoints: ['src/history-replay-app.js'], bundle: true,
   format: 'iife', target: 'es2018', outfile: resolve(output, 'history-replay.js'),
   // History uses the exact Practice stylesheet, not a separate copied style definition.
@@ -31,4 +31,4 @@ const historyHtml = (await readFile(resolve(root, 'shared-practice.html'), 'utf8
   .replace('<script type="module" src="./src/shared-practice-app.js"></script>',
     '<link rel="stylesheet" href="shared-practice.css"><script defer src="history-replay.js"></script>');
 await writeFile(resolve(output, 'history-replay.html'), historyHtml);
-console.log('Local read-only History replay: existing Canvas / shared Choice renderer / shared CSS');
+console.log('Local read-only History replay: existing Canvas / shared seven-type registry / shared CSS');

@@ -62,6 +62,6 @@ class SharedMultipleChoiceAdapterTest {
         assertThrows(IllegalArgumentException.class,()->service.saveDraft(session,revision,"q_multiple",Set.of("unknown")));
         service.updateCurrentQuestion(session,revision,"q_single");var adapter=new SharedPracticeAdapter(service,service.openOrCreateActiveSession(bank,revision));
         assertEquals("SINGLE",adapter.viewModel().question().selectionMode());assertThrows(IllegalArgumentException.class,()->adapter.answerChanged(Set.of("opt_single_a","opt_single_c")));
-        assertFalse(SharedPracticeViewModel.supportsType("READING"));
+        assertFalse(SharedPracticeViewModel.supportsType("UNKNOWN"));
     }
 }

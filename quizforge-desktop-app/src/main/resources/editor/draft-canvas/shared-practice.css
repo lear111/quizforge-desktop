@@ -379,3 +379,63 @@ footer {
   color: #8b8194;
   font-size: 11px;
 }
+.composite-item {
+  margin: 24px 0;
+}
+.composite-item h3 {
+  font-size: 16px;
+  line-height: 1.6;
+}
+.composite-item:focus {
+  outline: 2px solid #b9a9dc;
+  outline-offset: 5px;
+}
+.inline-blank {
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  color: #7054a5;
+  background: transparent;
+  font: inherit;
+  max-width: 100%;
+}
+.assignment-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 24px 0;
+}
+.assignment-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f6f3fa;
+  padding: 8px 10px;
+  border: 1px solid #dfd6ed;
+  border-radius: 8px;
+}
+.assignment-slot select {
+  font: inherit;
+  color: #7054a5;
+  background: transparent;
+  border: 0;
+}
+.text-answer-item {
+  margin: 24px 0;
+}
+.text-answer-item label {
+  display: block;
+  margin-bottom: 8px;
+  line-height: 1.7;
+}
+.text-answer-item textarea {
+  display: block;
+  box-sizing: border-box;
+  resize: vertical;
+  width: 100%;
+  font: inherit;
+  line-height: 1.7;
+  padding: 12px;
+  border: 1px solid #d9d1e4;
+  border-radius: 8px;
+  background: transparent;
+}

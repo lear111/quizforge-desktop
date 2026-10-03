@@ -562,6 +562,15 @@
       setMode,
       setZoom,
       fitCard,
+      focusElement(node) {
+        alive();
+        if (!root.contains(node)) throw new Error("Focus target outside question card");
+        finish(true);
+        const target = node.getBoundingClientRect(), bounds = viewport2.getBoundingClientRect();
+        model.pan(bounds.left + 24 - target.left, bounds.top + 24 - target.top);
+        render();
+        changed();
+      },
       onChange(listener) {
         alive();
         changeListeners.add(listener);

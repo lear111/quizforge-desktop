@@ -136,8 +136,12 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
 
     private void showQuestion(int index, int itemNumber) {
         if (index < 0 || index >= detail.questions().size()) return;
+        var row=detail.questions().get(index);
+        String targetId=io.quizforge.desktop.poc.sharedpractice.SharedPracticeViewModel.targetId(row.questionType(),row.contentSnapshot(),itemNumber);
+        if(index==questionIndex && surface.mode()==HistorySurfaceMode.DRAFT && targetId!=null){surface.focusTarget(targetId);return;}
         if (index != questionIndex) showQuestion(index);
         else render();
+        if(surface.mode()==HistorySurfaceMode.DRAFT && targetId!=null){surface.focusTarget(targetId);return;}
         if (matchingCard != null && itemNumber > 0) {
             var target = matchingCard;
             javafx.application.Platform.runLater(() -> {

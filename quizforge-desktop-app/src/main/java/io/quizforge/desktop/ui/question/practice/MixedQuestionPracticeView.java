@@ -74,7 +74,7 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
             surface=new PracticeSurfaceHost(practice,this::refreshFromRuntime,()->show(index-1),this::next);
             surface.setDraftAvailable(()->index>=0 && index<bank.questions().size()
                     && bank.questions().get(index).id().equals(practice.session().current().id())
-                    && QuestionText.supports(bank.questions().get(index)));
+                    && io.quizforge.desktop.poc.sharedpractice.SharedPracticeViewModel.supportsType(bank.questions().get(index).type()));
         }
         render();
     }
@@ -254,7 +254,13 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
         refreshOutline();
     }
     private void showItem(int target,int itemNumber) {
-        if(editorJump==null && surface!=null){surface.navigate(()->showItemNow(target,itemNumber));return;}
+        if(editorJump==null && surface!=null){
+            var question=bank.questions().get(target);
+            var metadata=practice.questionState(question.id()).sessionQuestion().snapshot().correctAnswer();
+            String targetId=io.quizforge.desktop.poc.sharedpractice.SharedPracticeViewModel.targetId(question.type(),metadata,itemNumber);
+            if(surface.mode()==PracticeSurfaceMode.DRAFT && target==index && targetId!=null){surface.focusTarget(targetId);return;}
+            surface.navigate(()->showItemNow(target,itemNumber),targetId);return;
+        }
         showItemNow(target,itemNumber);
     }
     private void showItemNow(int target,int itemNumber) {
