@@ -1,5 +1,6 @@
 target/
 quizforge-desktop-app/editor-web/canvas/node_modules/
+quizforge-desktop-app/editor-web/draft-canvas/node_modules/
 quizforge-desktop-app/rich-editor-web/node_modules/
 .idea/
 *.iml

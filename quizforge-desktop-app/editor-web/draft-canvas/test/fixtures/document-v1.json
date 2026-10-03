@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.0",
+  "layoutVersion": "1",
+  "viewport": { "x": -25.5, "y": 17.25, "zoom": 1.5 },
+  "questionCard": { "x": 120, "y": 70, "width": 720 },
+  "strokes": [
+    {
+      "id": "shared-contract-stroke-1",
+      "tool": "PEN",
+      "color": "#7054a5",
+      "width": 2.4,
+      "points": [
+        { "x": 150.25, "y": 100.5, "pressure": 0.5 },
+        { "x": 240.75, "y": 125.5, "pressure": 0.8 }
+      ]
+    }
+  ]
+}

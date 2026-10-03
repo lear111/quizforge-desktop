@@ -1,0 +1,8 @@
+{
+  "name": "quizforge-draft-canvas-poc",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node scripts/build.mjs", "test": "node --test test/*.test.js" },
+  "devDependencies": { "esbuild": "0.28.2" }
+}

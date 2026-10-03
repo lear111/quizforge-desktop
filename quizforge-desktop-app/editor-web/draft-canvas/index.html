@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'none'; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>QuizForge · Draft Canvas Core v1</title>
+</head>
+<body>
+<main id="draft-canvas-root" data-mode="INTERACT">
+  <header class="toolbar">
+    <strong>Draft Canvas <small>Core v1 · POC</small></strong>
+    <nav aria-label="白板工具">
+      <button type="button" data-mode="INTERACT" aria-pressed="true">交互</button>
+      <button type="button" data-mode="PEN" aria-pressed="false">画笔</button>
+      <button type="button" data-mode="ERASER" aria-pressed="false">橡皮</button>
+      <button type="button" data-mode="PAN" aria-pressed="false">平移</button>
+    </nav>
+    <div class="actions">
+      <button type="button" id="undo" disabled>撤销</button>
+      <button type="button" id="redo" disabled>重做</button>
+      <button type="button" id="clear" disabled>清空笔迹</button>
+      <button type="button" id="export">导出 JSON</button>
+      <button type="button" id="import">载入 JSON</button>
+    </div>
+  </header>
+  <div id="viewport" aria-label="草稿白板">
+    <div id="world">
+      <article id="question-card">
+        <div class="card-heading"><span class="tag">单选题 · 测试题卡</span><span>1 / 1</span></div>
+        <p class="score">分值：2</p>
+        <h2>What does a live Question Card allow you to do?</h2>
+        <p>选择一个答案，并在下面的输入框中记录想法。切换到画笔，可以直接在题卡上书写。</p>
+        <form id="question-form">
+          <fieldset><legend>选择答案</legend>
+            <label><input type="radio" name="answer" value="A"><span>A. Read, choose an answer, and enter text.</span></label>
+            <label><input type="radio" name="answer" value="B"><span>B. View a static screenshot only.</span></label>
+            <label><input type="radio" name="answer" value="C"><span>C. Replace the question with a drawing.</span></label>
+            <label><input type="radio" name="answer" value="D"><span>D. Open another browser to answer.</span></label>
+          </fieldset>
+          <label class="note-label" for="answer-note">测试输入</label>
+          <input id="answer-note" type="text" placeholder="输入你的想法" autocomplete="off">
+          <button id="submit-card" type="submit">提交测试答案</button>
+          <p id="card-feedback" role="status" aria-live="polite"></p>
+        </form>
+      </article>
+      <svg id="annotation" xmlns="http://www.w3.org/2000/svg" width="1" height="1" aria-hidden="true"><g id="strokes"></g><g id="active-stroke"></g></svg>
+    </div>
+  </div>
+  <footer><span id="mode-help">交互：点击选项、输入文字。</span><div class="zoom-actions" aria-label="视口缩放"><button id="zoom-out" type="button" aria-label="缩小视口">−</button><button id="zoom-in" type="button" aria-label="放大视口">+</button><button id="zoom-fit" type="button">适应窗口</button></div><span id="status" role="status"></span></footer>
+  <section id="draft-panel" hidden aria-label="Draft JSON">
+    <div class="panel-heading"><strong>Draft JSON</strong><button type="button" id="close-panel">关闭</button></div>
+    <p>保存白板几何和笔迹。测试题卡的答案与输入不纳入 JSON。</p>
+    <textarea id="draft-json" spellcheck="false" aria-label="Draft JSON 内容"></textarea>
+    <div class="panel-actions"><span id="json-error" role="alert"></span><button type="button" id="load-json">载入此 JSON</button></div>
+  </section>
+</main>
+<script type="module" src="./src/app.js"></script>
+</body>
+</html>
