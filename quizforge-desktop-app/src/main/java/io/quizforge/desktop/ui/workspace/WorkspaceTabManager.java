@@ -58,10 +58,11 @@ public final class WorkspaceTabManager extends BorderPane {
             activate(existing);
             return existing;
         }
+        WorkspaceTab preview = tabs.stream().filter(tab -> !tab.pinned()).findFirst().orElse(null);
+        if(!pin && preview!=null && !preview.pane().prepareClose())return null;
         FilePane pane = panes.get();
         pane.open(workspace, path);
         if (pane.currentFile() == null) return null;
-        WorkspaceTab preview = tabs.stream().filter(tab -> !tab.pinned()).findFirst().orElse(null);
         if (!pin && preview != null) {
             int index = tabs.indexOf(preview);
             tabs.set(index, new WorkspaceTab(path, pane, false));
@@ -95,6 +96,7 @@ public final class WorkspaceTabManager extends BorderPane {
         int index = tabs.indexOf(tab);
         if (index < 0) return false;
         if (tab.pane().hasUnsavedChanges() && !discardDirty.getAsBoolean()) return false;
+        if (!tab.pane().prepareClose()) return false;
         tabs.remove(index);
         tab.pane().clear();
         if (tab == active) active = tabs.isEmpty() ? null : tabs.get(Math.min(index, tabs.size() - 1));
@@ -102,11 +104,13 @@ public final class WorkspaceTabManager extends BorderPane {
         return true;
     }
 
-    public void closeAll() {
+    public boolean closeAll() {
+        if(tabs.stream().anyMatch(tab->!tab.pane().prepareClose()))return false;
         for (WorkspaceTab tab : tabs) tab.pane().clear();
         tabs.clear();
         active = null;
         showActive();
+        return true;
     }
 
     public void reloadAll(WorkspaceId workspace) {
@@ -130,6 +134,7 @@ public final class WorkspaceTabManager extends BorderPane {
     public void closeUnder(String path) {
         for (WorkspaceTab tab : List.copyOf(tabs)) {
             if (tab.path().equals(path) || tab.path().startsWith(path + "/")) {
+                if (!tab.pane().prepareClose()) continue;
                 int index = tabs.indexOf(tab);
                 tabs.remove(tab);
                 tab.pane().clear();

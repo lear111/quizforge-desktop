@@ -19,4 +19,16 @@ const practiceHtml = (await readFile(resolve(root, 'shared-practice.html'), 'utf
   .replace('<script type="module" src="./src/shared-practice-app.js"></script>',
     '<link rel="stylesheet" href="shared-practice.css"><script defer src="shared-practice.js"></script>');
 await writeFile(resolve(output, 'shared-practice.html'), practiceHtml);
-console.log('Local Shared Practice SINGLE_CHOICE bundle: same World host, separate renderer');
+console.log('Local Shared Practice SINGLE_CHOICE / MULTIPLE_CHOICE: shared runtime, static renderer registry');
+await build({ absWorkingDir: root, entryPoints: ['src/history-replay-app.js'], bundle: true,
+  format: 'iife', target: 'es2018', outfile: resolve(output, 'history-replay.js'),
+  // History uses the exact Practice stylesheet, not a separate copied style definition.
+  plugins: [{ name: 'shared-practice-styles', setup(builder) {
+    builder.onLoad({ filter: /\.css$/ }, () => ({ contents: '', loader: 'js' }));
+  } }] });
+const historyHtml = (await readFile(resolve(root, 'shared-practice.html'), 'utf8'))
+  .replace('QuizForge · Shared Practice SINGLE_CHOICE', 'QuizForge · History Draft Replay')
+  .replace('<script type="module" src="./src/shared-practice-app.js"></script>',
+    '<link rel="stylesheet" href="shared-practice.css"><script defer src="history-replay.js"></script>');
+await writeFile(resolve(output, 'history-replay.html'), historyHtml);
+console.log('Local read-only History replay: existing Canvas / shared Choice renderer / shared CSS');

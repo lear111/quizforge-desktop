@@ -14,6 +14,14 @@ import java.util.Objects;
 /** Explicit platform-neutral v1 contract, deliberately separate from Core persistence records. */
 public record SharedPracticeViewModel(String schemaVersion, Session session, Question question) {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Map<String, String> SELECTION_MODES = Map.of(
+            "SINGLE_CHOICE", "SINGLE", "MULTIPLE_CHOICE", "MULTIPLE");
+    public static boolean supportsType(String type) { return SELECTION_MODES.containsKey(type); }
+    private static String selectionModeFor(String type) {
+        var mode = SELECTION_MODES.get(type);
+        if (mode == null) throw new IllegalArgumentException("Unsupported shared question type: " + type);
+        return mode;
+    }
 
     public record Session(String sessionId, String bankAssetId, String bankContentId) { }
     public record Text(String kind, String text) {
@@ -28,7 +36,12 @@ public record SharedPracticeViewModel(String schemaVersion, Session session, Que
     }
     public record Question(String sessionQuestionId, String questionId, String type,
             int index, int total, Text prompt, List<Option> options, List<String> selectedOptionIds,
-            State state, double maxScore, Result result) {
+            State state, double maxScore, Result result, String selectionMode) {
+        public Question(String sessionQuestionId, String questionId, String type, int index, int total, Text prompt,
+                List<Option> options, List<String> selectedOptionIds, State state, double maxScore, Result result) {
+            this(sessionQuestionId, questionId, type, index, total, prompt, options, selectedOptionIds, state, maxScore, result,
+                    selectionModeFor(type));
+        }
         public Question {
             options = List.copyOf(options);
             selectedOptionIds = List.copyOf(selectedOptionIds);
@@ -50,8 +63,8 @@ public record SharedPracticeViewModel(String schemaVersion, Session session, Que
                 .findFirst().orElseThrow(() -> new IllegalArgumentException("Current question is missing"));
         var row = entry.sessionQuestion();
         var content = row.snapshot();
-        if (!QuestionTypes.isSingleChoice(content.questionType()))
-            throw new IllegalArgumentException("Shared Practice v1 supports SINGLE_CHOICE only");
+        if (!supportsType(content.questionType()))
+            throw new IllegalArgumentException("Shared Practice v1 supports built-in choice types only");
         var state = State.valueOf(row.practiceState().name());
         var metadata = fields(content.correctAnswer());
         double maximum = number(metadata.get("maxScore"));
@@ -72,7 +85,7 @@ public record SharedPracticeViewModel(String schemaVersion, Session session, Que
         }).toList();
         var session = snapshot.session();
         return new SharedPracticeViewModel("1.0", new Session(session.id(), session.questionBankAssetId(),
-                session.questionBankContentId()), new Question(row.id(), row.questionId(), "SINGLE_CHOICE",
+                session.questionBankContentId()), new Question(row.id(), row.questionId(), content.questionType(),
                 row.questionOrder(), snapshot.questions().size(), Text.of(content.stem()), options,
                 selected, state, maximum, result));
     }

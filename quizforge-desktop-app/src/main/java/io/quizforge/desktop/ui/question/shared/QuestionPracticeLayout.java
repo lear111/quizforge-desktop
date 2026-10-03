@@ -10,6 +10,11 @@ public final class QuestionPracticeLayout extends SplitPane {
     private final BorderPane readerColumn = new BorderPane();
     private final QuestionOutlineView outline;
     private boolean initialDividerSet;
+    private io.quizforge.desktop.ui.question.practice.PracticeSurfaceHost surface;
+    public void setSurface(io.quizforge.desktop.ui.question.practice.PracticeSurfaceHost surface,Node normal) {
+        this.surface=surface;surface.setNormalContent(normal);readerColumn.setCenter(surface);
+    }
+    public io.quizforge.desktop.ui.question.practice.PracticeSurfaceHost surface() { return surface; }
 
     public QuestionPracticeLayout(ScrollPane reader, QuestionOutlineView outline) {
         this.outline = outline;

@@ -12,6 +12,10 @@ import javafx.scene.layout.Priority;
 final class FileHeader extends HBox {
     private final Button mode;
     private Button historyButton;
+    void setDraftButton(Button button) {
+        getChildren().removeIf(node -> "practice-draft-toggle".equals(node.getId()));
+        if(button!=null)getChildren().add(Math.max(1,getChildren().size()-1),button);
+    }
 
     FileHeader(FilePresentation file, Runnable toggle, Runnable history) {
         setId("file-header");

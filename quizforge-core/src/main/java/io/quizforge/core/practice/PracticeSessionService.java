@@ -65,6 +65,14 @@ public final class PracticeSessionService {
         });
     }
 
+    /** Refresh an existing ACTIVE round without creating a session or changing its position. */
+    public ActivePracticeSnapshot loadActiveSession(String sessionId, String expectedContentId) {
+        return transactions.execute(repositories -> {
+            requireActive(repositories, sessionId, expectedContentId);
+            return restore(repositories, sessionId);
+        });
+    }
+
     public ActivePracticeSnapshot updateCurrentQuestion(String sessionId, String expectedContentId, String questionId) {
         return transactions.execute(repositories -> {
             requireActive(repositories, sessionId, expectedContentId);
@@ -187,6 +195,42 @@ public final class PracticeSessionService {
         return source;
     }
 
+    /** Geometry has the same revision/current-question guard as answer working state, regardless of type. */
+    public java.util.Optional<io.quizforge.core.practice.draft.ActiveDraftCanvas> loadActiveDraftCanvas(
+            String sessionId, String expectedContentId, String questionId) {
+        return transactions.execute(repositories -> {
+            requireCurrent(repositories, sessionId, expectedContentId, questionId);
+            return repositories.activeDrafts().find(requireQuestion(repositories, sessionId, questionId).id());
+        });
+    }
+
+    public void saveActiveDraftCanvas(String sessionId, String expectedContentId, String questionId,
+            io.quizforge.core.practice.draft.DraftCanvasDocument document) {
+        java.util.Objects.requireNonNull(document);
+        transactions.execute(repositories -> {
+            requireCurrent(repositories, sessionId, expectedContentId, questionId);
+            var question = requireQuestion(repositories, sessionId, questionId);
+            if (question.practiceState() == PracticeSessionQuestion.State.SUBMITTED)
+                throw new IllegalStateException("Answer already submitted; retry before editing Draft Canvas");
+            Instant now = clock.instant();
+            repositories.activeDrafts().save(new io.quizforge.core.practice.draft.ActiveDraftCanvas(question.id(), document, now));
+            repositories.sessions().touch(sessionId, now);
+            return null;
+        });
+    }
+
+    public java.util.Optional<io.quizforge.core.practice.draft.AttemptDraftSnapshot> findAttemptDraftSnapshot(String attemptId) {
+        return transactions.execute(repositories -> repositories.draftSnapshots().find(attemptId));
+    }
+
+    private void appendAttemptWithDraft(PracticeTransaction.Repositories repositories, QuestionAttempt attempt) {
+        repositories.attempts().append(attempt);
+        repositories.activeDrafts().find(attempt.sessionQuestionId()).ifPresent(active ->
+                repositories.draftSnapshots().append(new io.quizforge.core.practice.draft.AttemptDraftSnapshot(
+                        attempt.id(), active.document(), attempt.submittedAt())));
+        repositories.activeDrafts().delete(attempt.sessionQuestionId());
+    }
+
     public ActivePracticeSnapshot submitAnswer(String sessionId, String expectedContentId, String questionId) {
         return transactions.execute(repositories -> {
             requireCurrent(repositories, sessionId, expectedContentId, questionId);
@@ -203,7 +247,7 @@ public final class PracticeSessionService {
                 var items = (io.quizforge.core.question.type.subjective.translation.TranslationPayload) source.payload();
                 double maxScore = source.scoreSpec().defaultMaxScore().doubleValue() * items.items().size();
                 Instant now = clock.instant();
-                repositories.attempts().append(new QuestionAttempt(id("pa_"), question.id(),
+                appendAttemptWithDraft(repositories, new QuestionAttempt(id("pa_"), question.id(),
                         repositories.attempts().nextAttemptNo(question.id()), retrying ? QuestionAttempt.Mode.RETRY : QuestionAttempt.Mode.INITIAL,
                         answer.payload(), QuestionAttempt.Result.UNSCORED, null, maxScore, now));
                 repositories.questions().updateDraft(sessionId, questionId, null, PracticeSessionQuestion.State.SUBMITTED, now);
@@ -223,7 +267,7 @@ public final class PracticeSessionService {
                 double unit = source.scoreSpec().defaultMaxScore().doubleValue();
                 int matched = io.quizforge.core.question.type.objective.matching.MatchingQuestionType.matchingCount(source, answer.assignments());
                 Instant now = clock.instant();
-                repositories.attempts().append(new QuestionAttempt(id("pa_"), question.id(),
+                appendAttemptWithDraft(repositories, new QuestionAttempt(id("pa_"), question.id(),
                         repositories.attempts().nextAttemptNo(question.id()), retrying ? QuestionAttempt.Mode.RETRY : QuestionAttempt.Mode.INITIAL,
                         answer.payload(), matched == gradable ? QuestionAttempt.Result.CORRECT : QuestionAttempt.Result.INCORRECT,
                         unit * matched, unit * gradable, now));
@@ -242,7 +286,7 @@ public final class PracticeSessionService {
                 if ((revision || retry) ? attempts.isEmpty() : !attempts.isEmpty())
                     throw new IllegalStateException("Practice attempt state is inconsistent");
                 Instant now = clock.instant();
-                repositories.attempts().append(new QuestionAttempt(id("pa_"), current.id(),
+                appendAttemptWithDraft(repositories, new QuestionAttempt(id("pa_"), current.id(),
                         repositories.attempts().nextAttemptNo(current.id()), revision ? QuestionAttempt.Mode.REVISION
                                 : retry ? QuestionAttempt.Mode.RETRY : QuestionAttempt.Mode.INITIAL,
                         answer.payload(), QuestionAttempt.Result.UNSCORED, null,
@@ -275,7 +319,7 @@ public final class PracticeSessionService {
                 double unitScore=data.containsKey("unitScore")?((Number)data.get("unitScore")).doubleValue():maxScore/correct.size();
                 score=unitScore*matched;
             }
-            repositories.attempts().append(new QuestionAttempt(id("pa_"), question.id(),
+            appendAttemptWithDraft(repositories, new QuestionAttempt(id("pa_"), question.id(),
                     repositories.attempts().nextAttemptNo(question.id()),
                     retrying ? QuestionAttempt.Mode.RETRY : QuestionAttempt.Mode.INITIAL,
                     answer(selected), selected.equals(correct) ? QuestionAttempt.Result.CORRECT : QuestionAttempt.Result.INCORRECT,
@@ -295,6 +339,7 @@ public final class PracticeSessionService {
                 throw new IllegalStateException("Only a submitted question can be retried");
             Instant now = clock.instant();
             repositories.questions().updateDraft(sessionId, questionId, null, PracticeSessionQuestion.State.RETRYING, now);
+            repositories.activeDrafts().delete(question.id());
             repositories.sessions().touch(sessionId, now);
             return restore(repositories, sessionId);
         });

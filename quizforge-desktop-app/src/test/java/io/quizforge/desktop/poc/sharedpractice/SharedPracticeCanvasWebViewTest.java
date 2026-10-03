@@ -118,7 +118,8 @@ class SharedPracticeCanvasWebViewTest {
             var failingTransaction = new PracticeTransaction() {
                 @Override public <T> T execute(Function<Repositories, T> operation) {
                     return transaction.execute(repositories -> {
-                        operation.apply(repositories);
+                        var result = operation.apply(repositories);
+                        if (result instanceof java.util.Optional<?>) return result; // Allow initial Draft read.
                         throw new IllegalStateException("Injected failure before transaction commit");
                     });
                 }
@@ -208,7 +209,8 @@ class SharedPracticeCanvasWebViewTest {
                 await(() -> "RETRYING".equals(window.canvas.view().getEngine().executeScript(
                         "document.querySelector('#practice-state').dataset.state")), "Native Retry reaches Core RETRYING");
                 assertEquals(0, selectedCount(window));
-                assertEquals(panned, JSON.readTree(fx(window.canvas::getDraft)), "Retry retains Draft Canvas ink and viewport");
+                assertEquals(0, JSON.readTree(fx(window.canvas::getDraft)).path("strokes").size(), "Retry starts with empty ink");
+                assertEquals(0, JSON.readTree(fx(window.canvas::getDraft)).path("viewport").path("x").asDouble(), "Retry starts with default viewport");
                 click(robot, point(window, correctSelector, 0.5, 0.5));
                 assertEquals("RETRYING", domState(window));
                 click(robot, point(window, "#practice-submit", 0.5, 0.5));
@@ -220,7 +222,7 @@ class SharedPracticeCanvasWebViewTest {
                 assertEquals(initialAttempt, attempts.getFirst());
                 assertEquals(QuestionAttempt.Mode.RETRY, attempts.getLast().attemptMode());
                 assertEquals("CORRECT", state(window).path("question").path("result").path("status").asText());
-                assertEquals(panned, JSON.readTree(fx(window.canvas::getDraft)));
+                assertEquals(0, JSON.readTree(fx(window.canvas::getDraft)).path("strokes").size(), "Submitted canvas is cleared after freeze");
                 var diagnostics = JSON.readTree(fx(window.canvas::diagnostics));
                 for (String type : Set.of("pointerdown", "pointermove", "pointerup")) {
                     assertTrue(java.util.stream.StreamSupport.stream(diagnostics.path("events").spliterator(), false)

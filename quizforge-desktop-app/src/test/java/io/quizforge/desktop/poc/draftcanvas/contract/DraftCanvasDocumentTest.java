@@ -1,5 +1,7 @@
 package io.quizforge.desktop.poc.draftcanvas.contract;
 
+import io.quizforge.core.practice.draft.DraftCanvasDocument;
+import io.quizforge.infrastructure.persistence.practice.DraftCanvasJsonCodec;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Files;
@@ -14,7 +16,7 @@ class DraftCanvasDocumentTest {
 
     @Test void sharedJavaScriptFixtureRoundTripsWithBothVersionsPreserved() throws Exception {
         // The frontend tests read this very same source fixture, rather than a separate Java mock.
-        var document = DraftCanvasDocument.parse(Files.readString(sharedFixture()));
+        var document = DraftCanvasJsonCodec.decode(Files.readString(sharedFixture()));
         assertEquals("1.0", document.schemaVersion());
         assertEquals("1", document.layoutVersion());
         assertEquals(new DraftCanvasDocument.Viewport(-25.5, 17.25, 1.5), document.viewport());
@@ -23,9 +25,9 @@ class DraftCanvasDocumentTest {
         assertEquals("shared-contract-stroke-1", document.strokes().getFirst().id());
         assertEquals("#7054a5", document.strokes().getFirst().color());
         assertEquals(2.4, document.strokes().getFirst().width());
-        assertEquals(document, DraftCanvasDocument.parse(document.toJson()));
-        assertEquals("1.0", JSON.readTree(document.toJson()).path("schemaVersion").asText());
-        assertEquals("1", JSON.readTree(document.toJson()).path("layoutVersion").asText());
+        assertEquals(document, DraftCanvasJsonCodec.decode(new DraftCanvasJsonCodec().encode(document)));
+        assertEquals("1.0", JSON.readTree(new DraftCanvasJsonCodec().encode(document)).path("schemaVersion").asText());
+        assertEquals("1", JSON.readTree(new DraftCanvasJsonCodec().encode(document)).path("layoutVersion").asText());
     }
 
     @Test void defaultLayoutAndViewportChangesPreserveWorldGeometryAndSnapshotWidth() throws Exception {
@@ -33,16 +35,16 @@ class DraftCanvasDocumentTest {
         assertEquals(720, empty.questionCard().width());
         assertEquals(new DraftCanvasDocument.Viewport(0, 0, 1), empty.viewport());
         assertTrue(empty.strokes().isEmpty());
-        var document = DraftCanvasDocument.parse(Files.readString(sharedFixture()));
+        var document = DraftCanvasJsonCodec.decode(Files.readString(sharedFixture()));
         var moved = document.withViewport(new DraftCanvasDocument.Viewport(-480, 215, 0.75));
         assertSame(document.questionCard(), moved.questionCard());
         assertEquals(document.strokes(), moved.strokes());
         assertEquals(document.questionCard().width(), moved.questionCard().width());
-        assertEquals(moved, DraftCanvasDocument.parse(moved.toJson()));
+        assertEquals(moved, DraftCanvasJsonCodec.decode(new DraftCanvasJsonCodec().encode(moved)));
         assertEquals(new DraftCanvasDocument.Viewport(-25.5, 17.25, 1.5), document.viewport());
         // Screen dimensions are deliberately absent from the persisted layout contract.
-        assertFalse(moved.toJson().contains("screenWidth"));
-        assertFalse(moved.toJson().contains("clientX"));
+        assertFalse(new DraftCanvasJsonCodec().encode(moved).contains("screenWidth"));
+        assertFalse(new DraftCanvasJsonCodec().encode(moved).contains("clientX"));
     }
 
     @Test void constructorsCopyEveryMutableListAndExposeOnlyImmutableValues() {
@@ -64,39 +66,39 @@ class DraftCanvasDocumentTest {
         for (String field : List.of("schemaVersion", "layoutVersion", "viewport", "questionCard", "strokes")) {
             var invalid = valid.deepCopy();
             invalid.remove(field);
-            assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(invalid.toString()), field);
+            assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(invalid.toString()), field);
         }
         for (String field : List.of("schemaVersion", "layoutVersion")) {
             var invalid = valid.deepCopy();
             invalid.put(field, "future");
-            assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(invalid.toString()), field);
-            assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.upgradePoc(invalid.toString()), field);
+            assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(invalid.toString()), field);
+            assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.upgradePoc(invalid.toString()), field);
         }
         var cardWithoutWidth = valid.deepCopy();
         ((ObjectNode) cardWithoutWidth.get("questionCard")).remove("width");
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(cardWithoutWidth.toString()));
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.upgradePoc(cardWithoutWidth.toString()));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(cardWithoutWidth.toString()));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.upgradePoc(cardWithoutWidth.toString()));
         var withoutColor = valid.deepCopy();
         ((ObjectNode) withoutColor.path("strokes").get(0)).remove("color");
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(withoutColor.toString()));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(withoutColor.toString()));
         var withoutPressure = valid.deepCopy();
         ((ObjectNode) withoutPressure.path("strokes").get(0).path("points").get(0)).remove("pressure");
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(withoutPressure.toString()));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(withoutPressure.toString()));
     }
 
     @Test void strictParserRejectsCoercionDuplicateKeysAndTrailingTokens() throws Exception {
         ObjectNode valid = (ObjectNode) JSON.readTree(Files.readString(sharedFixture()));
         var stringZoom = valid.deepCopy();
         ((ObjectNode) stringZoom.get("viewport")).put("zoom", "1");
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(stringZoom.toString()));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(stringZoom.toString()));
         var numericLayout = valid.deepCopy();
         numericLayout.put("layoutVersion", 1);
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(numericLayout.toString()));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(numericLayout.toString()));
         var nullCoordinate = valid.deepCopy();
         ((ObjectNode) nullCoordinate.get("questionCard")).putNull("x");
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(nullCoordinate.toString()));
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(valid + " {}"));
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(nullCoordinate.toString()));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(valid + " {}"));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(
                 "{\"schemaVersion\":\"1.0\",\"schemaVersion\":\"1.0\"}"));
     }
 
@@ -106,18 +108,18 @@ class DraftCanvasDocumentTest {
         ((ObjectNode) old.get("questionCard")).put("width", 600);
         ((ObjectNode) old.path("strokes").get(0)).remove("color");
         ((ObjectNode) old.path("strokes").get(0).path("points").get(0)).remove("pressure");
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(old.toString()));
-        var upgraded = DraftCanvasDocument.upgradePoc(old.toString());
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(old.toString()));
+        var upgraded = DraftCanvasJsonCodec.upgradePoc(old.toString());
         assertEquals("1", upgraded.layoutVersion());
         assertEquals(600, upgraded.questionCard().width());
         assertEquals("#7660ab", upgraded.strokes().getFirst().color());
         assertEquals(0.5, upgraded.strokes().getFirst().points().getFirst().pressure());
-        assertEquals(upgraded, DraftCanvasDocument.parse(upgraded.toJson()));
+        assertEquals(upgraded, DraftCanvasJsonCodec.decode(new DraftCanvasJsonCodec().encode(upgraded)));
         ((ObjectNode) old.get("questionCard")).remove("width");
-        assertEquals(720, DraftCanvasDocument.upgradePoc(old.toString()).questionCard().width());
+        assertEquals(720, DraftCanvasJsonCodec.upgradePoc(old.toString()).questionCard().width());
         var nullWidth = old.deepCopy();
         ((ObjectNode) nullWidth.get("questionCard")).putNull("width");
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.upgradePoc(nullWidth.toString()));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.upgradePoc(nullWidth.toString()));
     }
 
     @Test void finitePositiveGeometryPressureToolColorAndUniqueIdsAreRequired() throws Exception {
@@ -125,19 +127,19 @@ class DraftCanvasDocumentTest {
         for (double zoom : List.of(0.0, -1.0)) {
             var invalid = valid.deepCopy();
             ((ObjectNode) invalid.get("viewport")).put("zoom", zoom);
-            assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(invalid.toString()));
+            assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(invalid.toString()));
         }
         for (double pressure : List.of(-0.1, 1.1)) {
             var invalid = valid.deepCopy();
             ((ObjectNode) invalid.path("strokes").get(0).path("points").get(0)).put("pressure", pressure);
-            assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(invalid.toString()));
+            assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(invalid.toString()));
         }
         var duplicate = valid.deepCopy();
         ((com.fasterxml.jackson.databind.node.ArrayNode) duplicate.get("strokes")).add(duplicate.path("strokes").get(0).deepCopy());
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(duplicate.toString()));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(duplicate.toString()));
         var unsupportedTool = valid.deepCopy();
         ((ObjectNode) unsupportedTool.path("strokes").get(0)).put("tool", "ERASER");
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(unsupportedTool.toString()));
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(unsupportedTool.toString()));
         assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.Viewport(Double.NaN, 0, 1));
         assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.QuestionCard(0, 0, Double.POSITIVE_INFINITY));
         assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.Point(0, Double.NEGATIVE_INFINITY, 0.5));
@@ -146,7 +148,7 @@ class DraftCanvasDocumentTest {
                 List.of(new DraftCanvasDocument.Point(0, 0, 1))));
         assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.Stroke("one", "PEN", "#abc", 0,
                 List.of(new DraftCanvasDocument.Point(0, 0, 1))));
-        assertThrows(IllegalArgumentException.class, () -> DraftCanvasDocument.parse(
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(
                 valid.toString().replace("-25.5", "1e999")));
     }
 
@@ -155,12 +157,7 @@ class DraftCanvasDocumentTest {
         supplied.put("dom", "<div>implementation detail</div>");
         supplied.put("svg", "<path/>");
         ((ObjectNode) supplied.get("questionCard")).put("screenWidth", 320);
-        var document = DraftCanvasDocument.parse(supplied.toString());
-        var encoded = JSON.readTree(document.toJson());
-        assertFalse(encoded.has("dom"));
-        assertFalse(encoded.has("svg"));
-        assertFalse(encoded.path("questionCard").has("screenWidth"));
-        assertEquals(720, document.questionCard().width());
+        assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(supplied.toString()));
     }
 
     private static Path sharedFixture() {

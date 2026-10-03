@@ -135,7 +135,8 @@ class MarkdownFileUiTest extends WorkspaceUiTestSupport {
             assertEquals(1, header.lookupAll(".button").size());
             assertNull(shell.lookup("#asset-info-button"));
             open("题库/Java集合.qbank");
-            assertEquals(2, shell.lookup("#file-header").lookupAll(".button").size());
+            assertEquals(3, shell.lookup("#file-header").lookupAll(".button").size());
+            assertTrue(button("practice-draft-toggle").isVisible());
             assertNull(shell.lookup("#asset-info-button"));
             assertFalse(text(shell).contains("doc_java"));
             assertFalse(text(shell).contains("qfd:v1:"));

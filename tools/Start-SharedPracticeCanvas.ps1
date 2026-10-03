@@ -1,10 +1,13 @@
-param([string]$QuestionBank)
+param([string]$QuestionBank, [string]$Database)
 $ErrorActionPreference = 'Stop'
 $repository = Split-Path -Parent $PSScriptRoot
 $previousDirectory = Get-Location
 try {
     Set-Location -LiteralPath $repository
     if (-not $QuestionBank) { $QuestionBank = Join-Path $repository 'examples/step7-practice/Java集合练习.qbank' }
+    if (-not $Database) { $Database = Join-Path $repository 'target/draft-persistence-acceptance/practice.db' }
+    $Database = [IO.Path]::GetFullPath($Database)
+    New-Item -ItemType Directory -Path (Split-Path -Parent $Database) -Force | Out-Null
     $QuestionBank = (Resolve-Path -LiteralPath $QuestionBank).Path
     # Native stderr may contain harmless JVM warnings; validate native exit codes explicitly.
     $ErrorActionPreference = 'Continue'
@@ -18,7 +21,7 @@ try {
     $dependencies = (Get-Content -LiteralPath (Join-Path $desktopDirectory 'target/shared-practice-poc/runtime-classpath.txt') -Raw).Trim()
     $classpath = (Join-Path $desktopDirectory 'target/shared-practice-poc/classes') + [IO.Path]::PathSeparator + $dependencies
     $java = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin/java.exe' } else { 'java.exe' }
-    & $java -cp $classpath io.quizforge.desktop.poc.sharedpractice.SharedPracticeCanvasLauncher $QuestionBank
+    & $java -cp $classpath io.quizforge.desktop.poc.sharedpractice.SharedPracticeCanvasLauncher $QuestionBank $Database
     if ($LASTEXITCODE -ne 0) { throw 'Shared Practice POC exited with an error.' }
 } finally {
     Set-Location -LiteralPath $previousDirectory.Path

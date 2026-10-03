@@ -76,11 +76,17 @@ final class FileViewerRouter {
     Node welcome() { return UiTheme.quietState("打开一个文件", "从左侧文件树中选择，开始阅读或练习。"); }
 
     private Node practice(FilePresentation file) {
-        var practice = new QuestionBankPracticeView(practiceRuntime.apply(file, file.file().questionBank()), sources);
+        var runtime=practiceRuntime.apply(file, file.file().questionBank());
+        var practice = new QuestionBankPracticeView(runtime, sources);
         var scroll = QuestionCardLayout.scroll(practice);
         scroll.getContent().setId("practice-stage");
         scroll.setId("practice-scroll");
-        return new QuestionPracticeLayout(scroll, practice.outline());
+        var layout=new QuestionPracticeLayout(scroll, practice.outline());
+        var surface=new io.quizforge.desktop.ui.question.practice.PracticeSurfaceHost(runtime,practice::refreshPracticeState,
+                ()->practice.navigateFromSurface(()->{runtime.previous();practice.refreshPracticeState();}),
+                ()->practice.navigateFromSurface(()->{runtime.next();practice.refreshPracticeState();}));
+        practice.setSurfaceHost(surface);layout.setSurface(surface,scroll);
+        return layout;
     }
 
 }

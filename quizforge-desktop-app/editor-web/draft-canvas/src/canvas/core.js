@@ -1,8 +1,10 @@
 import { DraftModel, screenToWorld } from '../model.js';
 
 // This host owns world geometry and tools only. The live DOM object is supplied by its caller.
-export function mountDraftCanvas(object) {
+export function mountDraftCanvas(object, { accessMode = 'EDITABLE' } = {}) {
 if (!(object instanceof HTMLElement)) throw new TypeError('A live World object is required');
+if (!['EDITABLE', 'READ_ONLY'].includes(accessMode)) throw new TypeError('Unknown Canvas access mode');
+const readOnly = accessMode === 'READ_ONLY';
 
 const $ = selector => document.querySelector(selector);
 const root = $('#draft-canvas-root'), viewport = $('#viewport'), world = $('#world');
@@ -10,7 +12,13 @@ const strokes = $('#strokes'), activeStroke = $('#active-stroke');
 const model = new DraftModel();
 const ns = 'http://www.w3.org/2000/svg';
 const listeners = [], counts = {}, events = [];
-let mode = 'INTERACT', gesture = null, destroyed = false, sequence = 0;
+let mode = 'INTERACT', gesture = null, destroyed = false, sequence = 0, editable = true;
+const changeListeners = new Set(); let lastNotified = JSON.stringify(model.getDraft());
+function changed() {
+  const value = JSON.stringify(model.getDraft());
+  if (value === lastNotified) return; lastNotified = value;
+  if (!readOnly) changeListeners.forEach(listener => listener(value));
+}
 const helps = { INTERACT: '交互：操作题卡内容。', PEN: '画笔：在空白区域或题卡上书写。',
   ERASER: '橡皮：划过笔迹，删除整笔。', PAN: '平移：拖动白板，题卡与笔迹一起移动。' };
 
@@ -44,8 +52,8 @@ function renderTransform(draft = model.getDraft()) {
 function render() {
   const draft = model.getDraft(); renderTransform(draft);
   strokes.replaceChildren(); draft.strokes.forEach(s => drawStroke(strokes, s));
-  $('#undo').disabled = !model.canUndo; $('#redo').disabled = !model.canRedo;
-  $('#clear').disabled = !draft.strokes.length;
+  $('#undo').disabled = readOnly || !model.canUndo; $('#redo').disabled = readOnly || !model.canRedo;
+  $('#clear').disabled = readOnly || !draft.strokes.length;
   $('#status').textContent = `${draft.strokes.length} 笔 · 视口 ${Math.round(draft.viewport.x)}, ${Math.round(draft.viewport.y)} · ${Math.round(draft.viewport.zoom * 100)}%`;
 }
 function screenPoint(event) {
@@ -68,10 +76,11 @@ function finish(commit) {
   if (current.mode === 'ERASER') model.endEdit();
   activeStroke.replaceChildren(); viewport.classList.remove('dragging');
   if (viewport.hasPointerCapture?.(current.pointerId)) viewport.releasePointerCapture(current.pointerId);
-  render();
+  render(); changed();
 }
 function setMode(next) {
   alive(); if (!Object.prototype.hasOwnProperty.call(helps, next)) throw new Error('Unknown tool mode');
+  if (readOnly && next !== 'PAN') throw new Error('History Canvas permits Pan only');
   finish(true); mode = next; root.dataset.mode = next;
   // Drawing never keeps a focused card input receiving keyboard events.
   if (next !== 'INTERACT' && object.contains(document.activeElement)) document.activeElement.blur();
@@ -80,7 +89,7 @@ function setMode(next) {
 }
 listen(viewport, 'pointerdown', event => {
   observe(event);
-  if (mode === 'INTERACT' || gesture || !event.isPrimary || event.button !== 0) return;
+  if (!editable || mode === 'INTERACT' || gesture || !event.isPrimary || event.button !== 0) return;
   event.preventDefault();
   gesture = { mode, pointerId: event.pointerId, last: screenPoint(event) };
   viewport.setPointerCapture?.(event.pointerId); viewport.classList.add('dragging');
@@ -123,12 +132,13 @@ listen(document, 'pointercancel', event => { if (event.pointerId === gesture?.po
 listen(viewport, 'lostpointercapture', event => { if (event.pointerId === gesture?.pointerId) finish(false); });
 listen(window, 'blur', () => finish(false));
 document.querySelectorAll('button[data-mode]').forEach(b => listen(b, 'click', () => setMode(b.dataset.mode)));
-for (const action of ['undo', 'redo', 'clear']) listen($(`#${action}`), 'click', () => { finish(true); model[action](); render(); });
+for (const action of ['undo', 'redo', 'clear']) listen($(`#${action}`), 'click', () => { if (!editable || readOnly) return; finish(true); model[action](); render(); changed(); });
 listen(document, 'keydown', event => {
-  if (event.target.matches('input, textarea') || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return;
-  event.preventDefault(); finish(true); event.shiftKey ? model.redo() : model.undo(); render();
+  if (!editable || readOnly || event.target.matches('input, textarea') || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return;
+  event.preventDefault(); finish(true); event.shiftKey ? model.redo() : model.undo(); render(); changed();
 });
 function showJson(exporting) {
+  if (readOnly) return;
   finish(true); $('#json-error').textContent = '';
   if (exporting || !$('#draft-json').value) $('#draft-json').value = JSON.stringify(model.getDraft(), null, 2);
   $('#draft-panel').hidden = false; $('#draft-json').focus();
@@ -137,39 +147,42 @@ listen($('#export'), 'click', () => showJson(true));
 listen($('#import'), 'click', () => showJson(false));
 listen($('#close-panel'), 'click', () => { $('#draft-panel').hidden = true; });
 function loadDraft(json) {
-  alive(); finish(false); model.loadDraft(json); render();
+  alive(); finish(false); model.loadDraft(json); render(); changed();
 }
 function setZoom(zoom, screenAnchor = { x: 0, y: 0 }) {
-  alive(); finish(true); model.setZoom(zoom, screenAnchor); render();
+  alive(); if (!editable) return; finish(true); model.setZoom(zoom, screenAnchor); render(); changed();
 }
 function zoomBy(factor) {
   const zoom = Math.min(4, Math.max(0.1, model.getDraft().viewport.zoom * factor));
   setZoom(zoom, { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 });
 }
 function fitCard() {
-  alive(); finish(true);
+  alive(); if (!editable) return; finish(true);
   const card = model.getDraft().questionCard;
   const zoom = Math.min(1, Math.max(0.1, (viewport.clientWidth - 40) / card.width));
   model.setZoom(zoom);
   const view = model.getDraft().viewport;
   model.pan((viewport.clientWidth - card.width * zoom) / 2 - (card.x + view.x) * zoom,
     20 - (card.y + view.y) * zoom);
-  render();
+  render(); changed();
 }
 listen($('#zoom-out'), 'click', () => zoomBy(1 / 1.2));
 listen($('#zoom-in'), 'click', () => zoomBy(1.2));
 listen($('#zoom-fit'), 'click', fitCard);
 listen($('#load-json'), 'click', () => {
+  if (!editable || readOnly) return;
   try { loadDraft($('#draft-json').value); $('#draft-panel').hidden = true; }
   catch (error) { $('#json-error').textContent = error.message; }
 });
 const api = Object.freeze({
   getDraft() { alive(); finish(true); return JSON.stringify(model.getDraft()); },
   loadDraft, setMode, setZoom, fitCard,
-  diagnostics() { return { supportedPointerEvents: typeof PointerEvent !== 'undefined', counts: { ...counts }, events: events.map(e => ({ ...e })), mode, destroyed }; },
+  onChange(listener) { alive(); changeListeners.add(listener); return () => changeListeners.delete(listener); },
+  setEditable(value) { alive(); finish(true); editable = Boolean(value); },
+  diagnostics() { return { supportedPointerEvents: typeof PointerEvent !== 'undefined', counts: { ...counts }, events: events.map(e => ({ ...e })), accessMode, mode, destroyed }; },
   destroy() {
     if (destroyed) return;
-    finish(false); destroyed = true; listeners.splice(0).forEach(remove => remove());
+    finish(false); destroyed = true; changeListeners.clear(); listeners.splice(0).forEach(remove => remove());
     if (root.contains(document.activeElement)) document.activeElement.blur();
     root.inert = true; root.style.pointerEvents = 'none';
     root.querySelectorAll('input, button, textarea').forEach(element => { element.disabled = true; });
@@ -177,6 +190,16 @@ const api = Object.freeze({
   }
 });
 render();
+root.dataset.accessMode = accessMode;
+if (readOnly) {
+  document.querySelectorAll('button[data-mode]').forEach(button => {
+    if (button.dataset.mode !== 'PAN') { button.hidden = true; button.disabled = true; }
+  });
+  for (const id of ['undo', 'redo', 'clear', 'export', 'import', 'load-json']) {
+    $(`#${id}`).hidden = true; $(`#${id}`).disabled = true;
+  }
+  setMode('PAN');
+}
 if (typeof PointerEvent === 'undefined') $('#mode-help').textContent = '当前运行环境缺少 Pointer Events。';
 
 return Object.freeze({ ...api, addDisposer(dispose) { alive(); listeners.push(dispose); } });

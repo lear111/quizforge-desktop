@@ -265,8 +265,8 @@
       if (finite2(radius, "erase.radius") < 0) throw new RangeError("erase.radius must not be negative");
       const removed = __privateGet(this, _draft).strokes.filter((value) => strokeHit(value, from, to, radius));
       if (removed.length) {
-        const ids2 = new Set(removed.map((value) => value.id));
-        __privateMethod(this, _DraftModel_instances, replaceStrokes_fn).call(this, __privateGet(this, _draft).strokes.filter((value) => !ids2.has(value.id)));
+        const ids = new Set(removed.map((value) => value.id));
+        __privateMethod(this, _DraftModel_instances, replaceStrokes_fn).call(this, __privateGet(this, _draft).strokes.filter((value) => !ids.has(value.id)));
       }
       return removed.map((value) => value.id);
     }
@@ -312,15 +312,25 @@
   };
 
   // src/canvas/core.js
-  function mountDraftCanvas(object4) {
+  function mountDraftCanvas(object4, { accessMode = "EDITABLE" } = {}) {
     if (!(object4 instanceof HTMLElement)) throw new TypeError("A live World object is required");
+    if (!["EDITABLE", "READ_ONLY"].includes(accessMode)) throw new TypeError("Unknown Canvas access mode");
+    const readOnly = accessMode === "READ_ONLY";
     const $ = (selector) => document.querySelector(selector);
     const root = $("#draft-canvas-root"), viewport2 = $("#viewport"), world = $("#world");
     const strokes = $("#strokes"), activeStroke = $("#active-stroke");
     const model = new DraftModel();
     const ns = "http://www.w3.org/2000/svg";
     const listeners = [], counts = {}, events = [];
-    let mode = "INTERACT", gesture = null, destroyed = false, sequence = 0;
+    let mode = "INTERACT", gesture = null, destroyed = false, sequence = 0, editable2 = true;
+    const changeListeners = /* @__PURE__ */ new Set();
+    let lastNotified = JSON.stringify(model.getDraft());
+    function changed() {
+      const value = JSON.stringify(model.getDraft());
+      if (value === lastNotified) return;
+      lastNotified = value;
+      if (!readOnly) changeListeners.forEach((listener) => listener(value));
+    }
     const helps = {
       INTERACT: "\u4EA4\u4E92\uFF1A\u64CD\u4F5C\u9898\u5361\u5185\u5BB9\u3002",
       PEN: "\u753B\u7B14\uFF1A\u5728\u7A7A\u767D\u533A\u57DF\u6216\u9898\u5361\u4E0A\u4E66\u5199\u3002",
@@ -367,9 +377,9 @@
       renderTransform(draft);
       strokes.replaceChildren();
       draft.strokes.forEach((s) => drawStroke(strokes, s));
-      $("#undo").disabled = !model.canUndo;
-      $("#redo").disabled = !model.canRedo;
-      $("#clear").disabled = !draft.strokes.length;
+      $("#undo").disabled = readOnly || !model.canUndo;
+      $("#redo").disabled = readOnly || !model.canRedo;
+      $("#clear").disabled = readOnly || !draft.strokes.length;
       $("#status").textContent = `${draft.strokes.length} \u7B14 \xB7 \u89C6\u53E3 ${Math.round(draft.viewport.x)}, ${Math.round(draft.viewport.y)} \xB7 ${Math.round(draft.viewport.zoom * 100)}%`;
     }
     function screenPoint(event) {
@@ -398,10 +408,12 @@
       viewport2.classList.remove("dragging");
       if ((_a = viewport2.hasPointerCapture) == null ? void 0 : _a.call(viewport2, current.pointerId)) viewport2.releasePointerCapture(current.pointerId);
       render();
+      changed();
     }
     function setMode(next) {
       alive();
       if (!Object.prototype.hasOwnProperty.call(helps, next)) throw new Error("Unknown tool mode");
+      if (readOnly && next !== "PAN") throw new Error("History Canvas permits Pan only");
       finish(true);
       mode = next;
       root.dataset.mode = next;
@@ -412,7 +424,7 @@
     listen(viewport2, "pointerdown", (event) => {
       var _a;
       observe(event);
-      if (mode === "INTERACT" || gesture || !event.isPrimary || event.button !== 0) return;
+      if (!editable2 || mode === "INTERACT" || gesture || !event.isPrimary || event.button !== 0) return;
       event.preventDefault();
       gesture = { mode, pointerId: event.pointerId, last: screenPoint(event) };
       (_a = viewport2.setPointerCapture) == null ? void 0 : _a.call(viewport2, event.pointerId);
@@ -467,18 +479,22 @@
     listen(window, "blur", () => finish(false));
     document.querySelectorAll("button[data-mode]").forEach((b) => listen(b, "click", () => setMode(b.dataset.mode)));
     for (const action of ["undo", "redo", "clear"]) listen($(`#${action}`), "click", () => {
+      if (!editable2 || readOnly) return;
       finish(true);
       model[action]();
       render();
+      changed();
     });
     listen(document, "keydown", (event) => {
-      if (event.target.matches("input, textarea") || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
+      if (!editable2 || readOnly || event.target.matches("input, textarea") || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
       event.preventDefault();
       finish(true);
       event.shiftKey ? model.redo() : model.undo();
       render();
+      changed();
     });
     function showJson(exporting) {
+      if (readOnly) return;
       finish(true);
       $("#json-error").textContent = "";
       if (exporting || !$("#draft-json").value) $("#draft-json").value = JSON.stringify(model.getDraft(), null, 2);
@@ -495,12 +511,15 @@
       finish(false);
       model.loadDraft(json);
       render();
+      changed();
     }
     function setZoom(zoom, screenAnchor = { x: 0, y: 0 }) {
       alive();
+      if (!editable2) return;
       finish(true);
       model.setZoom(zoom, screenAnchor);
       render();
+      changed();
     }
     function zoomBy(factor) {
       const zoom = Math.min(4, Math.max(0.1, model.getDraft().viewport.zoom * factor));
@@ -508,6 +527,7 @@
     }
     function fitCard() {
       alive();
+      if (!editable2) return;
       finish(true);
       const card = model.getDraft().questionCard;
       const zoom = Math.min(1, Math.max(0.1, (viewport2.clientWidth - 40) / card.width));
@@ -518,11 +538,13 @@
         20 - (card.y + view.y) * zoom
       );
       render();
+      changed();
     }
     listen($("#zoom-out"), "click", () => zoomBy(1 / 1.2));
     listen($("#zoom-in"), "click", () => zoomBy(1.2));
     listen($("#zoom-fit"), "click", fitCard);
     listen($("#load-json"), "click", () => {
+      if (!editable2 || readOnly) return;
       try {
         loadDraft($("#draft-json").value);
         $("#draft-panel").hidden = true;
@@ -540,13 +562,24 @@
       setMode,
       setZoom,
       fitCard,
+      onChange(listener) {
+        alive();
+        changeListeners.add(listener);
+        return () => changeListeners.delete(listener);
+      },
+      setEditable(value) {
+        alive();
+        finish(true);
+        editable2 = Boolean(value);
+      },
       diagnostics() {
-        return { supportedPointerEvents: typeof PointerEvent !== "undefined", counts: { ...counts }, events: events.map((e) => ({ ...e })), mode, destroyed };
+        return { supportedPointerEvents: typeof PointerEvent !== "undefined", counts: { ...counts }, events: events.map((e) => ({ ...e })), accessMode, mode, destroyed };
       },
       destroy() {
         if (destroyed) return;
         finish(false);
         destroyed = true;
+        changeListeners.clear();
         listeners.splice(0).forEach((remove) => remove());
         if (root.contains(document.activeElement)) document.activeElement.blur();
         root.inert = true;
@@ -558,6 +591,20 @@
       }
     });
     render();
+    root.dataset.accessMode = accessMode;
+    if (readOnly) {
+      document.querySelectorAll("button[data-mode]").forEach((button) => {
+        if (button.dataset.mode !== "PAN") {
+          button.hidden = true;
+          button.disabled = true;
+        }
+      });
+      for (const id2 of ["undo", "redo", "clear", "export", "import", "load-json"]) {
+        $(`#${id2}`).hidden = true;
+        $(`#${id2}`).disabled = true;
+      }
+      setMode("PAN");
+    }
     if (typeof PointerEvent === "undefined") $("#mode-help").textContent = "\u5F53\u524D\u8FD0\u884C\u73AF\u5883\u7F3A\u5C11 Pointer Events\u3002";
     return Object.freeze({ ...api, addDisposer(dispose) {
       alive();
@@ -565,9 +612,186 @@
     } });
   }
 
+  // src/renderer/choice/contract.js
+  var feedback = /* @__PURE__ */ new Set(["NONE", "CORRECT", "INCORRECT"]);
+  function textContent(value, name) {
+    if ((value == null ? void 0 : value.kind) !== "TEXT") throw new TypeError(`Unsupported content: ${name} supports TEXT only in v1`);
+    if (typeof value.text !== "string") throw new TypeError(`${name}.text must be text`);
+    return { kind: "TEXT", text: value.text };
+  }
+  function optionIds(value, available, name) {
+    if (!Array.isArray(value) || new Set(value).size !== value.length || value.some((v) => !available.has(v)))
+      throw new TypeError(`${name} must contain unique known option ids`);
+    return [...value];
+  }
+  function readChoiceQuestion(q, definition) {
+    if (q.selectionMode !== void 0 && q.selectionMode !== definition.selectionMode)
+      throw new TypeError("Choice selectionMode does not match question type");
+    if (!Array.isArray(q.options) || q.options.length < 2) throw new TypeError("Question options are missing");
+    const options = q.options.map((o) => {
+      if (typeof o.id !== "string" || !o.id.trim()) throw new TypeError("option.id is required");
+      if (!feedback.has(o.feedback)) throw new TypeError("Unknown authoritative option feedback");
+      return { id: o.id, content: textContent(o.content, "option.content"), feedback: o.feedback };
+    });
+    const available = new Set(options.map((o) => o.id));
+    if (available.size !== options.length) throw new TypeError("Option ids must be unique");
+    const selected = optionIds(q.selectedOptionIds, available, "selectedOptionIds");
+    if (definition.selectionMode === "SINGLE" && selected.length > 1)
+      throw new TypeError("SINGLE_CHOICE cannot display multiple selected options");
+    return {
+      prompt: textContent(q.prompt, "prompt"),
+      options,
+      selectedOptionIds: selected,
+      selectionMode: definition.selectionMode,
+      available
+    };
+  }
+
+  // src/shared/renderer/contract.js
+  var RendererMode = Object.freeze({ ACTIVE: "ACTIVE", READ_ONLY_HISTORY: "READ_ONLY_HISTORY" });
+  function requireRendererMode(mode) {
+    if (!Object.values(RendererMode).includes(mode)) throw new TypeError("Unsupported renderer capability mode");
+    return mode;
+  }
+  function element(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== void 0) node.textContent = text;
+    return node;
+  }
+
+  // src/renderer/choice/renderer.js
+  function mountChoiceRenderer(form, initial, { mode, definition, contentRoot, canInteract, answerChanged }) {
+    requireRendererMode(mode);
+    const history = mode === RendererMode.READ_ONLY_HISTORY;
+    let question = initial, readOnly = history, interaction = "INTERACT", destroyed = false;
+    const prompt = element("p", "practice-prompt", question.prompt.text);
+    prompt.id = "practice-prompt";
+    const options = element("fieldset", "practice-options");
+    options.appendChild(element("legend", "", "\u9009\u62E9\u7B54\u6848"));
+    question.options.forEach((option, index) => {
+      const label = element("label", `practice-option feedback-${option.feedback.toLowerCase()}`);
+      label.dataset.optionId = option.id;
+      const input = element("input");
+      input.type = definition.selectionMode === "MULTIPLE" ? "checkbox" : "radio";
+      input.name = "practice-answer";
+      input.value = option.id;
+      input.id = `practice-option-${index}`;
+      label.append(input, element("span", "practice-option-text", `${String.fromCharCode(65 + index)}. ${option.content.text}`));
+      options.appendChild(label);
+    });
+    contentRoot.appendChild(prompt);
+    form.appendChild(options);
+    function alive() {
+      if (destroyed) throw new Error("Question renderer destroyed");
+    }
+    function synchronize() {
+      options.querySelectorAll("input").forEach((input) => {
+        input.checked = question.selectedOptionIds.includes(input.value);
+        input.disabled = readOnly || interaction !== "INTERACT" || question.state === "SUBMITTED";
+        input.closest(".practice-option").classList.toggle("selected", input.checked);
+      });
+    }
+    function getAnswerIntent() {
+      alive();
+      return { selectedOptionIds: Array.from(options.querySelectorAll("input:checked"), (input) => input.value) };
+    }
+    const change = (event) => {
+      if (!event.target.matches("input[name=practice-answer]")) return;
+      if (destroyed || readOnly || interaction !== "INTERACT" || question.state === "SUBMITTED" || !canInteract()) {
+        synchronize();
+        return;
+      }
+      answerChanged(getAnswerIntent());
+    };
+    if (!history) form.addEventListener("change", change);
+    synchronize();
+    return Object.freeze({
+      update(next) {
+        alive();
+        question = next;
+        synchronize();
+      },
+      getAnswerIntent,
+      setInteractionMode(next) {
+        alive();
+        if (!["INTERACT", "DISABLED"].includes(next)) throw new TypeError("Unknown interaction mode");
+        interaction = next;
+        synchronize();
+      },
+      setReadOnly(value) {
+        alive();
+        if (history && !value) throw new Error("History capability cannot be upgraded");
+        readOnly = Boolean(value);
+        synchronize();
+      },
+      renderResult() {
+        alive();
+        const result = element("section", "practice-result");
+        result.id = "practice-result";
+        result.hidden = !question.result;
+        const r = question.result;
+        if (r) {
+          result.append(
+            element("p", `practice-result-${r.status.toLowerCase()}`, r.status === "CORRECT" ? "\u56DE\u7B54\u6B63\u786E" : "\u56DE\u7B54\u9519\u8BEF"),
+            element("p", "practice-earned-score", `\u5F97\u5206\uFF1A${r.score} / ${r.maxScore}`)
+          );
+          const labels = r.correctOptionIds.map((id2) => String.fromCharCode(65 + question.options.findIndex((o) => o.id === id2))).join("\u3001");
+          result.appendChild(element("p", "practice-correct-answer", `\u6B63\u786E\u7B54\u6848\uFF1A${labels}`));
+          if (r.analysis.text) result.append(element("strong", "", "\u7B54\u6848\u4E0E\u89E3\u6790"), element("p", "practice-analysis", r.analysis.text));
+        }
+        return result;
+      },
+      destroy() {
+        if (destroyed) return;
+        destroyed = true;
+        form.removeEventListener("change", change);
+        options.querySelectorAll("input").forEach((i) => i.disabled = true);
+      }
+    });
+  }
+
+  // src/renderer/single-choice/index.js
+  var singleChoiceRenderer = Object.freeze({
+    id: "builtin.single-choice.v1",
+    questionType: "SINGLE_CHOICE",
+    selectionMode: "SINGLE",
+    label: "\u5355\u9009\u9898",
+    parse(question) {
+      return readChoiceQuestion(question, this);
+    },
+    mount(form, question, capabilities) {
+      return mountChoiceRenderer(form, question, { ...capabilities, definition: this });
+    }
+  });
+
+  // src/renderer/multiple-choice/index.js
+  var multipleChoiceRenderer = Object.freeze({
+    id: "builtin.multiple-choice.v1",
+    questionType: "MULTIPLE_CHOICE",
+    selectionMode: "MULTIPLE",
+    label: "\u591A\u9009\u9898",
+    parse(question) {
+      return readChoiceQuestion(question, this);
+    },
+    mount(form, question, capabilities) {
+      return mountChoiceRenderer(form, question, { ...capabilities, definition: this });
+    }
+  });
+
+  // src/shared/renderer/registry.js
+  var builtins = new Map([singleChoiceRenderer, multipleChoiceRenderer].map((renderer) => [renderer.questionType, renderer]));
+  var QuestionRendererRegistry = Object.freeze({
+    types: Object.freeze([...builtins.keys()]),
+    require(type) {
+      const renderer = builtins.get(type);
+      if (!renderer) throw new TypeError(`Unsupported question type: ${type}`);
+      return renderer;
+    }
+  });
+
   // src/practice/contract.js
   var states = /* @__PURE__ */ new Set(["UNANSWERED", "DRAFT", "SUBMITTED", "RETRYING"]);
-  var feedback = /* @__PURE__ */ new Set(["NONE", "CORRECT", "INCORRECT"]);
   function string(value, name) {
     if (typeof value !== "string") throw new TypeError(`${name} must be text`);
     return value;
@@ -580,37 +804,21 @@
     if (typeof value !== "number" || !Number.isFinite(value)) throw new TypeError(`${name} must be finite`);
     return value;
   }
-  function content(value, name) {
-    if ((value == null ? void 0 : value.kind) !== "TEXT") throw new TypeError(`${name} supports TEXT only in v1`);
-    return { kind: "TEXT", text: string(value.text, `${name}.text`) };
-  }
-  function ids(value, available, name) {
-    if (!Array.isArray(value) || new Set(value).size !== value.length || value.some((v) => !available.has(v)))
-      throw new TypeError(`${name} must contain unique known option ids`);
-    return [...value];
-  }
   function readPractice(value) {
     const vm = typeof value === "string" ? JSON.parse(value) : value;
     if ((vm == null ? void 0 : vm.schemaVersion) !== "1.0") throw new TypeError("Unsupported Shared Practice schemaVersion");
     const s = vm.session, q = vm.question;
-    if ((q == null ? void 0 : q.type) !== "SINGLE_CHOICE") throw new TypeError("Shared Practice v1 supports SINGLE_CHOICE only");
+    const definition = QuestionRendererRegistry.require(q == null ? void 0 : q.type);
     if (!states.has(q.state)) throw new TypeError("Unknown authoritative Practice state");
     if (!Number.isInteger(q.index) || !Number.isInteger(q.total) || q.index < 0 || q.index >= q.total)
       throw new TypeError("Question position is invalid");
-    if (!Array.isArray(q.options) || q.options.length < 2) throw new TypeError("Question options are missing");
-    const options = q.options.map((o) => {
-      if (!feedback.has(o.feedback)) throw new TypeError("Unknown authoritative option feedback");
-      return { id: id(o.id, "option.id"), content: content(o.content, "option.content"), feedback: o.feedback };
-    });
-    const available = new Set(options.map((o) => o.id));
-    if (available.size !== options.length) throw new TypeError("Option ids must be unique");
-    const selected = ids(q.selectedOptionIds, available, "selectedOptionIds");
-    if (selected.length > 1) throw new TypeError("SINGLE_CHOICE cannot display multiple selected options");
+    const choice = definition.parse(q);
+    const { options, available, selectedOptionIds: selected } = choice;
     const maximum = number(q.maxScore, "question.maxScore");
     let result = null;
     if (q.state === "SUBMITTED") {
       const r = q.result;
-      if (!r || !["CORRECT", "INCORRECT"].includes(r.status) || !["INITIAL", "RETRY"].includes(r.attemptMode))
+      if (!r || !["CORRECT", "INCORRECT"].includes(r.status) || !["INITIAL", "RETRY", "REVISION"].includes(r.attemptMode))
         throw new TypeError("Submitted question requires an authoritative result");
       if (!Number.isInteger(r.attemptNo) || r.attemptNo < 1) throw new TypeError("Invalid attemptNo");
       result = {
@@ -620,8 +828,8 @@
         attemptId: id(r.attemptId, "result.attemptId"),
         attemptNo: r.attemptNo,
         attemptMode: r.attemptMode,
-        correctOptionIds: ids(r.correctOptionIds, available, "correctOptionIds"),
-        analysis: content(r.analysis, "result.analysis")
+        correctOptionIds: optionIds(r.correctOptionIds, available, "correctOptionIds"),
+        analysis: textContent(r.analysis, "result.analysis")
       };
     } else if (q.result != null || options.some((o) => o.feedback !== "NONE")) {
       throw new TypeError("Unsubmitted question must not expose result feedback");
@@ -632,10 +840,11 @@
       question: {
         sessionQuestionId: id(q.sessionQuestionId, "sessionQuestionId"),
         questionId: id(q.questionId, "questionId"),
-        type: "SINGLE_CHOICE",
+        type: definition.questionType,
+        selectionMode: definition.selectionMode,
         index: q.index,
         total: q.total,
-        prompt: content(q.prompt, "prompt"),
+        prompt: textContent(q.prompt, "prompt"),
         options,
         selectedOptionIds: selected,
         state: q.state,
@@ -692,26 +901,32 @@
   _authoritative = new WeakMap();
   _pending = new WeakMap();
 
-  // src/practice/renderer.js
-  function element(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text !== void 0) node.textContent = text;
-    return node;
-  }
-  function mountPracticeCard(root, sendIntent, interactionAllowed = () => true) {
+  // src/shared/runtime/question-runtime.js
+  function mountSharedQuestionRuntime(root, sendIntent, interactionAllowed = () => true, hooks = {}) {
+    const readOnly = hooks.readOnly === true;
+    const mode = readOnly ? RendererMode.READ_ONLY_HISTORY : RendererMode.ACTIVE;
+    let renderer = null;
     let authoritative = null, busy = false, destroyed = false, confirmation = false, error = "";
     const ordering = new OperationOrdering();
+    let pendingReply = null;
+    const idleWaiters = [];
+    function settled(failure) {
+      const reply = pendingReply;
+      pendingReply = null;
+      if (reply) failure ? reply.reject(failure) : reply.resolve();
+      idleWaiters.splice(0).forEach((resolve) => resolve());
+    }
+    function idle() {
+      return busy ? new Promise((resolve) => idleWaiters.push(resolve)) : Promise.resolve();
+    }
     function alive() {
       if (destroyed) throw new Error("Shared Practice UI has been destroyed");
     }
     function controls() {
       if (!authoritative) return;
-      root.querySelectorAll("input[name=practice-answer]").forEach((input) => {
-        input.checked = authoritative.question.selectedOptionIds.includes(input.value);
-        input.closest(".practice-option").classList.toggle("selected", input.checked);
-        input.disabled = busy || authoritative.question.state === "SUBMITTED" || confirmation;
-      });
+      renderer == null ? void 0 : renderer.update(authoritative.question);
+      renderer == null ? void 0 : renderer.setReadOnly(readOnly);
+      renderer == null ? void 0 : renderer.setInteractionMode(busy || authoritative.question.state === "SUBMITTED" || confirmation ? "DISABLED" : "INTERACT");
       const submit2 = root.querySelector("#practice-submit"), retry = root.querySelector("#practice-retry");
       if (submit2) submit2.disabled = busy || !authoritative.question.selectedOptionIds.length;
       if (retry) retry.disabled = busy;
@@ -728,73 +943,57 @@
       root.setAttribute("aria-busy", String(busy));
     }
     function render(vm) {
+      renderer == null ? void 0 : renderer.destroy();
       const fragment = document.createDocumentFragment(), q = vm.question;
+      const definition = QuestionRendererRegistry.require(q.type);
       const heading = element("div", "card-heading");
-      heading.append(element("span", "tag", "\u5355\u9009\u9898"), element("span", "", `\u7B2C ${q.index + 1} / ${q.total} \u9898`));
+      heading.append(element("span", "tag", definition.label), element("span", "", `\u7B2C ${q.index + 1} / ${q.total} \u9898`));
       const state = element("span", "practice-state", { UNANSWERED: "\u672A\u4F5C\u7B54", DRAFT: "\u5DF2\u9009\u62E9", SUBMITTED: "\u5DF2\u63D0\u4EA4", RETRYING: "\u91CD\u8BD5\u4E2D" }[q.state]);
       state.id = "practice-state";
       state.dataset.state = q.state;
       const meta = element("div", "practice-meta");
       meta.append(element("span", "practice-score", `\u5206\u503C\uFF1A${q.maxScore}`), state);
-      const prompt = element("p", "practice-prompt", q.prompt.text);
-      prompt.id = "practice-prompt";
-      fragment.append(heading, meta, prompt);
+      fragment.append(heading, meta);
       const form = element("form");
       form.id = "practice-form";
-      const options = element("fieldset", "practice-options");
-      const legend = element("legend", "", "\u9009\u62E9\u7B54\u6848");
-      options.appendChild(legend);
-      q.options.forEach((option, index) => {
-        const label = element("label", `practice-option feedback-${option.feedback.toLowerCase()}`);
-        label.dataset.optionId = option.id;
-        const radio = element("input");
-        radio.type = "radio";
-        radio.name = "practice-answer";
-        radio.value = option.id;
-        radio.id = `practice-option-${index}`;
-        label.append(radio, element("span", "practice-option-text", `${String.fromCharCode(65 + index)}. ${option.content.text}`));
-        options.appendChild(label);
+      renderer = definition.mount(form, q, {
+        mode,
+        contentRoot: fragment,
+        canInteract: () => !busy && !confirmation && interactionAllowed(),
+        answerChanged: (intent) => {
+          emit("ANSWER_CHANGED", intent.selectedOptionIds).catch(() => {
+          });
+        }
       });
-      form.appendChild(options);
-      const actions = element("div", "practice-actions");
-      const button = element("button", q.state === "SUBMITTED" ? "practice-retry" : "practice-submit", q.state === "SUBMITTED" ? "\u21BB  \u91CD\u8BD5" : "\u2713  \u63D0\u4EA4\u7B54\u6848");
-      button.id = q.state === "SUBMITTED" ? "practice-retry" : "practice-submit";
-      button.type = q.state === "SUBMITTED" ? "button" : "submit";
-      actions.appendChild(button);
-      form.appendChild(actions);
-      const confirm = element("section", "practice-confirmation");
-      confirm.id = "practice-confirmation";
-      confirm.hidden = true;
-      confirm.appendChild(element("p", "", "\u786E\u8BA4\u63D0\u4EA4\u8FD9\u9053\u9898\u7684\u7B54\u6848\u5417\uFF1F\u63D0\u4EA4\u540E\u9700\u91CD\u8BD5\u624D\u80FD\u91CD\u65B0\u4F5C\u7B54\u3002"));
-      const confirmActions = element("div", "practice-actions");
-      for (const [id2, text, cls] of [["practice-cancel-submit", "\u7EE7\u7EED\u4F5C\u7B54", ""], ["practice-confirm-submit", "\u786E\u8BA4\u63D0\u4EA4", "practice-submit"]]) {
-        const b = element("button", cls, text);
-        b.id = id2;
-        b.type = "button";
-        confirmActions.appendChild(b);
+      if (!readOnly) {
+        const actions = element("div", "practice-actions");
+        const button = element("button", q.state === "SUBMITTED" ? "practice-retry" : "practice-submit", q.state === "SUBMITTED" ? "\u21BB  \u91CD\u8BD5" : "\u2713  \u63D0\u4EA4\u7B54\u6848");
+        button.id = q.state === "SUBMITTED" ? "practice-retry" : "practice-submit";
+        button.type = q.state === "SUBMITTED" ? "button" : "submit";
+        actions.appendChild(button);
+        form.appendChild(actions);
+        const confirm = element("section", "practice-confirmation");
+        confirm.id = "practice-confirmation";
+        confirm.hidden = true;
+        confirm.appendChild(element("p", "", "\u786E\u8BA4\u63D0\u4EA4\u8FD9\u9053\u9898\u7684\u7B54\u6848\u5417\uFF1F\u63D0\u4EA4\u540E\u9700\u91CD\u8BD5\u624D\u80FD\u91CD\u65B0\u4F5C\u7B54\u3002"));
+        const confirmActions = element("div", "practice-actions");
+        for (const [id2, text, cls] of [["practice-cancel-submit", "\u7EE7\u7EED\u4F5C\u7B54", ""], ["practice-confirm-submit", "\u786E\u8BA4\u63D0\u4EA4", "practice-submit"]]) {
+          const b = element("button", cls, text);
+          b.id = id2;
+          b.type = "button";
+          confirmActions.appendChild(b);
+        }
+        confirm.appendChild(confirmActions);
+        form.appendChild(confirm);
       }
-      confirm.appendChild(confirmActions);
-      form.appendChild(confirm);
       fragment.appendChild(form);
-      const result = element("section", "practice-result");
-      result.id = "practice-result";
-      result.hidden = !q.result;
-      if (q.result) {
-        result.append(
-          element("p", `practice-result-${q.result.status.toLowerCase()}`, q.result.status === "CORRECT" ? "\u56DE\u7B54\u6B63\u786E" : "\u56DE\u7B54\u9519\u8BEF"),
-          element("p", "practice-earned-score", `\u5F97\u5206\uFF1A${q.result.score} / ${q.result.maxScore}`)
-        );
-        const labels = q.result.correctOptionIds.map((id2) => String.fromCharCode(65 + q.options.findIndex((option) => option.id === id2))).join("\u3001");
-        result.appendChild(element("p", "practice-correct-answer", `\u6B63\u786E\u7B54\u6848\uFF1A${labels}`));
-        if (q.result.analysis.text) result.append(element("strong", "", "\u7B54\u6848\u4E0E\u89E3\u6790"), element("p", "practice-analysis", q.result.analysis.text));
-      }
-      fragment.appendChild(result);
+      fragment.appendChild(renderer.renderResult());
       const message = element("p", "practice-error");
       message.id = "practice-error";
       message.setAttribute("role", "alert");
       message.hidden = true;
       fragment.appendChild(message);
-      fragment.appendChild(element("p", "practice-stage-note", "\u672C\u9636\u6BB5\u91CD\u8BD5\u4F1A\u4FDD\u7559\u767D\u677F\u7B14\u8FF9\u3002"));
+      fragment.appendChild(element("p", "practice-stage-note", readOnly ? "\u5386\u53F2\u8349\u7A3F \xB7 \u53EA\u8BFB" : "\u8349\u7A3F\u81EA\u52A8\u4FDD\u5B58\uFF1B\u63D0\u4EA4\u540E\u51BB\u7ED3\uFF0C\u91CD\u8BD5\u4ECE\u7A7A\u767D\u8349\u7A3F\u5F00\u59CB\u3002"));
       root.replaceChildren(fragment);
       root.dataset.practiceState = q.state;
     }
@@ -810,14 +1009,35 @@
       controls();
       if (focus && interactionAllowed()) (_a = root.querySelector(`#${focus}`)) == null ? void 0 : _a.focus();
     }
+    function parse(value) {
+      try {
+        return readPractice(value);
+      } catch (failure) {
+        const message = element("p", "practice-error", failure.message);
+        message.id = "practice-unsupported";
+        message.setAttribute("role", "alert");
+        renderer == null ? void 0 : renderer.destroy();
+        renderer = null;
+        root.replaceChildren(message);
+        throw failure;
+      }
+    }
     function loadPractice(value) {
       alive();
       if (authoritative) throw new Error("Practice is already loaded for this page");
-      renderAuthoritative(readPractice(value));
+      renderAuthoritative(parse(value));
+    }
+    function refreshPractice(value) {
+      alive();
+      const next = parse(value);
+      if (busy || !authoritative || next.session.sessionId !== authoritative.session.sessionId || next.question.sessionQuestionId !== authoritative.question.sessionQuestionId)
+        throw new Error("Refresh requires the same idle practice question");
+      renderAuthoritative(next);
     }
     function applyResponse(value) {
-      var _a;
+      var _a, _b;
       alive();
+      if (readOnly) throw new Error("History card has no mutation responses");
       const response = typeof value === "string" ? JSON.parse(value) : value;
       const seq = operationSeq(response == null ? void 0 : response.operationSeq);
       if (!ordering.canApply(seq)) return false;
@@ -827,24 +1047,35 @@
         throw new Error("Operation response identity does not match this page");
       if (response.status === "SUCCESS") {
         if (response.error != null) throw new TypeError("Successful response must not contain an error");
-        renderAuthoritative(next, seq);
+        if (response.operationType === "DRAFT_CHANGED") {
+          ordering.complete(seq, true);
+          busy = false;
+          error = "";
+          controls();
+        } else renderAuthoritative(next, seq);
+        (_a = hooks.onResponse) == null ? void 0 : _a.call(hooks, response, next);
+        settled();
       } else {
-        if (typeof ((_a = response.error) == null ? void 0 : _a.message) !== "string" || !response.error.message.trim())
+        if (typeof ((_b = response.error) == null ? void 0 : _b.message) !== "string" || !response.error.message.trim())
           throw new TypeError("Failed response requires an error message");
         ordering.complete(seq, false);
         busy = false;
         confirmation = false;
         error = response.error.message;
         controls();
+        settled(new Error(response.error.message));
       }
       return true;
     }
-    function emit(type, selectedOptionIds) {
-      if (destroyed || busy || !authoritative || !interactionAllowed()) {
+    function emit(type, selectedOptionIds, document2) {
+      if (readOnly || destroyed || busy || !authoritative || !["DRAFT_CHANGED", "SUBMIT"].includes(type) && !interactionAllowed()) {
         controls();
-        return;
+        return Promise.reject(new Error("Practice mutation unavailable"));
       }
       const seq = ordering.begin();
+      const reply = new Promise((resolve, reject) => {
+        pendingReply = { resolve, reject };
+      });
       busy = true;
       error = "";
       controls();
@@ -855,6 +1086,7 @@
         operationSeq: seq
       };
       if (type === "ANSWER_CHANGED") event.selectedOptionIds = selectedOptionIds;
+      if (type === "DRAFT_CHANGED") event.document = document2;
       try {
         sendIntent(event);
       } catch (failure) {
@@ -863,39 +1095,67 @@
           confirmation = false;
           error = failure.message || "\u64CD\u4F5C\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u8BD5\u3002";
           controls();
+          settled(failure);
         }
       }
+      return reply;
     }
-    const change = (event) => {
-      if (event.target.matches("input[name=practice-answer]")) emit("ANSWER_CHANGED", [event.target.value]);
-    };
     const submit = (event) => {
       var _a;
       if (event.target.id !== "practice-form") return;
       event.preventDefault();
+      if (readOnly) return;
       if (busy || !interactionAllowed() || !(authoritative == null ? void 0 : authoritative.question.selectedOptionIds.length)) return;
       confirmation = true;
       controls();
       (_a = root.querySelector("#practice-confirm-submit")) == null ? void 0 : _a.focus();
     };
     const click = (event) => {
+      var _a;
       const button = event.target.closest("button");
       if (!button || !root.contains(button) || busy || !interactionAllowed()) return;
-      if (button.id === "practice-retry") emit("RETRY");
+      if (button.id === "practice-retry") emit("RETRY").catch(() => {
+      });
       else if (button.id === "practice-confirm-submit") {
         confirmation = false;
-        emit("SUBMIT");
+        (_a = hooks.lockSubmit) == null ? void 0 : _a.call(hooks);
+        Promise.resolve().then(() => {
+          var _a2;
+          return (_a2 = hooks.beforeSubmit) == null ? void 0 : _a2.call(hooks);
+        }).then(() => {
+          busy = false;
+          return emit("SUBMIT");
+        }).catch((failure) => {
+          busy = false;
+          error = failure.message;
+          controls();
+        }).finally(() => {
+          var _a2;
+          return (_a2 = hooks.afterSubmit) == null ? void 0 : _a2.call(hooks);
+        });
       } else if (button.id === "practice-cancel-submit") {
         confirmation = false;
         controls();
       }
     };
-    root.addEventListener("change", change);
     root.addEventListener("submit", submit);
-    root.addEventListener("click", click);
+    if (!readOnly) root.addEventListener("click", click);
     return Object.freeze({
       loadPractice,
+      refreshPractice,
       applyResponse,
+      loadHistory(value) {
+        alive();
+        if (!readOnly) throw new Error("History loading requires a read-only card");
+        const next = parse(value);
+        if (next.question.state !== "SUBMITTED") throw new Error("History requires a submitted Attempt");
+        renderAuthoritative(next);
+      },
+      whenIdle: idle,
+      async saveDraft(document2) {
+        await idle();
+        return emit("DRAFT_CHANGED", void 0, document2);
+      },
       getOperationState() {
         alive();
         return ordering.getState();
@@ -907,7 +1167,9 @@
       destroy() {
         if (destroyed) return;
         destroyed = true;
-        root.removeEventListener("change", change);
+        settled(new Error("Practice closed"));
+        renderer == null ? void 0 : renderer.destroy();
+        renderer = null;
         root.removeEventListener("submit", submit);
         root.removeEventListener("click", click);
       }
@@ -936,13 +1198,149 @@
     });
   }
 
+  // src/bridge/autosave.js
+  var DraftAutosave = class {
+    constructor(save, { delay = 500, schedule = (fn, ms) => setTimeout(fn, ms), cancel = (id2) => clearTimeout(id2) } = {}) {
+      this.save = save;
+      this.delay = delay;
+      this.schedule = schedule;
+      this.cancel = cancel;
+      this.pending = null;
+      this.saved = null;
+      this.timer = null;
+      this.inFlight = null;
+      this.destroyed = false;
+    }
+    changed(json) {
+      if (this.destroyed) return;
+      this.pending = json;
+      if (this.timer !== null) this.cancel(this.timer);
+      this.timer = this.schedule(() => {
+        this.timer = null;
+        this.flush().catch(() => {
+        });
+      }, this.delay);
+    }
+    reset(json) {
+      if (this.timer !== null) this.cancel(this.timer);
+      this.timer = null;
+      this.pending = json;
+      this.saved = json;
+    }
+    flush() {
+      if (this.destroyed) return Promise.reject(new Error("Draft autosave is closed"));
+      if (this.timer !== null) this.cancel(this.timer);
+      this.timer = null;
+      if (this.inFlight) return this.inFlight;
+      this.inFlight = (async () => {
+        while (this.pending !== null && this.pending !== this.saved) {
+          const value = this.pending;
+          await this.save(JSON.parse(value));
+          this.saved = value;
+        }
+      })().finally(() => {
+        this.inFlight = null;
+      });
+      return this.inFlight;
+    }
+    destroy() {
+      this.destroyed = true;
+      if (this.timer !== null) this.cancel(this.timer);
+      this.timer = null;
+    }
+    state() {
+      return { dirty: this.pending !== this.saved, saving: this.inFlight !== null };
+    }
+  };
+
   // src/shared-practice-app.js
   var object3 = document.querySelector("#question-card");
   var canvas = mountDraftCanvas(object3);
   var channel = practiceChannel(() => window.practiceHost);
-  var practice = mountPracticeCard(object3, channel.send, () => canvas.diagnostics().mode === "INTERACT");
+  var autosave;
+  var restored = false;
+  var mute = false;
+  var submitting = false;
+  var transitioning = false;
+  var submissionIdle = Promise.resolve();
+  var finishSubmission;
+  var editable = () => {
+    var _a;
+    return ((_a = practice.getViewState()) == null ? void 0 : _a.question.state) !== "SUBMITTED";
+  };
+  function restoreDraft(value) {
+    mute = true;
+    try {
+      canvas.loadDraft(value);
+      autosave.reset(canvas.getDraft());
+      restored = true;
+      canvas.setEditable(editable());
+    } finally {
+      mute = false;
+    }
+  }
+  var practice = mountSharedQuestionRuntime(object3, channel.send, () => canvas.diagnostics().mode === "INTERACT" && !submitting && !transitioning, {
+    lockSubmit() {
+      submitting = true;
+      submissionIdle = new Promise((resolve) => {
+        finishSubmission = resolve;
+      });
+      canvas.setEditable(false);
+    },
+    async beforeSubmit() {
+      autosave.changed(canvas.getDraft());
+      await autosave.flush();
+    },
+    afterSubmit() {
+      submitting = false;
+      canvas.setEditable(editable() && !transitioning);
+      finishSubmission == null ? void 0 : finishSubmission();
+    },
+    onResponse(response) {
+      if (response.draftDocument) restoreDraft(JSON.stringify(response.draftDocument));
+    }
+  });
+  autosave = new DraftAutosave((document2) => practice.saveDraft(document2));
+  canvas.onChange((json) => {
+    if (restored && !mute && editable()) autosave.changed(json);
+  });
   window.draftCanvas = canvas;
-  window.sharedPractice = Object.freeze({ ...practice, bindHost: channel.ready, diagnostics: channel.diagnostics });
-  canvas.addDisposer(practice.destroy);
+  window.sharedPractice = Object.freeze({
+    ...practice,
+    restoreDraft,
+    isSubmitting: () => submitting,
+    refreshCurrent(value) {
+      practice.refreshPractice(value);
+      transitioning = false;
+      canvas.setEditable(editable());
+    },
+    flushToHost(id2) {
+      transitioning = true;
+      canvas.setEditable(false);
+      Promise.resolve().then(async () => {
+        await submissionIdle;
+        await practice.whenIdle();
+        if (editable()) {
+          autosave.changed(canvas.getDraft());
+          await autosave.flush();
+        }
+      }).then(() => window.practiceHost.onFlushCompleted(id2, true, ""), (failure) => {
+        transitioning = false;
+        canvas.setEditable(editable());
+        window.practiceHost.onFlushCompleted(id2, false, failure.message || "\u8349\u7A3F\u4FDD\u5B58\u5931\u8D25");
+      });
+    },
+    flushPendingDraft() {
+      autosave.changed(canvas.getDraft());
+      return autosave.flush();
+    },
+    autosaveState: () => autosave.state(),
+    bindHost: channel.ready,
+    diagnostics: channel.diagnostics
+  });
+  canvas.addDisposer(() => {
+    autosave.destroy();
+    practice.destroy();
+  });
   document.querySelector("#mode-help").textContent = "\u4EA4\u4E92\uFF1A\u9009\u62E9\u7B54\u6848\u3001\u63D0\u4EA4\u6216\u91CD\u8BD5\u3002";
 })();

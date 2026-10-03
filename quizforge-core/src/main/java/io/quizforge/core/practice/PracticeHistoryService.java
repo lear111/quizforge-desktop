@@ -45,7 +45,7 @@ public final class PracticeHistoryService {
                 var snapshot = question.snapshot();
                 var attempts = row.attempts().stream().map(attempt -> new PracticeHistoryDetail.Attempt(
                         attempt.attemptNo(), attempt.attemptMode(), attempt.answer(), attempt.result(),
-                        attempt.score(), attempt.maxScore(), attempt.submittedAt())).toList();
+                        attempt.score(), attempt.maxScore(), attempt.submittedAt(), attempt.id())).toList();
                 return new PracticeHistoryDetail.Question(question.id(), question.questionId(),
                         question.questionOrder(), snapshot.questionType(), snapshot.stem(),
                         options(snapshot.options()), correctIds(snapshot.correctAnswer()), snapshot.analysis(),
@@ -66,6 +66,30 @@ public final class PracticeHistoryService {
             options.add(new PracticeHistoryDetail.Option(id, content));
         }
         return List.copyOf(options);
+    }
+
+    /** Read-only archived projection. Never accesses the mutable Active Draft repository. */
+    public HistoryDraftReplay loadDraftReplay(String bankAssetId, String sessionId,
+            String sessionQuestionId, String attemptId) {
+        if (attemptId == null || attemptId.isBlank()) return HistoryDraftReplay.missing();
+        return transactions.execute(repositories -> {
+            var session = repositories.sessions().findById(sessionId)
+                    .orElseThrow(() -> new IllegalArgumentException("Practice history was not found"));
+            if (session.status() != PracticeSession.Status.ARCHIVED || !bankAssetId.equals(session.questionBankAssetId()))
+                throw new IllegalStateException("Archived practice for this bank is unavailable");
+            var question = repositories.questions().findBySessionId(sessionId).stream()
+                    .filter(row -> row.id().equals(sessionQuestionId)).findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("History question was not found"));
+            if (repositories.attempts().listBySessionQuestion(question.id()).stream().noneMatch(attempt -> attempt.id().equals(attemptId)))
+                throw new IllegalArgumentException("Attempt does not belong to this history question");
+            try {
+                return repositories.draftSnapshots().find(attemptId)
+                        .map(snapshot -> HistoryDraftReplay.ready(snapshot.document()))
+                        .orElseGet(HistoryDraftReplay::missing);
+            } catch (IllegalArgumentException malformedOrUnsupported) {
+                return HistoryDraftReplay.unavailable("此草稿使用当前版本暂不支持的格式，或内容已损坏。");
+            }
+        });
     }
 
     private static List<String> correctIds(PracticePayload payload) {

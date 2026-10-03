@@ -25,4 +25,5 @@ final class PracticeMutationQueue {
     }
 
     void clear() { pending.clear(); }
+    void reset() { clear(); lastReceivedSeq = 0; }
 }

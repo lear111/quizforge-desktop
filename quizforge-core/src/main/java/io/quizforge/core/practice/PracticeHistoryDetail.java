@@ -40,5 +40,11 @@ public record PracticeHistoryDetail(String sessionId, String bankTitle, Instant 
     public record Option(String id, String content) { }
 
     public record Attempt(int attemptNo, QuestionAttempt.Mode mode, PracticePayload answer,
-            QuestionAttempt.Result result, Double score, Double maxScore, Instant submittedAt) { }
+            QuestionAttempt.Result result, Double score, Double maxScore, Instant submittedAt, String attemptId) {
+        /** Compatibility for historical in-memory projections without a durable attempt identity. */
+        public Attempt(int attemptNo, QuestionAttempt.Mode mode, PracticePayload answer,
+                QuestionAttempt.Result result, Double score, Double maxScore, Instant submittedAt) {
+            this(attemptNo, mode, answer, result, score, maxScore, submittedAt, null);
+        }
+    }
 }

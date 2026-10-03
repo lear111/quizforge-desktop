@@ -43,6 +43,20 @@ final class QuestionBankFileView implements FileView {
     private FileHeader header;
     private Node browseContent;
     private QuestionBankEditorView bankEditor;
+    private io.quizforge.desktop.ui.question.practice.PracticeSurfaceHost surface(){
+        if(browseContent instanceof QuestionPracticeLayout layout)return layout.surface();
+        if(browseContent instanceof MixedQuestionPracticeView mixed)return mixed.surface();
+        return null;
+    }
+    public void dispose(){if(historyDetail!=null){historyDetail.destroy();historyDetail=null;}if(surface()!=null)surface().destroy();}
+    public boolean prepareClose(){return surface()==null || surface().prepareClose();}
+    private void leaveSurface(Runnable action){
+        var surface=surface();
+        if(surface!=null && surface.mode()==io.quizforge.desktop.ui.question.practice.PracticeSurfaceMode.DRAFT){
+            if(surface.busy())return;
+            surface.leaveDraft().whenComplete((ignored,failure)->{if(failure==null)action.run();});
+        }else action.run();
+    }
     QuestionBankFileView(FilePageHost host,FilePresentationLoader loader,FileViewerRouter router,QuestionBankFileEditService edits,
             QuestionSourceLinkService sourceLinks,QuestionSourceNavigationAdapter sourceNavigation,
             io.quizforge.core.port.PracticeRuntimeProvider practice,WorkspaceId workspace,FilePresentation current,Runnable onEditStart) {
@@ -71,6 +85,9 @@ final class QuestionBankFileView implements FileView {
     public FileMode mode(){return mode;}
 
     private void toggleMode() {
+        leaveSurface(this::toggleModeNow);
+    }
+    private void toggleModeNow() {
         if (page == Page.HISTORY_LIST) return;
         if (mode == FileMode.EDIT && (bankEditor != null && bankEditor.dirty())) {
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
@@ -89,6 +106,7 @@ final class QuestionBankFileView implements FileView {
         mode = mode == FileMode.BROWSE ? FileMode.EDIT : FileMode.BROWSE;
         if (mode == FileMode.EDIT) onEditStart.run();
         header.updateMode(mode);
+        if(mode==FileMode.EDIT)header.setDraftButton(null);
         if (mode == FileMode.EDIT && current.file().questionBank() != null) {
             bankEditor = new QuestionBankEditorView(current.file().questionBank(), workspace,
                     sourceLinks, sourceNavigation, this::saveBank,loader.resources(workspace,current.file().entry().relativePath()));
@@ -124,7 +142,7 @@ final class QuestionBankFileView implements FileView {
                         next.keepDividerPosition(previous);
                         previous.setHeader(null);
                     }
-                    browseContent = renewed;
+                    dispose();browseContent = renewed;
                 } catch (RuntimeException error) {
                     browseContent = UiTheme.quietState("无法恢复练习", error.getMessage());
                 }
@@ -137,6 +155,7 @@ final class QuestionBankFileView implements FileView {
     }
 
     private void showBrowseContent() {
+        header.setDraftButton(surface()==null?null:surface().toggleButton());
         if (browseContent instanceof QuestionPracticeLayout practiceLayout) {
             practiceLayout.outline().setMoveAction(this::moveBankQuestion);
             setTop(null);
@@ -151,6 +170,9 @@ final class QuestionBankFileView implements FileView {
     }
 
     private void moveBankQuestion(int from,int to) {
+        leaveSurface(()->moveBankQuestionNow(from,to));
+    }
+    private void moveBankQuestionNow(int from,int to) {
         if(mode!=FileMode.BROWSE || page!=Page.BROWSE || from==to)return;
         try {
             var model=new io.quizforge.core.question.service.QuestionBankEditorModel(current.file().questionBank());
@@ -180,6 +202,9 @@ final class QuestionBankFileView implements FileView {
     }
 
     private void openHistory() {
+        leaveSurface(this::openHistoryNow);
+    }
+    private void openHistoryNow() {
         if (page != Page.BROWSE) return;
         if (mode == FileMode.EDIT && bankEditor != null) toggleMode();
         if (current == null || workspace == null || mode != FileMode.BROWSE
@@ -190,6 +215,7 @@ final class QuestionBankFileView implements FileView {
             page = Page.HISTORY_LIST;
             header.showHistory(false);
             header.showMode(false);
+            header.setDraftButton(null);
             if (browseContent instanceof QuestionPracticeLayout practiceLayout)
                 practiceLayout.setHeader(null);
             else if (browseContent instanceof MixedQuestionPracticeView authoring)
@@ -207,7 +233,9 @@ final class QuestionBankFileView implements FileView {
             var detail = practice.history(workspace).loadArchivedSessionDetail(current.file().entry().assetId(), sessionId);
             historyDetail = new PracticeHistoryDetailView(detail, this::returnToHistoryList, workspace,
                     new HistorySourceNavigationAdapter(sourceNavigation),current.file().questionBank(),current.file().bankRevision(),
-                    loader.resources(workspace,current.file().entry().relativePath()));
+                    loader.resources(workspace,current.file().entry().relativePath()),
+                    new io.quizforge.desktop.ui.question.history.HistoryDraftAdapter(practice.history(workspace),
+                            current.file().entry().assetId(),detail));
             setTop(null);
             historyDetail.setHeader(header);
             setCenter(historyDetail);
@@ -219,7 +247,7 @@ final class QuestionBankFileView implements FileView {
 
     private void returnToHistoryList() {
         page = Page.HISTORY_LIST;
-        if (historyDetail != null) historyDetail.setHeader(null);
+        if (historyDetail != null) {historyDetail.destroy();historyDetail=null;}
         setTop(header);
         setCenter(historyList);
     }

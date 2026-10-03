@@ -1,5 +1,6 @@
 package io.quizforge.desktop.poc.draftcanvas.contract;
 
+import io.quizforge.core.practice.draft.DraftCanvasDocument;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;

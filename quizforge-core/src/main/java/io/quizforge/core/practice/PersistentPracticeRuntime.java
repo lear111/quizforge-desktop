@@ -27,6 +27,19 @@ public final class PersistentPracticeRuntime {
 
     public QuestionBankPracticeSession session() { return session; }
     public String sessionId() { return sessionId; }
+    public ActivePracticeSnapshot snapshot() { return snapshot; }
+    public void refresh() { hydrate(service.loadActiveSession(sessionId, contentId)); }
+    public io.quizforge.core.practice.draft.DraftCanvasDocument loadActiveDraftCanvas() {
+        return service.loadActiveDraftCanvas(sessionId, contentId, session.current().id())
+                .map(io.quizforge.core.practice.draft.ActiveDraftCanvas::document)
+                .orElseGet(io.quizforge.core.practice.draft.DraftCanvasDocument::createEmpty);
+    }
+    public void saveActiveDraftCanvas(io.quizforge.core.practice.draft.DraftCanvasDocument document) {
+        service.saveActiveDraftCanvas(sessionId, contentId, session.current().id(), document);
+    }
+    public void saveChoiceDraft(java.util.Set<String> selected) {
+        hydrate(service.saveDraft(sessionId, contentId, session.current().id(), selected));
+    }
     public PracticeSummary summary() { return PracticeSummary.from(snapshot); }
 
     public ActivePracticeSnapshot.Question questionState(String questionId) {

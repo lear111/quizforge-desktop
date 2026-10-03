@@ -50,6 +50,11 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
     private final Runnable onChanged;
     private QuestionSourceListView sourceRows;
     private BooleanSupplier restartConfirmation = this::confirmRestart;
+    private PracticeSurfaceHost surface;
+    public void setSurfaceHost(PracticeSurfaceHost surface) { this.surface=surface; }
+    public void refreshPracticeState() { render(); }
+    private void navigate(Runnable action) { if(surface==null)action.run();else surface.navigate(action); }
+    public void navigateFromSurface(Runnable action) { navigate(action); }
 
     public QuestionBankPracticeView(PersistentPracticeRuntime runtime,
             Function<List<SourceRef>, QuestionSourceListView> sources) {
@@ -70,6 +75,7 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
     }
 
     private void render() {
+        if(surface!=null)surface.refreshChrome();
         outline.refresh();
         sourceRows = null;
         getChildren().clear();
@@ -111,11 +117,11 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
         Button previous = QuestionCardLayout.navigation("arrow-left", "上一题", () -> { });
         previous.setId("previous-question");
         previous.setDisable(navigation == null ? session.index() == 0 : navigation.previousDisabled());
-        previous.setOnAction(event -> { if (navigation == null) command(runtime::previous); else navigation.previous().run(); });
+        previous.setOnAction(event -> { if (navigation == null) navigate(() -> command(runtime::previous)); else navigation.previous().run(); });
         boolean last = navigation == null ? session.index() == session.bank().questions().size() - 1 : navigation.last();
         Button next = QuestionCardLayout.navigation("arrow", last ? "查看本次练习" : "下一题", () -> { });
         next.setId("next-question");
-        next.setOnAction(event -> { if (navigation == null) command(runtime::next); else navigation.next().run(); });
+        next.setOnAction(event -> { if (navigation == null) navigate(() -> command(runtime::next)); else navigation.next().run(); });
         HBox navigation = QuestionCardLayout.row(previous, card, next);
         navigation.setId("practice-navigation");
         getChildren().add(navigation);
@@ -127,7 +133,7 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
     public QuestionOutlineView outline() { return outline; }
 
     private void jumpToQuestion(int target) {
-        command(() -> runtime.goTo(target));
+        navigate(() -> command(() -> runtime.goTo(target)));
     }
 
     private void command(Runnable action) {
@@ -181,7 +187,7 @@ public final class QuestionBankPracticeView extends VBox implements DevelopmentR
         page.getStyleClass().addAll("practice-question-card", "practice-summary-card");
         page.setMinWidth(0);
         page.setMaxHeight(Region.USE_PREF_SIZE);
-        Button previous = QuestionCardLayout.navigation("arrow-left", "回到上一题", () -> command(runtime::previous));
+        Button previous = QuestionCardLayout.navigation("arrow-left", "回到上一题", () -> navigate(() -> command(runtime::previous)));
         previous.setId("summary-previous");
         Button restart = UiTheme.button("重新练习", "refresh", "primary", () -> {
             if (restartConfirmation.getAsBoolean()) command(runtime::restart);

@@ -381,11 +381,11 @@ class PracticePersistenceIntegrationTest {
         assertEquals(1, attempts.nextAttemptNo("missing"));
     }
 
-    @Test void migrationOnFreshDatabaseIsIdempotentAndCreatesFiveSuccessfulVersions() throws Exception {
+    @Test void migrationOnFreshDatabaseIsIdempotentAndCreatesSixSuccessfulVersions() throws Exception {
         new SqliteDatabase(directory);
         try (Connection connection = database.openConnection(); Statement query = connection.createStatement();
                 ResultSet rows = query.executeQuery("SELECT version FROM flyway_schema_history WHERE success = 1 ORDER BY installed_rank")) {
-            for (String version : List.of("1", "2", "3", "4", "5")) {
+            for (String version : List.of("1", "2", "3", "4", "5", "6")) {
                 assertTrue(rows.next());
                 assertEquals(version, rows.getString(1));
             }
@@ -396,7 +396,7 @@ class PracticePersistenceIntegrationTest {
         assertEquals(0, rowCount("question_attempt"));
     }
 
-    @Test void upgradeFromV3PreservesExistingLegacyDataAndAddsV4AndV5() throws Exception {
+    @Test void upgradeFromV3PreservesExistingLegacyDataAndAddsV4ThroughV6() throws Exception {
         var oldDirectory = new QuizForgeDataDirectory(temporaryDirectory.resolve("v3-data"));
         String jdbcUrl = "jdbc:sqlite:" + oldDirectory.databaseFile();
         Flyway flyway = Flyway.configure().dataSource(jdbcUrl, "", "").target("3").load();
@@ -418,7 +418,7 @@ class PracticePersistenceIntegrationTest {
             }
             try (ResultSet row = query.executeQuery("SELECT count(*) FROM flyway_schema_history WHERE success = 1")) {
                 assertTrue(row.next());
-                assertEquals(5, row.getInt(1));
+                assertEquals(6, row.getInt(1));
             }
         }
         var repository = new SqlitePracticeSessionRepository(upgraded);

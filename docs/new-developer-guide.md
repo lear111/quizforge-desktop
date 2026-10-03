@@ -1,10 +1,14 @@
 # QuizForge V2 新人技术指南
 
-本文以 **2026-10-02 的实际代码** 为准，介绍项目的模块分工、题库数据、编辑与练习流程，以及新增题型的固定步骤。
+本文以 **2026-10-03 的实际代码** 为准，介绍项目的模块分工、题库数据、编辑与练习流程，以及新增题型的固定步骤。
 
 建议按以下顺序阅读：先看第 1～3 节建立项目地图，再看第 4～5 节理解数据和调用流程，第一次新增题型时按第 6 节逐步操作。需要查某个文件的完整职责时，使用 [逐文件代码导读](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/code-guide.md)。
 
 当前已实现单选、多选、作文、完形填空、阅读理解、段落匹配和翻译题。下文的 `TRUE_FALSE` 判断题是教学示例，尚未加入正式题型登记。
+
+Practice Draft Mode v1：正式单选题浏览区右上角“草稿 / 退出草稿”原地切换 JavaFX 与 Draft Canvas。`PracticeSurfaceHost` 只管理当前页的 NORMAL/DRAFT；共享卡片通过同一 `PersistentPracticeRuntime` 读取和修改 Core + SQLite 状态，退出与切题等待草稿保存确认。逐题隔离、提交冻结与生命周期说明见 [Practice Draft Mode](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/PRACTICE_DRAFT_MODE.md)。
+
+History Draft Replay v1：正式历史详情的 `HistorySurfaceHost` 原地切换 RESULT/DRAFT；`HistoryDraftAdapter → PracticeHistoryService.loadDraftReplay → AttemptDraftSnapshotRepository.find(attemptId)` 组合冻结题目、当次答案/得分和草稿。Active Draft 是可变工作状态，Attempt Snapshot 是不可变历史，Replay 是只读投影。History bridge 只有 ready，无 Practice mutation 或自动保存。参见 [History Replay 架构](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/HISTORY_DRAFT_REPLAY.md)。两种正式 Canvas 模式均支持 SINGLE_CHOICE / MULTIPLE_CHOICE + TEXT，其他五种题型尚未迁移。Shared Runtime 经静态 QuestionRendererRegistry 选择两种题型定义；Choice family 共用布局，以 SINGLE radio / MULTIPLE checkbox 收集 selectedOptionIds。Renderer 负责交互与展示，Core QuestionTypeDefinition 负责业务数据与规则，二者不是同一合同。详见 [Shared Renderer Contract](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/SHARED_RENDERER_CONTRACT.md) 与 [本阶段验收](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/SHARED_RENDERER_ACCEPTANCE.md)。
 
 ## 1. 先运行项目
 

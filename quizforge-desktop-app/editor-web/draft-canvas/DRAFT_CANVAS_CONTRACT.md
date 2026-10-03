@@ -1,17 +1,17 @@
 # Draft Canvas Contract v1
 
-This phase fixes internal contracts before persistence. It does not save Drafts to SQLite, add migrations or Attempt fields, connect History, or migrate any other question type. Existing standalone Canvas and SINGLE_CHOICE development entries remain available.
+Draft Persistence v1 connects these contracts to the existing Practice SQLite lifecycle. [History Draft Replay v1](HISTORY_DRAFT_REPLAY.md) adds the formal read-only Attempt projection; other frontend question types remain deferred. Geometry and lifecycle semantics below are unchanged. See [DRAFT_PERSISTENCE.md](DRAFT_PERSISTENCE.md) for tables, transactions and the bridge barrier.
 
 ## Implemented versus future integration
 
-| Contract | Implemented now | Deferred SQLite / History integration |
+| Contract | Implemented now | Deferred work |
 | --- | --- | --- |
 | Logical layout | Fixed document width, shared World transform, explicit zoom/pan/fit controls | Content/assets/fonts must be available for historical replay |
-| Geometry | Explicit JS schema and deeply immutable Java DTO; v1 validation and old POC upgrade | Store canonical JSON and validate versions when reading |
-| Lifecycle | Pure executable future specification and tests | Connect actual submit/retry transaction to active/frozen Draft repositories |
+| Geometry | Explicit JS schema, shared Core value objects, strict Infrastructure codec, canonical SQLite JSON, fixed-width History replay | Cross-platform font binary stability |
+| Lifecycle | Active/frozen repositories, atomic freeze/remove on submit, empty Retry, read-only Attempt replay; pure specification remains a regression reference | Replay of other question types |
 | Ordering | JS single flight and response watermarks; Java FX-thread FIFO mutation queue | Async scheduling, reconnect/ack recovery and durable cross-process ordering |
 
-**The live POC still retains ink on submit and Retry.** `DraftLifecycleContract` is a tested specification, not a live coordinator. The UI states this temporary behavior. No historical DraftSnapshot is created at runtime in this phase.
+**The live Shared Practice now restores/saves Active Draft and freezes it on successful submission.** Submit clears live/active geometry; Retry starts with the default empty canvas. `DraftLifecycleContract` remains a pure reference model; runtime coordination uses PracticeSessionService and SQLite transactions.
 
 ## World and Screen Coordinates
 
@@ -59,17 +59,17 @@ JavaFX WebKit's `getScreenCTM()` omitted the ancestor CSS scale in the measured 
 
 `schemaVersion` identifies the data structure; `layoutVersion` identifies layout rules. They are validated separately, never inferred from one another. Only schema 1.0/layout 1 are implemented. Unknown versions fail before replacing state; this is the compatibility decision point for future replay, not a multi-version renderer.
 
-The canonical parser requires all shown fields. Coordinates must be finite numbers; widths/zoom positive; pressure in [0,1]; strokes nonempty point arrays with unique nonblank IDs, PEN tool and hexadecimal colors. Normalization projects only contract fields; DOM/SVG markup, answer/result state, tool mode, undo history, event counters and operation sequences are excluded.
+The canonical parser requires all shown fields. Coordinates must be finite numbers; widths/zoom positive; pressure in [0,1]; strokes nonempty point arrays with unique nonblank IDs, PEN tool and hexadecimal colors. JS normalization projects only contract fields; the Infrastructure persisted codec rejects unknown fields rather than losing data; DOM/SVG markup, answer/result state, tool mode, undo history, event counters and operation sequences are excluded.
 
 ### Java / JS boundary
 
 - JS `src/canvas/document.js`: `parseDraftCanvasDocument`, `createDraftCanvasDocument`, `upgradePocDraft`.
-- Java `poc.draftcanvas.contract.DraftCanvasDocument`: explicit record and nested Viewport/QuestionCard/Stroke/Point, `parse`, `toJson`, `createEmpty`, `withViewport`, `upgradePoc`.
+- Core `practice.draft.DraftCanvasDocument`: immutable record with nested Viewport/QuestionCard/Stroke/Point, `createEmpty`, `withViewport`. Infrastructure `DraftCanvasJsonCodec`: `decode`, `encode`, explicit `upgradePoc`. The desktop adapter consumes the one Core model.
 - Both tests read `test/fixtures/document-v1.json`. Java lists and points are immutable; JS normalized values are detached copies.
 - Strict canonical parsing never silently defaults width/color/pressure. Only the named old-POC upgrade path recognizes an absent layoutVersion and supplies layout 1 plus the original missing defaults (width720, color#7660ab, pressure0.5). An explicit unsupported/null layoutVersion is rejected. Development JSON import uses that compatibility boundary; future stored canonical snapshots must use strict parsing.
-- Java additionally rejects duplicate JSON keys and trailing tokens. JS JSON.parse collapses duplicate keys; duplicate-key input is not canonical interchange and must be rejected by the Java persistence boundary in a future phase.
+- Java additionally rejects duplicate JSON keys and trailing tokens. JS JSON.parse collapses duplicate keys; duplicate-key raw input is not canonical interchange. The Java persistence codec rejects it before database storage.
 
-## Future Draft lifecycle — executable specification only
+## Draft lifecycle — runtime and executable reference
 
 `DraftLifecycleContract` is separate from Practice grading/state transitions. Its methods take external successful Core signals and external Attempt IDs. It never creates Attempts, judges answers, modifies Core or accesses a database.
 
@@ -82,9 +82,9 @@ The canonical parser requires all shown fields. Coordinates must be finite numbe
 
 Frozen snapshots retain the document's schemaVersion, layoutVersion, viewport, card geometry and ink. Duplicate Attempt snapshot IDs cannot overwrite an existing snapshot. Later edits replace the active document value and cannot mutate frozen lists/points.
 
-**REVISION differs from RETRY.** Revision concerns correcting/amending a prior submission; Retry starts a fresh answer and fresh canvas while preserving history. This phase implements no Revision Draft copy policy. Existing Core Revision behavior is not changed.
+**REVISION differs from RETRY.** Revision concerns correcting/amending a prior submission; Retry starts a fresh answer and fresh canvas while preserving history. No Revision Draft copy policy is added. Existing Core Revision behavior is not changed.
 
-Next-phase submit integration must finish/capture the active gesture/document at the submission boundary. The Attempt, immutable captured Draft and active-row removal must commit atomically; failure must preserve active state. An async implementation must prevent editing that would be lost while that captured submission is in flight, or explicitly reconcile an active revision. The current pure model has no async/persistence behavior.
+Submit finishes/captures the active gesture/document at the submission boundary and awaits its save ACK. The Attempt, immutable captured Draft and active-row removal commit atomically; failure preserves active state. The bridge locks edits during this barrier. The reference model has no persistence behavior; runtime freezes within the existing SQLite transaction.
 
 ## Operation ordering contract
 
@@ -120,19 +120,14 @@ The illustrated viewModel placeholder is replaced by the complete existing Share
 
 UI mutations are single flight: radio/submit/retry controls wait for completion. Java requires the JavaFX thread and drains one `PracticeMutationQueue` FIFO. Nested bridge events enqueue behind the current mutation; state is read at execution time. Duplicate/stale request sequences never call Core again. Invalid/missing sequences cannot mutate Core.
 
-No debounce/coalescing is implemented. Therefore ANSWER_CHANGED #41, ANSWER_CHANGED #42, SUBMIT #43 execute in that order. SUBMIT/RETRY are barriers and are never merged with answer events. Old answer SUCCESS/ERROR cannot overwrite SUBMITTED; old submit SUCCESS/ERROR cannot overwrite RETRYING.
+Answer events are not coalesced. ANSWER_CHANGED #41 and ANSWER_CHANGED #42 execute in that order. Completed Canvas changes are coalesced for 500ms before DRAFT_CHANGED is issued through the same sequence channel. Submit captures the latest geometry, awaits its DRAFT_CHANGED ACK, then issues SUBMIT. SUBMIT/RETRY are barriers and are never merged with other events. Old answer SUCCESS/ERROR cannot overwrite SUBMITTED; old submit SUCCESS/ERROR cannot overwrite RETRYING.
 
 The queue and sequence watermark are in memory only. They provide local ordering, not durable idempotency, network reconnect, lost-response replay or a distributed transaction. Future transport must preserve the single-flight request contract or add an explicit ordering/recovery protocol. No Tablet/LAN/Extension implementation is present.
 
-## Next SQLite integration points — planned, not implemented
+## Persistence integration
 
-1. Promote platform-neutral geometry/lifecycle value types into the appropriate domain module; keep JSON parsing/storage in infrastructure. Preserve schema/layout validation and immutable copies.
-2. Define active Draft identity by the real sessionQuestionId and an immutable Attempt DraftSnapshot association by external attemptId. Add explicit repository ports for active and frozen documents rather than putting DOM state into PracticePayload.
-3. Extend `PracticeTransaction.Repositories` and `SqlitePracticeTransaction` for these repositories. Add the actual tables/migration only in that next task.
-4. Integrate `PracticeSessionService.submitAnswer` inside its existing transaction: append Attempt, persist captured frozen Draft, remove active Draft, then commit. Retry clears the existing Core answer and creates a new empty active Draft in the same transaction. Failed operations roll back all rows together.
-5. Adapter/bridge then exchange actual active Draft changes under the mutation ordering/barrier rules. Persist no viewport pixel coordinates or stroke SVG. Coordinate Canvas edit capture with submission before clearing live ink.
-6. Replay will need canonical document version checks together with the corresponding immutable Practice question/content/assets. History UI and replay fallbacks remain outside this phase.
+The domain/repository/transaction integration is implemented in Draft Persistence v1. See [DRAFT_PERSISTENCE.md](DRAFT_PERSISTENCE.md). [History Draft Replay v1](HISTORY_DRAFT_REPLAY.md) uses frozen question/answer metadata and attemptId snapshots, strict version checks, original World geometry and a read-only History surface. Shared CSS and font stack are reused; long-term font binary stability and replay for other question types remain unresolved.
 
 ## Verification
 
-See `CONTRACT_HARDENING_ACCEPTANCE.md` for measured results. Tests cover Java/JS JSON interoperability, schema/layout versions, pure lifecycle, fixed-width DOM layout under window resize/pan/zoom, stale/duplicate sequences, real Core failure rollback, and original native Canvas/Practice interaction regressions.
+See [DRAFT_PERSISTENCE_ACCEPTANCE.md](DRAFT_PERSISTENCE_ACCEPTANCE.md) for current results and `CONTRACT_HARDENING_ACCEPTANCE.md` for the earlier contract stage. Tests cover Java/JS JSON interoperability, schema/layout versions, lifecycle, fixed-width DOM layout under window resize/pan/zoom, stale/duplicate sequences, SQLite rollback, autosave/submit barrier, reopen and native Canvas/Practice regressions.

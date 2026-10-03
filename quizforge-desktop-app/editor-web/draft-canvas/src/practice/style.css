@@ -4,7 +4,7 @@
 .practice-prompt { white-space: pre-wrap; font-size: 16px; font-weight: 600; margin: 22px 0 16px; }
 .practice-options { display: flex; flex-direction: column; gap: 8px; margin: 16px 0 20px; }
 .practice-options .practice-option { margin: 0; padding: 8px; border-radius: 5px; line-height: 1.6; align-items: flex-start; }
-.practice-option input[type=radio] { margin-top: 2px; }
+.practice-option input[type=radio], .practice-option input[type=checkbox] { margin-top: 2px; }
 .practice-option-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .practice-option.selected { background: #f4f0fa; }
 .practice-option.feedback-correct { background: #e9f4ee; color: #00816f; }

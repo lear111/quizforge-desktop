@@ -22,7 +22,7 @@ public final class SharedPracticeExample {
     public static Context open(Path qbank, Path databaseFile) {
         QuestionBank bank = new QBankPackageReader().read(qbank);
         String contentId = new QuestionBankV2Codec().contentId(bank);
-        // Uses only the existing database migrations and Practice repositories, with no Draft storage.
+        // Formal Flyway migration and Practice transactions include active/frozen Draft storage.
         var service = new PracticeSessionService(new SqlitePracticeTransaction(new SqliteDatabase(databaseFile)), Clock.systemUTC());
         var snapshot = service.openOrCreateActiveSession(bank, contentId);
         String currentId = snapshot.session().currentQuestionId();

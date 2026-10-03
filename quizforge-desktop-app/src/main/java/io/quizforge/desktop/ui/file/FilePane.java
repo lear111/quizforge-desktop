@@ -65,6 +65,7 @@ public final class FilePane extends BorderPane implements DevelopmentRefreshable
         clear();
     }
     public void open(WorkspaceId workspace,String path){
+        if(!prepareClose())return;
         Node previous=pageView!=null && java.util.Objects.equals(this.workspace,workspace)
                 && pageView.currentFile().file().entry().relativePath().equals(path)?getCenter():null;
         clear();this.workspace=workspace;
@@ -82,7 +83,8 @@ public final class FilePane extends BorderPane implements DevelopmentRefreshable
             setCenter(UiTheme.quietState("无法打开文件",error.getMessage()==null?"文件可能已移动或无法读取，请刷新工作区。":error.getMessage()));
         }
     }
-    public void clear(){pageView=null;fallback=null;workspace=null;setTop(null);setCenter(router.welcome());}
+    public void clear(){if(pageView!=null)pageView.dispose();pageView=null;fallback=null;workspace=null;setTop(null);setCenter(router.welcome());}
+    public boolean prepareClose(){return pageView==null || pageView.prepareClose();}
     public FilePresentation currentFile(){return pageView==null?fallback:pageView.currentFile();}
     public FileMode mode(){return pageView==null?FileMode.BROWSE:pageView.mode();}
     public boolean hasUnsavedChanges(){return pageView!=null && pageView.hasUnsavedChanges();}

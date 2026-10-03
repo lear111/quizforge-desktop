@@ -38,7 +38,7 @@ test('contract displays the supplied score without independently judging answers
 });
 
 test('unknown types, versions, duplicate IDs and multiple single-choice answers are rejected', () => {
-  for (const mutate of [v => v.schemaVersion = '2.0', v => v.question.type = 'MULTIPLE_CHOICE',
+  for (const mutate of [v => v.schemaVersion = '2.0', v => v.question.type = 'UNKNOWN_TYPE',
     v => v.question.options[1].id = 'a', v => v.question.selectedOptionIds = ['a', 'b'],
     v => v.question.selectedOptionIds = ['unknown']]) {
     const source = initial(); mutate(source); assert.throws(() => readPractice(source));

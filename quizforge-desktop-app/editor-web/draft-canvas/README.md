@@ -2,8 +2,12 @@
 
 独立白板技术验证。无需题库、Workspace、Spring、Vite 服务或运行时网络；不接入正式 Practice。
 
-第二阶段真实单选题入口和架构说明见 [SHARED_PRACTICE.md](SHARED_PRACTICE.md)。本页仍说明原独立白板入口。
+真实单选/多选题与持久化入口和架构说明见 [SHARED_PRACTICE.md](SHARED_PRACTICE.md)，静态 Renderer Contract 见 [SHARED_RENDERER_CONTRACT.md](SHARED_RENDERER_CONTRACT.md)。本页仍说明原独立白板入口。
 当前几何、布局、操作顺序及未来生命周期合同见 [DRAFT_CANVAS_CONTRACT.md](DRAFT_CANVAS_CONTRACT.md)。
+
+正式 Practice 单选/多选 TEXT 题现已支持右上角“草稿 / 退出草稿”原地切换，见 [PRACTICE_DRAFT_MODE.md](PRACTICE_DRAFT_MODE.md)。本页描述的独立白板仍是开发工具。
+
+正式 History Detail 已支持按 Attempt 冻结草稿的只读回放，见 [HISTORY_DRAFT_REPLAY.md](HISTORY_DRAFT_REPLAY.md)。复用本页的 Canvas Core；不提供历史编辑或保存。
 
 ## 构建与启动
 
@@ -137,3 +141,5 @@ mvn -B '-Dquizforge.build.directory=target/draft-poc' test
 仅一个固定测试 DOM 题卡；无正式题型绑定或题卡拖动。常量笔宽，保存 pressure 但没有真实压感
 笔宽变化或笔锋。没有触控笔、触屏、掌触、多指、平板兼容性声明。无虚拟化或大型
 草稿性能评估；撤销使用笔迹快照。JSON 通过文本面板导出/载入，不自动保存。
+
+Shared Practice 的 Active/Frozen SQLite 数据、500ms autosave、Submit ACK barrier 与 Retry 清空见 [DRAFT_PERSISTENCE.md](DRAFT_PERSISTENCE.md)。独立白板入口仍不保存数据库。

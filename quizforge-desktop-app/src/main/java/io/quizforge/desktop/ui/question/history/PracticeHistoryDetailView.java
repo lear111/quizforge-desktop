@@ -51,6 +51,11 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
     private final VBox question = new VBox(18);
     private final ScrollPane scroll;
     private final VBox headings = new VBox();
+    private final VBox attemptControls = new VBox(8);
+    private final HistorySurfaceHost surface;
+    private final HistoryDraftAdapter drafts;
+    private VBox attemptContext;
+    private Node fileHeader;
     private final WorkspaceId workspace;
     private final HistorySourceNavigationAdapter sources;
     private HistorySourceListView sourceList;
@@ -70,6 +75,12 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
     public PracticeHistoryDetailView(PracticeHistoryDetail detail,Runnable back,WorkspaceId workspace,
             HistorySourceNavigationAdapter sources,io.quizforge.core.question.model.QuestionBank currentBank,String currentContentId,
             io.quizforge.core.port.QuestionResourceInput currentResources){
+        this(detail,back,workspace,sources,currentBank,currentContentId,currentResources,null);
+    }
+    public PracticeHistoryDetailView(PracticeHistoryDetail detail,Runnable back,WorkspaceId workspace,
+            HistorySourceNavigationAdapter sources,io.quizforge.core.question.model.QuestionBank currentBank,String currentContentId,
+            io.quizforge.core.port.QuestionResourceInput currentResources,HistoryDraftAdapter drafts){
+        this.drafts=drafts;
         this.currentBank=currentBank;this.currentContentId=currentContentId;this.currentResources=currentResources;
         this.detail = detail;
         this.workspace = workspace;
@@ -83,6 +94,7 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
         returnButton.setId("history-detail-back");
         returnButton.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
         title.setMinWidth(0);
+        title.setMaxWidth(Double.MAX_VALUE);title.setWrapText(false);
         HBox heading = new HBox(12, returnButton, title);
         heading.getStyleClass().add("history-heading");
         headings.getChildren().add(heading);
@@ -91,7 +103,11 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
         scroll = QuestionCardLayout.scroll(question);
         scroll.setId("history-question-scroll");
         outline = new HistoryQuestionOutlineView(detail, (index, item) -> showQuestion(index, item));
-        BorderPane readerColumn = new BorderPane(scroll);
+        surface=new HistorySurfaceHost(scroll,()->showQuestion(questionIndex-1),()->showQuestion(questionIndex+1),
+                ()->questionIndex>0,()->questionIndex<detail.questions().size()-1);
+        surface.onModeChanged(this::placeAttemptControls);
+        heading.getChildren().add(surface.toggleButton());
+        BorderPane readerColumn = new BorderPane(surface);
         readerColumn.setMinWidth(320);
         readerColumn.setTop(headings);
         SplitPane layout = new SplitPane(readerColumn, outline);
@@ -149,6 +165,7 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
     }
 
     private void render() {
+        attemptControls.getChildren().clear();
         outline.refresh(detail, questionIndex);
         question.getChildren().clear();
         sourceList = null;
@@ -156,10 +173,15 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
         matchingCard = null;
         translationCard = null;
         if (detail.questions().isEmpty()) {
+            surface.select(null);
+            attemptContext=null;placeAttemptControls();
             question.getChildren().add(UiTheme.label("本轮没有题目", "muted"));
             return;
         }
         var row = detail.questions().get(questionIndex);
+        try{surface.select(drafts==null || attemptIndex<0?null:drafts.load(row,row.attempts().get(attemptIndex)));}
+        catch(RuntimeException failure){surface.select(new HistoryDraftAdapter.Replay(
+                io.quizforge.core.practice.HistoryDraftReplay.unavailable("历史草稿暂时无法读取，请返回结果查看。"),null));}
         boolean essay = QuestionTypes.isEssay(row.questionType());
         boolean cloze = QuestionTypes.isCloze(row.questionType());
         boolean reading = QuestionTypes.isReading(row.questionType());
@@ -167,6 +189,7 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
         boolean translation = QuestionTypes.isTranslation(row.questionType());
         var content = ChoicePresentationMapper.history(row);
         VBox context = new VBox(8);
+        attemptContext=context;
         context.getStyleClass().add("history-question-context");
         boolean unfinished = row.finalState() != PracticeSessionQuestion.State.SUBMITTED;
         Label finalState = UiTheme.label(unfinished ? "本轮最终状态：未完成" : "本轮最终状态：已完成", "muted");
@@ -192,7 +215,7 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
             Label attemptHeader = UiTheme.label("第 " + (attemptIndex + 1) + " / " + row.attempts().size()
                     + " 次作答 · " + mode(attempt.mode()), "history-attempt-header");
             attemptHeader.setId("history-attempt-position");
-            context.getChildren().add(attemptHeader);
+            attemptControls.getChildren().add(attemptHeader);
             Button previousAttempt = new Button("↑ 上一次作答");
             previousAttempt.setId("history-previous-attempt");
             previousAttempt.setOnAction(event -> showAttempt(attemptIndex - 1));
@@ -203,7 +226,7 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
             nextAttempt.setDisable(attemptIndex == row.attempts().size() - 1);
             FlowPane attempts = new FlowPane(16, 8, previousAttempt, nextAttempt);
             attempts.getStyleClass().add("history-attempt-navigation");
-            context.getChildren().add(attempts);
+            attemptControls.getChildren().add(attempts);
             if(translation){
                 card=translationCard(row,attempt.answer(),true);
             }else if(matching){
@@ -229,6 +252,7 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
         HBox navigation = QuestionCardLayout.row(previous, card, next);
         navigation.setId("history-question-navigation");
         question.getChildren().addAll(context, navigation);
+        placeAttemptControls();
         scroll.setVvalue(0);
     }
 
@@ -373,10 +397,21 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
     }
 
     public HistoryQuestionOutlineView outline() { return outline; }
+    public HistorySurfaceHost surface(){return surface;}
+    public void destroy(){surface.destroy();setHeader(null);}
 
     public void setHeader(Node header) {
-        if (headings.getChildren().size() > 1) headings.getChildren().removeFirst();
+        if (fileHeader != null) headings.getChildren().remove(fileHeader);
+        fileHeader=header;
         if (header != null) headings.getChildren().addFirst(header);
+    }
+
+    /** Preserve the original RESULT layout; keep Attempt controls reachable above the Draft viewport. */
+    private void placeAttemptControls(){
+        if(attemptControls.getParent() instanceof javafx.scene.layout.Pane parent)parent.getChildren().remove(attemptControls);
+        if(attemptControls.getChildren().isEmpty())return;
+        if(surface.mode()==HistorySurfaceMode.DRAFT)headings.getChildren().add(attemptControls);
+        else if(attemptContext!=null)attemptContext.getChildren().add(attemptControls);
     }
 
     private static String mode(QuestionAttempt.Mode mode) {

@@ -104,7 +104,7 @@ final class MainWorkspaceView extends WorkspaceLayout {
 
     void switchWorkspace(Workspace workspace) {
         if (tabs.hasUnsavedChanges() && !confirmDiscard()) return;
-        tabs.closeAll();
+        if(!tabs.closeAll())return;
         sidebar.tree().setRoot(null);
         current = workspace;
         history.visit(workspace);
@@ -119,6 +119,7 @@ final class MainWorkspaceView extends WorkspaceLayout {
     }
 
     boolean prepareExit() {
+        if(tabs.tabs().stream().anyMatch(tab->!tab.pane().prepareClose()))return false;
         if (!tabs.hasUnsavedChanges()) return true;
         ButtonType save = new ButtonType("保存并退出");
         ButtonType discard = new ButtonType("放弃修改");

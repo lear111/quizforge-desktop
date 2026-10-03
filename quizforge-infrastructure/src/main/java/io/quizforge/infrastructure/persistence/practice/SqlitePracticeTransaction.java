@@ -20,7 +20,8 @@ public final class SqlitePracticeTransaction implements PracticeTransaction {
             connection.setAutoCommit(false);
             try {
                 var repositories = new Repositories(new SqlitePracticeSessionRepository(connection),
-                        new SqlitePracticeSessionQuestionRepository(connection), new SqliteQuestionAttemptRepository(connection));
+                        new SqlitePracticeSessionQuestionRepository(connection), new SqliteQuestionAttemptRepository(connection),
+                        new SqliteActiveDraftCanvasRepository(connection), new SqliteAttemptDraftSnapshotRepository(connection));
                 T result = operation.apply(repositories);
                 connection.commit();
                 return result;

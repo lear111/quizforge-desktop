@@ -1,5 +1,6 @@
 package io.quizforge.desktop.poc.draftcanvas.contract;
 
+import io.quizforge.core.practice.draft.DraftCanvasDocument;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;

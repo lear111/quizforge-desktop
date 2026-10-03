@@ -39,6 +39,9 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
     private final Supplier<PersistentPracticeRuntime> practiceLoader;
     private final Function<List<SourceRef>, QuestionSourceListView> sources;
     private PersistentPracticeRuntime practice;
+    private PracticeSurfaceHost surface;
+    public PracticeSurfaceHost surface(){return surface;}
+    private void setPracticeContent(Node content){if(surface==null)readerColumn.setCenter(content);else{surface.setNormalContent(content);readerColumn.setCenter(surface);}}
     private boolean showingSummary;
     private QuestionBank bank;
     private int index;
@@ -68,6 +71,10 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
             ensurePractice();
             String current=practice.session().current().id();
             for(int i=0;i<bank.questions().size();i++)if(bank.questions().get(i).id().equals(current)){index=i;break;}
+            surface=new PracticeSurfaceHost(practice,this::refreshFromRuntime,()->show(index-1),this::next);
+            surface.setDraftAvailable(()->index>=0 && index<bank.questions().size()
+                    && bank.questions().get(index).id().equals(practice.session().current().id())
+                    && QuestionText.supports(bank.questions().get(index)));
         }
         render();
     }
@@ -98,6 +105,13 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
     public void showEditor(Node editor,IntConsumer jump){editorJump=jump;readerColumn.setCenter(editor);refreshOutline();}
     public void updateEditor(QuestionBank bank,int selected){this.bank=bank;index=selected;refreshOutline();}
     public int currentIndex(){return index;}
+    private void refreshFromRuntime(){
+        if(!practice.session().finished()){
+            String current=practice.session().current().id();
+            for(int i=0;i<bank.questions().size();i++)if(bank.questions().get(i).id().equals(current)){index=i;break;}
+        }
+        render();
+    }
     public Region outline(){return (Region)getItems().get(1);}
     @Override public void refreshForDevelopment() { render(); }
     @Override public boolean shouldRefreshForDevelopment() { return editorJump == null; }
@@ -105,7 +119,7 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
         readingCard=null;matchingCard=null;translationCard=null;
         if(practice!=null && practice.session().finished()){
             showingSummary=true;
-            readerColumn.setCenter(QuestionCardLayout.scroll(new QuestionBankPracticeView(practice,sources,null,this::practiceChanged)));
+            setPracticeContent(QuestionCardLayout.scroll(new QuestionBankPracticeView(practice,sources,null,this::practiceChanged)));
             refreshOutline();return;
         }
         showingSummary=false;
@@ -120,7 +134,7 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
             if(practice.session().finished() || practice.session().index()!=selected)practice.goTo(selected);
             var navigation=new QuestionBankPracticeView.Navigation(index,bank.questions().size(),index==0,
                     index==bank.questions().size()-1,()->show(index-1),this::next);
-            readerColumn.setCenter(QuestionCardLayout.scroll(new QuestionBankPracticeView(practice,sources,navigation,this::practiceChanged)));
+            setPracticeContent(QuestionCardLayout.scroll(new QuestionBankPracticeView(practice,sources,navigation,this::practiceChanged)));
             refreshOutline();return;
         }
         var q=bank.questions().get(index);
@@ -133,7 +147,7 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
             var previous=QuestionCardLayout.navigation("arrow-left","上一题",()->show(index-1));previous.setId("authoring-previous-question");previous.setDisable(index==0);
             boolean last=index==bank.questions().size()-1;
             var next=QuestionCardLayout.navigation("arrow",last && practiceLoader!=null?"查看本次练习":"下一题",this::next);next.setId("authoring-next-question");next.setDisable(last && practiceLoader==null);
-            var stage=new VBox(QuestionCardLayout.row(previous,translationCard,next));QuestionCardLayout.configure(stage);readerColumn.setCenter(QuestionCardLayout.scroll(stage));refreshOutline();return;
+            var stage=new VBox(QuestionCardLayout.row(previous,translationCard,next));QuestionCardLayout.configure(stage);setPracticeContent(QuestionCardLayout.scroll(stage));refreshOutline();return;
         }
         if(QuestionTypes.isMatching(q.type())) {
             matchingCard=new io.quizforge.desktop.ui.question.objective.matching.MatchingQuestionCardView(q,index,bank.questions().size(),bank.resources(),resources,"practice-",
@@ -144,7 +158,7 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
             var previous=QuestionCardLayout.navigation("arrow-left","上一题",()->show(index-1));previous.setId("authoring-previous-question");previous.setDisable(index==0);
             boolean last=index==bank.questions().size()-1;
             var next=QuestionCardLayout.navigation("arrow",last && practiceLoader!=null?"查看本次练习":"下一题",this::next);next.setId("authoring-next-question");next.setDisable(last && practiceLoader==null);
-            var stage=new VBox(QuestionCardLayout.row(previous,matchingCard,next));QuestionCardLayout.configure(stage);readerColumn.setCenter(QuestionCardLayout.scroll(stage));refreshOutline();return;
+            var stage=new VBox(QuestionCardLayout.row(previous,matchingCard,next));QuestionCardLayout.configure(stage);setPracticeContent(QuestionCardLayout.scroll(stage));refreshOutline();return;
         }
         if(QuestionTypes.isReading(q.type())) {
             readingCard=new io.quizforge.desktop.ui.question.objective.reading.ReadingQuestionCardView(q,index,bank.questions().size(),bank.resources(),resources,"practice-",
@@ -155,7 +169,7 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
             var previous=QuestionCardLayout.navigation("arrow-left","上一题",()->show(index-1));previous.setId("authoring-previous-question");previous.setDisable(index==0);
             boolean last=index==bank.questions().size()-1;
             var next=QuestionCardLayout.navigation("arrow",last && practiceLoader!=null?"查看本次练习":"下一题",this::next);next.setId("authoring-next-question");next.setDisable(last && practiceLoader==null);
-            var stage=new VBox(QuestionCardLayout.row(previous,readingCard,next));QuestionCardLayout.configure(stage);readerColumn.setCenter(QuestionCardLayout.scroll(stage));refreshOutline();return;
+            var stage=new VBox(QuestionCardLayout.row(previous,readingCard,next));QuestionCardLayout.configure(stage);setPracticeContent(QuestionCardLayout.scroll(stage));refreshOutline();return;
         }
         if(QuestionTypes.isCloze(q.type())){
             var card=new io.quizforge.desktop.ui.question.objective.cloze.ClozeQuestionCardView(q,index,bank.questions().size(),bank.resources(),resources,"practice-",
@@ -166,7 +180,7 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
             var previous=QuestionCardLayout.navigation("arrow-left","上一题",()->show(index-1));previous.setId("authoring-previous-question");previous.setDisable(index==0);
             boolean last=index==bank.questions().size()-1;
             var next=QuestionCardLayout.navigation("arrow",last && practiceLoader!=null?"查看本次练习":"下一题",this::next);next.setId("authoring-next-question");next.setDisable(last && practiceLoader==null);
-            var stage=new VBox(QuestionCardLayout.row(previous,card,next));QuestionCardLayout.configure(stage);readerColumn.setCenter(QuestionCardLayout.scroll(stage));refreshOutline();return;
+            var stage=new VBox(QuestionCardLayout.row(previous,card,next));QuestionCardLayout.configure(stage);setPracticeContent(QuestionCardLayout.scroll(stage));refreshOutline();return;
         }
         var card=QuestionTypes.isEssay(q.type())?EssayQuestionCardView.card(q.prompt(),q.scoreSpec().defaultMaxScore(),index,bank.questions().size(),
                 "authoring-",bank.resources(),resources):new VBox(16);
@@ -189,7 +203,7 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
         boolean last=index==bank.questions().size()-1;
         var next=QuestionCardLayout.navigation("arrow",last && practiceLoader!=null?"查看本次练习":"下一题",this::next);
         next.setId("authoring-next-question");next.setDisable(last && practiceLoader==null);
-        var stage=new VBox(QuestionCardLayout.row(previous,card,next));QuestionCardLayout.configure(stage);readerColumn.setCenter(QuestionCardLayout.scroll(stage));refreshOutline();
+        var stage=new VBox(QuestionCardLayout.row(previous,card,next));QuestionCardLayout.configure(stage);setPracticeContent(QuestionCardLayout.scroll(stage));refreshOutline();
     }
     @SuppressWarnings("unchecked")
     private EssayAnswerPane essayResponse(Question question){
@@ -205,7 +219,10 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
         return -1;
     }
     private void next(){
-        if(index<bank.questions().size()-1){show(index+1);return;}
+        if(surface!=null){surface.navigate(this::nextNow);return;}nextNow();
+    }
+    private void nextNow(){
+        if(index<bank.questions().size()-1){showNow(index+1);return;}
         if(practiceLoader==null)return;
         ensurePractice();practice.goTo(practice.session().bank().questions().size()-1);practice.next();render();
     }
@@ -219,7 +236,15 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
         else refreshOutline();
     }
     private void show(int target){
+        if(editorJump==null && surface!=null){surface.navigate(()->showNow(target));return;}showNow(target);
+    }
+    private void showNow(int target){
         if(target<0 || target>=bank.questions().size())return;
+        if(editorJump==null && practice!=null){
+            int selected=practiceIndex(bank.questions().get(target).id());
+            // Legacy RICH choice previews are outside the durable, text-only Practice round.
+            if(selected>=0)practice.goTo(selected);
+        }
         index=target;
         if(editorJump!=null)editorJump.accept(index);
         else {
@@ -229,7 +254,11 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
         refreshOutline();
     }
     private void showItem(int target,int itemNumber) {
-        if(editorJump!=null || target!=index || readingCard==null && matchingCard==null && translationCard==null)show(target);
+        if(editorJump==null && surface!=null){surface.navigate(()->showItemNow(target,itemNumber));return;}
+        showItemNow(target,itemNumber);
+    }
+    private void showItemNow(int target,int itemNumber) {
+        if(editorJump!=null || target!=index || readingCard==null && matchingCard==null && translationCard==null)showNow(target);
         if(editorJump==null && translationCard!=null)translationCard.focusItem(itemNumber);
         else if(editorJump==null && matchingCard!=null)matchingCard.focusBlank(itemNumber);
         else if(editorJump==null && readingCard!=null)readingCard.focusItem(itemNumber);

@@ -10,32 +10,57 @@ import java.util.function.Supplier;
 public final class SharedPracticeAdapter {
     private final PracticeSessionService service;
     private ActivePracticeSnapshot snapshot;
+    private final io.quizforge.core.practice.PersistentPracticeRuntime runtime;
 
     public SharedPracticeAdapter(PracticeSessionService service, ActivePracticeSnapshot snapshot) {
         this.service = Objects.requireNonNull(service);
+        runtime = null;
         SharedPracticeViewModel.from(snapshot); // Reject unsupported current questions at the boundary.
         this.snapshot = snapshot;
     }
 
-    public synchronized ActivePracticeSnapshot snapshot() { return snapshot; }
-    public synchronized SharedPracticeViewModel viewModel() { return SharedPracticeViewModel.from(snapshot); }
+    /** Embedded mode shares the formal runtime, including its current question and hydrated answer. */
+    public SharedPracticeAdapter(io.quizforge.core.practice.PersistentPracticeRuntime runtime) {
+        this.runtime = Objects.requireNonNull(runtime);
+        service = null;
+        SharedPracticeViewModel.from(runtime.snapshot());
+    }
+    public synchronized ActivePracticeSnapshot snapshot() { return runtime == null ? snapshot : runtime.snapshot(); }
+    public synchronized SharedPracticeViewModel viewModel() { return SharedPracticeViewModel.from(snapshot()); }
     public synchronized String viewModelJson() { return viewModel().toJson(); }
 
     public synchronized SharedPracticeViewModel answerChanged(Set<String> selectedOptionIds) {
+        if (runtime != null) { runtime.saveChoiceDraft(selectedOptionIds); return viewModel(); }
         var session = snapshot.session();
         return apply(() -> service.saveDraft(session.id(), session.questionBankContentId(),
                 session.currentQuestionId(), selectedOptionIds));
     }
 
     public synchronized SharedPracticeViewModel submit() {
+        if (runtime != null) { runtime.submit(); return viewModel(); }
         var session = snapshot.session();
         return apply(() -> service.submitAnswer(session.id(), session.questionBankContentId(), session.currentQuestionId()));
     }
 
     public synchronized SharedPracticeViewModel retry() {
+        if (runtime != null) { runtime.retry(); return viewModel(); }
         var session = snapshot.session();
-        // Canvas strokes remain outside Practice; a later phase will specify their retry lifecycle.
+        // Core atomically clears active geometry and retains all frozen snapshots.
         return apply(() -> service.retryQuestion(session.id(), session.questionBankContentId(), session.currentQuestionId()));
+    }
+
+    public synchronized io.quizforge.core.practice.draft.DraftCanvasDocument loadDraft() {
+        if (runtime != null) return runtime.loadActiveDraftCanvas();
+        var session = snapshot.session();
+        return service.loadActiveDraftCanvas(session.id(), session.questionBankContentId(), session.currentQuestionId())
+                .map(io.quizforge.core.practice.draft.ActiveDraftCanvas::document)
+                .orElseGet(io.quizforge.core.practice.draft.DraftCanvasDocument::createEmpty);
+    }
+
+    public synchronized void saveDraft(io.quizforge.core.practice.draft.DraftCanvasDocument document) {
+        if (runtime != null) { runtime.saveActiveDraftCanvas(document); return; }
+        var session = snapshot.session();
+        service.saveActiveDraftCanvas(session.id(), session.questionBankContentId(), session.currentQuestionId(), document);
     }
 
     private SharedPracticeViewModel apply(Supplier<ActivePracticeSnapshot> operation) {

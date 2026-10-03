@@ -5,6 +5,8 @@ import javafx.scene.layout.Region;
 
 /** Lifecycle and navigation used by the file-page router. */
 interface FileView {
+    default void dispose() { }
+    default boolean prepareClose() { return true; }
     FilePresentation currentFile();
     FileMode mode();
     boolean hasUnsavedChanges();

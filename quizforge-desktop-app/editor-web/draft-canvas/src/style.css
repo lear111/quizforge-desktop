@@ -24,7 +24,7 @@ h2 { font-size: 17px; font-weight: 600; margin: 22px 0 10px; }
 fieldset { padding: 0; margin: 18px 0; border: 0; }
 legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 fieldset label { display: flex; gap: 9px; align-items: center; margin: 6px 0; padding: 7px 0; cursor: pointer; }
-input[type=radio] { width: 19px; height: 19px; margin: 0; accent-color: #7b63ad; flex-shrink: 0; }
+input[type=radio], input[type=checkbox] { width: 19px; height: 19px; margin: 0; accent-color: #7b63ad; flex-shrink: 0; }
 .note-label { display: block; color: #817989; font-size: 12px; margin-bottom: 5px; }
 #answer-note { width: 100%; padding: 10px 12px; border: 1px solid #dedbe5; border-radius: 6px; background: #fff; margin-bottom: 18px; }
 #card-feedback { margin: 10px 0 0; color: #70599f; min-height: 24px; }
