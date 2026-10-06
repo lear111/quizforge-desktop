@@ -1,8 +1,10 @@
 # Shared Question Renderer Contract v1 / Coverage v1
 
-七种正式题型在 Active DRAFT 和 History DRAFT 中使用同一套 Runtime、Bridge、WebView Host、Canvas 和 SQLite 草稿持久化。NORMAL / History RESULT 保留现有 JavaFX 页面。内容范围为 TEXT；未知内容明确显示 `Unsupported content`，不压平或丢弃。
+> 2026-10-04 迁移状态：当前只启用新版 HTML SDK 2 单选/多选，旧题型专项实现已删除。本文公共白板、状态、事务和历史契约继续适用；七题型覆盖描述属于此前阶段。当前开发入口与 API 以仓库 extensions/SDK_README.md 为准。
 
-作文 NORMAL 在现有 TEXT answer 路径中提供多行输入，与 DRAFT 共用 Core 正式答案；原有“编辑作答”富文本入口保留。这里不迁移 DOCUMENT 答案，也不把草稿笔迹当作作文答案。
+七种正式题型在正式 PRACTICE / DRAFT 中使用同一个 Shared Learning Surface；History DRAFT 复用 Renderer 和只读 Canvas，History RESULT 保留现有页面。旧 JavaFX Practice 是显式 transitional legacy。见 [Shared Learning Surface v1](SHARED_LEARNING_SURFACE.md)。内容支持 TEXT、RICH 和 DOCUMENT；未知内容或缺失资源明确显示 `Unsupported content`。
+
+作文 PRACTICE / DRAFT 共用同一多行 TEXT 输入与 Core 正式答案；原 JavaFX 富文本输入入口留在 legacy 代码中。已有 DOCUMENT 答案在提交后及历史中按原结构显示；未修改文本时保存保留原文档。草稿笔迹不作为作文答案。
 
 ## 分层
 
@@ -87,6 +89,8 @@ Retry 使用现有 Core 命令：清正式工作答案与 Active Canvas，旧 At
 
 History 只读取选中 attemptId 对应的 frozen question、answer、result 和 DraftSnapshot；不读取当前题库来覆盖它。七种题型共用 Active renderer，mode=`READ_ONLY_HISTORY`。没有 answer listener、Submit/Retry、Practice channel 或 autosave；Canvas 只允许 Pan/Zoom/Fit/target focus。
 
-旧 Attempt 没有 DraftSnapshot 时保留 RESULT，不制造空草稿。旧题库/历史中的 RICH、DOCUMENT、图片和已有 Canvas document answer 不转换为 TEXT，明确显示 unsupported。NORMAL / RESULT 仍使用原有内容能力。
+旧 Attempt 没有 DraftSnapshot 时保留 RESULT，不制造空草稿。RICH 和 DOCUMENT 显示使用快照内的结构及资源字节；已有 Canvas document answer 可只读回放。旧快照缺失资源字节时明确提示不可用，不读取当前题库补造历史内容。RESULT 保留原有页面。
+
+富文本 DTO 保留 `kind`、`text`，额外提供 `document`；RICH 可提供 `images`（资源 ID 到自有 data URI）。DOCUMENT 的 `document` 为 Canvas 原生 JSON；RICH 为原有 blocks 结构。`choicePresentation` 与其他题型的 `*Presentation` 同样冻结显示资源；不参与逻辑题目相等性比较。SchemaVersion 仍为 1.0，TEXT DTO 兼容。
 
 实现和验证证据见 [SHARED_RENDERER_COVERAGE_ACCEPTANCE.md](SHARED_RENDERER_COVERAGE_ACCEPTANCE.md)。上一阶段 Choice 验收保留在 [SHARED_RENDERER_ACCEPTANCE.md](SHARED_RENDERER_ACCEPTANCE.md)。

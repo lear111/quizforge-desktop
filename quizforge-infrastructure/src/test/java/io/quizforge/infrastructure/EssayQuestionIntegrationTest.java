@@ -21,12 +21,11 @@ import io.quizforge.core.question.model.EvaluationCriterion;
 import io.quizforge.core.question.model.EvaluationSpec;
 import io.quizforge.core.question.model.Question;
 import io.quizforge.core.question.model.QuestionBank;
-import io.quizforge.core.question.model.Stimulus;
 import io.quizforge.core.question.resource.QBankResource;
 import io.quizforge.core.question.resource.ResourceKind;
 import io.quizforge.core.question.service.QuestionBankEditorModel;
-import io.quizforge.core.question.type.subjective.essay.EssayAnswerSpec;
-import io.quizforge.core.question.type.subjective.essay.EssayPayload;
+import io.quizforge.core.question.compat.essay.EssayAnswerSpec;
+import io.quizforge.core.question.compat.essay.EssayPayload;
 import io.quizforge.infrastructure.filesystem.qbank.QBankImageImporter;
 import io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader;
 import io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter;
@@ -175,17 +174,5 @@ class EssayQuestionIntegrationTest {
         assertEquals(List.of(b.resource()),model.bank().resources());
         model.duplicateQuestion(0);model.setPrompt(0,new TextContent("No picture"));assertEquals(1,model.bank().resources().size());
         model.deleteQuestion(1);assertTrue(model.bank().resources().isEmpty());
-    }
-    @Test void cleanupHonorsStimulusReferenceAnswerAnalysisAndOtherQuestions() throws Exception {
-        Path local=temp.resolve("shared.png");Files.write(local,EssayTestBanks.image("png"));
-        var resource=new QBankImageImporter().read(local).resource();var prompt=EssayTestBanks.prompt(resource.id());
-        var q=EssayTestBanks.essay("q_shared",prompt,new EssayPayload(null),prompt);
-        var model=new QuestionBankEditorModel(new QuestionBank("qb_shared","Shared",List.of(new Stimulus("stim_shared",prompt)),List.of(q),List.of(resource)));
-        model.setPrompt(0,new TextContent("Changed"));model.setReferenceAnswer(0,null);model.deleteQuestion(0);
-        assertEquals(List.of(resource),model.bank().resources());
-        var original=EssayTestBanks.essay("q_analysis",prompt,new EssayPayload(null),null);
-        q=new Question(original.id(),original.type(),List.of(),original.prompt(),original.payload(),original.answerSpec(),original.scoreSpec(),null,prompt,List.of());
-        model=new QuestionBankEditorModel(with(q,List.of(resource)));model.setPrompt(0,new TextContent("Changed"));
-        assertEquals(List.of(resource),model.bank().resources());
     }
 }

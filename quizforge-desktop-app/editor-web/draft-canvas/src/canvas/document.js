@@ -2,6 +2,7 @@
 export const DRAFT_SCHEMA_VERSION = '1.0';
 export const DRAFT_LAYOUT_VERSION = '1';
 export const DEFAULT_CARD_WIDTH = 720;
+export const DEFAULT_PAPER = Object.freeze({color:'#ffffff',pattern:'PLAIN'});
 const DEFAULT_COLOR = '#7660ab';
 
 function object(value, name) {
@@ -18,6 +19,19 @@ function positive(value, name) {
 }
 function inputObject(value) {
   return object(typeof value === 'string' ? JSON.parse(value) : value, 'draft');
+}
+
+export function normalizeText(value) {
+  object(value,'text');
+  if(typeof value.id!=='string'||!value.id.trim())throw new TypeError('text.id must be a nonempty stable string');
+  if(typeof value.text!=='string'||value.text.length>10000)throw new TypeError('Invalid annotation text');
+  if(typeof value.color!=='string'||!/^#[0-9a-f]{3}(?:[0-9a-f]{3}(?:[0-9a-f]{2})?)?$/i.test(value.color))throw new TypeError('Invalid text color');
+  return {id:value.id,x:finite(value.x,'text.x'),y:finite(value.y,'text.y'),width:positive(value.width,'text.width'),size:positive(value.size,'text.size'),color:value.color,text:value.text};
+}
+export function normalizePaper(value) {
+  object(value,'paper');
+  if(typeof value.color!=='string'||!/^#[0-9a-f]{3}(?:[0-9a-f]{3}(?:[0-9a-f]{2})?)?$/i.test(value.color)||!['PLAIN','DOTS','LINES','GRID'].includes(value.pattern))throw new TypeError('Invalid paper');
+  return {color:value.color,pattern:value.pattern};
 }
 
 /** Strict canonical stroke parsing; runtime stroke creation may explicitly request POC defaults. */
@@ -51,12 +65,17 @@ export function parseDraftCanvasDocument(value) {
   if (!Array.isArray(input.strokes)) throw new TypeError('draft.strokes must be an array');
   const strokes = input.strokes.map(value => normalizeStroke(value));
   if (new Set(strokes.map(value => value.id)).size !== strokes.length) throw new TypeError('stroke ids must be unique');
+  if(input.texts!==undefined&&!Array.isArray(input.texts))throw new TypeError('draft.texts must be an array');
+  const texts=(input.texts||[]).map(normalizeText);
+  if(new Set(texts.map(t=>t.id)).size!==texts.length)throw new TypeError('text ids must be unique');
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
     layoutVersion: DRAFT_LAYOUT_VERSION,
     viewport: { x: finite(view.x, 'viewport.x'), y: finite(view.y, 'viewport.y'), zoom: positive(view.zoom, 'viewport.zoom') },
     questionCard: { x: finite(card.x, 'questionCard.x'), y: finite(card.y, 'questionCard.y'), width: positive(card.width, 'questionCard.width') },
     strokes,
+    ...(texts.length?{texts}:{}),
+    ...(input.paper==null?{}:{paper:normalizePaper(input.paper)}),
   };
 }
 

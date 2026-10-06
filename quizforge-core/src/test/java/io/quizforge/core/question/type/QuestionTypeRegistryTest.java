@@ -3,7 +3,7 @@ package io.quizforge.core.question.type;
 import io.quizforge.core.question.model.QuestionBank;
 import io.quizforge.core.question.service.QuestionBankEditorModel;
 import io.quizforge.core.question.service.QuestionBankValidator;
-import io.quizforge.core.question.type.objective.choice.ChoicePayload;
+import io.quizforge.core.question.model.choice.ChoicePayload;
 import java.util.HashSet;
 import java.util.List;
 import org.junit.jupiter.api.Test;

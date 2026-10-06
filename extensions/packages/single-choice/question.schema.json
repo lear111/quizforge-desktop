@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "prompt",
+    "payload",
+    "answerSpec",
+    "scoreSpec"
+  ],
+  "properties": {
+    "type": {
+      "const": "SINGLE_CHOICE"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "answerSpec": {
+      "type": "object"
+    }
+  }
+}

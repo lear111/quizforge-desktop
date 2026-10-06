@@ -5,9 +5,9 @@ import io.quizforge.core.question.source.SourceRef;
 import io.quizforge.desktop.ui.markdown.MarkdownOutline;
 import io.quizforge.desktop.ui.markdown.SafeMarkdownPreview;
 import io.quizforge.desktop.ui.question.practice.MixedQuestionPracticeView;
-import io.quizforge.desktop.ui.question.practice.QuestionBankPracticeView;
-import io.quizforge.desktop.ui.question.shared.QuestionCardLayout;
-import io.quizforge.desktop.ui.question.shared.QuestionPracticeLayout;
+
+
+
 import io.quizforge.desktop.ui.question.source.QuestionSourceListView;
 import io.quizforge.desktop.ui.shared.UiTheme;
 import java.util.List;
@@ -57,11 +57,10 @@ final class FileViewerRouter {
                     : markdown.view(file.file().sourceText(), file.registeredMarkdown(), sourceActions, copyLink, openLink);
             case QUESTION_BANK -> file.empty()
                     ? UiTheme.quietState("该题库暂无题目", "开始编辑，添加内容。")
-                    : MixedQuestionPracticeView.requiresMixedView(file.file().questionBank())
-                        ? new MixedQuestionPracticeView(file.file().questionBank(),resources.apply(file),
-                                () -> practiceRuntime.apply(file, file.file().questionBank()), sources)
-                    : io.quizforge.core.question.type.objective.choice.QuestionText.supports(file.file().questionBank()) ? practice(file)
-                    : UiTheme.quietState("暂不支持此题库内容", "当前题目界面暂不支持 RICH 内容和共享材料，原始内容已保留在题库文件中。");
+                    : file.file().questionBank().questions().stream().anyMatch(question -> io.quizforge.core.question.type.QuestionTypes.find(question.type()).isEmpty())
+                        ? new MixedQuestionPracticeView(file.file().questionBank(),resources.apply(file))
+                    : new MixedQuestionPracticeView(file.file().questionBank(),resources.apply(file),
+                            () -> practiceRuntime.apply(file, file.file().questionBank()), sources);
             case DIRECTORY -> welcome();
             case INVALID_REGISTERED_MARKDOWN, INVALID_QUESTION_BANK -> UiTheme.quietState("无法读取此文件",
                     file.file().entry().issue() == null ? "文件未通过格式校验。" : file.file().entry().issue());
@@ -74,19 +73,5 @@ final class FileViewerRouter {
     }
 
     Node welcome() { return UiTheme.quietState("打开一个文件", "从左侧文件树中选择，开始阅读或练习。"); }
-
-    private Node practice(FilePresentation file) {
-        var runtime=practiceRuntime.apply(file, file.file().questionBank());
-        var practice = new QuestionBankPracticeView(runtime, sources);
-        var scroll = QuestionCardLayout.scroll(practice);
-        scroll.getContent().setId("practice-stage");
-        scroll.setId("practice-scroll");
-        var layout=new QuestionPracticeLayout(scroll, practice.outline());
-        var surface=new io.quizforge.desktop.ui.question.practice.PracticeSurfaceHost(runtime,practice::refreshPracticeState,
-                ()->practice.navigateFromSurface(()->{runtime.previous();practice.refreshPracticeState();}),
-                ()->practice.navigateFromSurface(()->{runtime.next();practice.refreshPracticeState();}));
-        practice.setSurfaceHost(surface);layout.setSurface(surface,scroll);
-        return layout;
-    }
 
 }

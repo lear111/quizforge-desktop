@@ -1,5 +1,7 @@
 package io.quizforge.desktop.ui.shell;
 
+import io.quizforge.infrastructure.testing.ExtensionPracticeTestAnswers;
+
 import io.quizforge.core.question.content.BlockImageNode;
 import io.quizforge.core.question.content.DocumentContent;
 import io.quizforge.core.question.content.HeadingNode;
@@ -14,7 +16,6 @@ import io.quizforge.desktop.ui.content.QuestionContentLayout;
 import io.quizforge.desktop.ui.content.QuestionContentRenderer;
 import io.quizforge.desktop.ui.content.document.canvas.CanvasEditorTestDriver;
 import io.quizforge.desktop.ui.file.FileMode;
-import io.quizforge.desktop.ui.question.objective.choice.ChoiceCardView;
 import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
 import io.quizforge.infrastructure.testing.QBankTestPackageBuilder;
 import java.nio.file.Path;
@@ -36,7 +37,7 @@ class EssayEditorUiTest extends WorkspaceUiTestSupport {
             shell.refresh();open("题库/PracticeMove.qbank");
             var provider=fixture.context.getBean(io.quizforge.core.port.PracticeRuntimeProvider.class);
             var runtime=provider.open(fixture.alpha.id(),original);String archivedId=runtime.sessionId();
-            runtime.goTo(1);runtime.select(((io.quizforge.core.question.type.objective.reading.ReadingPayload)original.questions().get(1).payload()).items().getFirst().options().getFirst().id());
+            runtime.goTo(1);ExtensionPracticeTestAnswers.select(runtime,((io.quizforge.core.question.compat.reading.ReadingPayload)original.questions().get(1).payload()).items().getFirst().options().getFirst().id());
             runtime.submit();runtime.restart();
             var archived=provider.history(fixture.alpha.id()).loadArchivedSessionDetail(original.assetId(),archivedId);
             String activeId=runtime.sessionId();
@@ -176,10 +177,10 @@ class EssayEditorUiTest extends WorkspaceUiTestSupport {
         var rich = new RichContent(new RichDocument(List.of(new ParagraphNode(List.of(
                 new InlineTextNode("Rich option", List.of(io.quizforge.core.question.content.TextMark.BOLD)))))));
         var options = new java.util.ArrayList<>(original.choicePayload().options());
-        options.set(0, new io.quizforge.core.question.type.objective.choice.ChoiceOption(options.getFirst().id(), rich));
+        options.set(0, new io.quizforge.core.question.model.choice.ChoiceOption(options.getFirst().id(), rich));
         var choice = io.quizforge.core.question.model.Question.choice(original.id(), original.type(), original.prompt(),
                 original.analysis(), original.sourceRefs(),
-                new io.quizforge.core.question.type.objective.choice.ChoicePayload(options), original.choiceAnswerSpec());
+                new io.quizforge.core.question.model.choice.ChoicePayload(options), original.choiceAnswerSpec());
         var essay = io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst();
         fixture.write("题库/MixedRich.qbank", codec.write(new QuestionBank("qb_mixed_rich", "Mixed rich",
                 List.of(), List.of(choice, essay), List.of())));
@@ -204,49 +205,6 @@ class EssayEditorUiTest extends WorkspaceUiTestSupport {
             assertNotNull(shell.lookup("#authoring-option-0-rich-content"));
         });
         assertArrayEquals(before, java.nio.file.Files.readAllBytes(fixture.alphaRoot.resolve("题库/MixedRich.qbank")));
-    }
-
-    @Test void mixedBankUsesSharedChoicePracticeAndKeepsEssayPreviewReadOnly() throws Exception {
-        var choiceBank = new QuestionBankV2Codec().parse(QBankTestPackageBuilder.read(fixture.alphaRoot.resolve("题库/Java集合.qbank")));
-        var essay = io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst();
-        var mixed = new QuestionBank("qb_mixed_ui", "Mixed", List.of(),
-                List.of(essay, choiceBank.questions().get(0), choiceBank.questions().get(1)), List.of());
-        fixture.write("题库/Mixed.qbank", new QuestionBankV2Codec().write(mixed));
-        fx(() -> {
-            shell.refresh(); open("题库/Mixed.qbank");
-            assertNotNull(shell.lookup("#authoring-question-card"));
-            assertNull(shell.lookup("#submit-answer"));
-            assertNotNull(shell.lookup("#qbank-history-entry"));
-            button("authoring-question-2").fire();
-            shell.applyCss(); shell.layout();
-            assertTrue(shell.lookup("#practice-question-card") instanceof ChoiceCardView, text(shell));
-            assertEquals("第 2 / 3 题", ((Label)shell.lookup("#question-position")).getText());
-            ((RadioButton)shell.lookup("#option-0")).fire();
-            assertFalse(button("submit-answer").isDisabled()); submitAnswer();
-            shell.applyCss(); shell.layout();
-            assertEquals("回答正确", ((Label)shell.lookup("#question-result")).getText());
-            assertNotNull(shell.lookup("#practice-retry"));
-            button("next-question").fire();
-            shell.applyCss(); shell.layout();
-            assertEquals("第 3 / 3 题", ((Label)shell.lookup("#question-position")).getText());
-            ((CheckBox)shell.lookup("#option-0")).fire(); ((CheckBox)shell.lookup("#option-1")).fire();
-            submitAnswer(); button("next-question").fire();
-            shell.applyCss(); shell.layout();
-            assertEquals("共 3 题", ((Label)shell.lookup("#summary-total-count")).getText());
-            assertEquals("2", ((Label)shell.lookup("#summary-correct-count")).getText());
-            button("summary-previous").fire();
-            shell.applyCss(); shell.layout();
-            assertNotNull(shell.lookup("#practice-retry"));
-            button("previous-question").fire(); button("previous-question").fire();
-            shell.applyCss(); shell.layout();
-            assertNotNull(shell.lookup("#authoring-question-card")); assertNull(shell.lookup("#submit-answer"));
-            button("authoring-question-2").fire(); button("practice-retry").fire();
-            ((RadioButton)shell.lookup("#option-1")).fire();
-            open("题库/Mixed.qbank"); button("authoring-question-2").fire();
-            shell.applyCss(); shell.layout();
-            assertTrue(((RadioButton)shell.lookup("#option-1")).isSelected());
-            assertFalse(button("submit-answer").isDisabled());
-        });
     }
 
     @Test void essayGenericWindowSavesImageAndFormalSaveReopens() throws Exception {

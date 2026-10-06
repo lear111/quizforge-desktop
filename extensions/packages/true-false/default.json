@@ -1,0 +1,43 @@
+{
+  "id": "q_template",
+  "type": "TRUE_FALSE",
+  "stimulusRefs": [],
+  "prompt": {
+    "kind": "TEXT",
+    "text": "一个题型扩展可以通过同一份练习页面，提供作答和只读历史回放。"
+  },
+  "payload": {
+    "kind": "CHOICE",
+    "options": [
+      {
+        "id": "opt_template_true",
+        "content": {
+          "kind": "TEXT",
+          "text": "正确"
+        }
+      },
+      {
+        "id": "opt_template_false",
+        "content": {
+          "kind": "TEXT",
+          "text": "错误"
+        }
+      }
+    ]
+  },
+  "answerSpec": {
+    "kind": "CHOICE",
+    "correctOptionIds": [
+      "opt_template_true"
+    ]
+  },
+  "scoreSpec": {
+    "defaultMaxScore": 1
+  },
+  "evaluationSpec": null,
+  "analysis": {
+    "kind": "TEXT",
+    "text": "正确。练习与历史共用题型页面，历史的只读状态由宿主统一控制；扩展根据接口返回的能力调整交互。"
+  },
+  "sourceRefs": []
+}

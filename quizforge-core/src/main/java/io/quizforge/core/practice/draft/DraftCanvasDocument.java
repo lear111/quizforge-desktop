@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 
 /** Immutable versioned World geometry shared by all practice clients. No UI or codec dependency. */
 public record DraftCanvasDocument(String schemaVersion, String layoutVersion, Viewport viewport,
-        QuestionCard questionCard, List<Stroke> strokes) {
+        QuestionCard questionCard, List<Stroke> strokes, List<TextAnnotation> texts, Paper paper) {
     public static final String SCHEMA_VERSION = "1.0";
     public static final String LAYOUT_VERSION = "1";
     public static final double DEFAULT_CARD_WIDTH = 720;
@@ -38,6 +38,29 @@ public record DraftCanvasDocument(String schemaVersion, String layoutVersion, Vi
             if (points.isEmpty()) throw invalid("stroke.points must contain at least one world point");
         }
     }
+    /** Plain text remains World geometry; it is independent of the formal answer. */
+    public record TextAnnotation(String id, double x, double y, double width, double size, String color, String text) {
+        public TextAnnotation {
+            if (id == null || id.isBlank()) throw invalid("text.id must be a nonempty stable string");
+            finite(x, "text.x"); finite(y, "text.y");
+            positive(width, "text.width"); positive(size, "text.size");
+            if (color == null || !COLOR.matcher(color).matches()) throw invalid("text.color must be a hexadecimal CSS color");
+            if (text == null || text.length() > 10000) throw invalid("text.text must be supplied and contain at most 10000 characters");
+        }
+    }
+    public enum PaperPattern { PLAIN, DOTS, LINES, GRID }
+    public record Paper(String color, PaperPattern pattern) {
+        public Paper {
+            if (color == null || !COLOR.matcher(color).matches()) throw invalid("paper.color must be a hexadecimal CSS color");
+            if (pattern == null) throw invalid("paper.pattern must be PLAIN, DOTS, LINES, or GRID");
+        }
+    }
+
+    /** Preserve the original v1 constructor and its serialized shape. */
+    public DraftCanvasDocument(String schemaVersion, String layoutVersion, Viewport viewport,
+            QuestionCard questionCard, List<Stroke> strokes) {
+        this(schemaVersion, layoutVersion, viewport, questionCard, strokes, List.of(), null);
+    }
 
     public DraftCanvasDocument {
         if (!SCHEMA_VERSION.equals(schemaVersion)) throw invalid("Unsupported draft schemaVersion");
@@ -47,6 +70,9 @@ public record DraftCanvasDocument(String schemaVersion, String layoutVersion, Vi
         strokes = List.copyOf(Objects.requireNonNull(strokes, "strokes"));
         var ids = new HashSet<String>();
         for (Stroke stroke : strokes) if (!ids.add(stroke.id())) throw invalid("stroke ids must be unique");
+        texts = List.copyOf(Objects.requireNonNull(texts, "texts"));
+        ids.clear();
+        for (TextAnnotation text : texts) if (!ids.add(text.id())) throw invalid("text ids must be unique");
     }
 
     public static DraftCanvasDocument createEmpty() {
@@ -56,7 +82,7 @@ public record DraftCanvasDocument(String schemaVersion, String layoutVersion, Vi
 
     /** Pan and zoom replace only the camera; durable question/stroke geometry remains identical. */
     public DraftCanvasDocument withViewport(Viewport next) {
-        return new DraftCanvasDocument(schemaVersion, layoutVersion, next, questionCard, strokes);
+        return new DraftCanvasDocument(schemaVersion, layoutVersion, next, questionCard, strokes, texts, paper);
     }
 
     private static double finite(double value, String field) {

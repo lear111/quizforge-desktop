@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** Positional answers: selecting the right pool in the wrong slots is still wrong. */
+/** Stored answer decoder for historical matching records; current answers belong to extensions. */
 public record MatchingPracticeAnswer(Map<String,String> assignments) {
     public MatchingPracticeAnswer { assignments = Map.copyOf(assignments); }
     public boolean empty() { return assignments.isEmpty(); }

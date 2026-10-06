@@ -1,37 +1,29 @@
 package io.quizforge.infrastructure;
 
-import io.quizforge.core.practice.EssayPracticeAnswer;
-import io.quizforge.core.practice.EssayQuestionSnapshot;
+import io.quizforge.infrastructure.testing.ExtensionPracticeTestAnswers;
+
 import io.quizforge.core.practice.PersistentPracticeRuntime;
 import io.quizforge.core.practice.PracticeHistoryDetail;
 import io.quizforge.core.practice.PracticeHistoryEntry;
 import io.quizforge.core.practice.PracticeHistoryService;
 import io.quizforge.core.practice.PracticePayload;
-import io.quizforge.core.practice.PracticeQuestionSnapshotMapper;
 import io.quizforge.core.practice.PracticeSession;
 import io.quizforge.core.practice.PracticeSessionQuestion;
 import io.quizforge.core.practice.PracticeSessionService;
 import io.quizforge.core.practice.PracticeSummary;
 import io.quizforge.core.practice.QuestionAttempt;
 import io.quizforge.core.practice.QuestionBankPracticeSession;
-import io.quizforge.core.question.content.DocumentContent;
 import io.quizforge.core.question.content.QuestionContentData;
 import io.quizforge.core.question.content.TextContent;
-import io.quizforge.core.question.model.EvaluationCriterion;
-import io.quizforge.core.question.model.EvaluationSpec;
 import io.quizforge.core.question.model.Question;
 import io.quizforge.core.question.model.QuestionBank;
 import io.quizforge.core.question.model.ScoreSpec;
-import io.quizforge.core.question.resource.QBankResource;
-import io.quizforge.core.question.resource.ResourceKind;
 import io.quizforge.core.question.source.QuestionSourceDocument;
 import io.quizforge.core.question.source.SourceRef;
-import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
-import io.quizforge.core.question.type.objective.choice.ChoiceOption;
-import io.quizforge.core.question.type.objective.choice.ChoicePayload;
-import io.quizforge.core.question.type.objective.choice.QuestionText;
-import io.quizforge.core.question.type.subjective.essay.EssayAnswerSpec;
-import io.quizforge.core.question.type.subjective.essay.EssayPayload;
+import io.quizforge.core.question.model.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.model.choice.ChoiceOption;
+import io.quizforge.core.question.model.choice.ChoicePayload;
+import io.quizforge.core.question.content.QuestionText;
 import io.quizforge.core.workspace.model.Workspace;
 import io.quizforge.core.workspace.model.WorkspaceId;
 import io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory;
@@ -70,27 +62,6 @@ class PersistentPracticeRuntimeIntegrationTest {
     private QuestionBank bank;
     private final QuestionBankV2Codec codec = new QuestionBankV2Codec();
 
-    @Test void styledEssaySurvivesSqliteReloadAndHistoryWithoutEnumLoss() {
-        var prompt=new io.quizforge.core.question.content.RichContent(new io.quizforge.core.question.content.RichDocument(List.of(
-                new io.quizforge.core.question.content.HeadingNode(2,List.of(new io.quizforge.core.question.content.InlineTextNode("Styled title",
-                        List.of(io.quizforge.core.question.content.TextMark.BOLD))),io.quizforge.core.question.content.TextAlignment.CENTER),
-                new io.quizforge.core.question.content.ParagraphNode(List.of(new io.quizforge.core.question.content.InlineTextNode("Styled body",
-                        List.of(io.quizforge.core.question.content.TextMark.ITALIC))),io.quizforge.core.question.content.TextAlignment.RIGHT))));
-        var question=new Question("q_styled","ESSAY",List.of(),prompt,new EssayPayload(null),new EssayAnswerSpec(prompt),
-                ScoreSpec.defaultScore(),null,null,List.of());
-        var styled=new QuestionBank("qb_styled","Styled",List.of(),List.of(question),List.of());
-        var active=new PersistentPracticeRuntime(service,styled,codec.contentId(styled));
-        active.saveEssayDraft(question.id(),new EssayPracticeAnswer("Answer",null));active.submit();
-        var restored=new PersistentPracticeRuntime(service(new SqliteDatabase(new QuizForgeDataDirectory(temp))),styled,codec.contentId(styled));
-        assertEquals(1,restored.questionState(question.id()).attempts().size());
-        String archived=restored.sessionId();restored.restart();
-        var detail=new PracticeHistoryService(new SqlitePracticeTransaction(database)).loadArchivedSessionDetail(styled.assetId(),archived);
-        var fields=QuestionContentData.map(detail.questions().getFirst().contentSnapshot().value());
-        var snapshot=EssayQuestionSnapshot.from(new PracticePayload(fields.get("essayPresentation")));
-        assertEquals(prompt,snapshot.prompt());assertEquals(prompt,snapshot.reference());
-        assertEquals(QuestionAttempt.Result.UNSCORED,detail.questions().getFirst().attempts().getFirst().result());
-    }
-
     @BeforeEach void setup() {
         database = new SqliteDatabase(new QuizForgeDataDirectory(temp));
         service = service(database);
@@ -106,20 +77,20 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void singleDraftSavesStableIdsAndReplacementWithoutAttempts() {
-        runtime.select("opt_b");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b");
         assertEquals(new PracticePayload(List.of("opt_b")), question("q_one").draftAnswer());
-        runtime.select("opt_a");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_a");
         assertEquals(new PracticePayload(List.of("opt_a")), question("q_one").draftAnswer());
         assertEquals(PracticeSessionQuestion.State.DRAFT, question("q_one").practiceState());
         assertTrue(attempts("q_one").isEmpty());
     }
 
     @Test void multipleDraftAddsRemovesAndClearsToUnanswered() {
-        runtime.next(); runtime.select("opt_d"); runtime.select("opt_e");
-        assertEquals(Set.of("opt_d", "opt_e"), runtime.session().selected());
-        runtime.select("opt_d");
+        runtime.next(); ExtensionPracticeTestAnswers.select(runtime,"opt_d"); ExtensionPracticeTestAnswers.select(runtime,"opt_e");
+        assertEquals(Set.of("opt_d", "opt_e"), ExtensionPracticeTestAnswers.selected(runtime));
+        ExtensionPracticeTestAnswers.select(runtime,"opt_d");
         assertEquals(new PracticePayload(List.of("opt_e")), question("q_two").draftAnswer());
-        runtime.select("opt_e");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_e");
         assertNull(question("q_two").draftAnswer());
         assertEquals(PracticeSessionQuestion.State.UNANSWERED, question("q_two").practiceState());
         assertEquals(QuestionBankPracticeSession.State.UNANSWERED, runtime.session().state());
@@ -127,11 +98,11 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void nextPreviousAndOutlineTargetUseOnePersistedPositionPathWithoutSubmitting() {
-        runtime.select("opt_b"); runtime.next();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.next();
         assertEquals("q_two", session().currentQuestionId());
         runtime.previous();
         assertEquals("q_one", session().currentQuestionId());
-        assertEquals(Set.of("opt_b"), runtime.session().selected());
+        assertEquals(Set.of("opt_b"), ExtensionPracticeTestAnswers.selected(runtime));
         runtime.goTo(1);
         assertEquals("q_two", session().currentQuestionId());
         assertTrue(attempts("q_one").isEmpty());
@@ -140,7 +111,7 @@ class PersistentPracticeRuntimeIntegrationTest {
 
     @ParameterizedTest @ValueSource(strings = {"opt_a", "opt_b"})
     void submitWritesOneInitialScoredAttemptAndClearsDraft(String option) {
-        runtime.select(option); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,option); runtime.submit();
         var attempt = attempts("q_one").getFirst();
         assertEquals(1, attempt.attemptNo());
         assertEquals(QuestionAttempt.Mode.INITIAL, attempt.attemptMode());
@@ -152,7 +123,7 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void actualObjectRebuildRestoresCurrentDraftAndSubmittedAttemptWithoutMemoryState() {
-        runtime.select("opt_b"); runtime.next(); runtime.select("opt_d"); runtime.select("opt_e"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.next(); ExtensionPracticeTestAnswers.select(runtime,"opt_d"); ExtensionPracticeTestAnswers.select(runtime,"opt_e"); runtime.submit();
         String id = runtime.sessionId();
         String fileText = codec.write(bank);
         runtime = null; service = null; database = null; bank = null;
@@ -162,21 +133,21 @@ class PersistentPracticeRuntimeIntegrationTest {
         runtime = new PersistentPracticeRuntime(service, bank, codec.contentId(bank));
         assertEquals(id, runtime.sessionId());
         assertEquals(1, runtime.session().index());
-        assertEquals(Set.of("opt_d", "opt_e"), runtime.session().selected());
+        assertEquals(Set.of("opt_d", "opt_e"), ExtensionPracticeTestAnswers.selected(runtime));
         assertTrue(runtime.session().correct());
         assertEquals(QuestionBankPracticeSession.State.SELECTED, runtime.session().state(0));
         assertEquals(QuestionBankPracticeSession.State.SUBMITTED, runtime.session().state(1));
         runtime.previous();
-        assertEquals(Set.of("opt_b"), runtime.session().selected());
+        assertEquals(Set.of("opt_b"), ExtensionPracticeTestAnswers.selected(runtime));
         assertTrue(attempts("q_one").isEmpty());
         assertEquals(1, attempts("q_two").size());
     }
 
     @Test void submittedAnswerComesFromAttemptEvenWhenDraftIsNull() {
-        runtime.select("opt_b"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit();
         assertNull(question("q_one").draftAnswer());
         var restored = new PersistentPracticeRuntime(service(database), codec.parse(codec.write(bank)), codec.contentId(bank));
-        assertEquals(Set.of("opt_b"), restored.session().selected());
+        assertEquals(Set.of("opt_b"), ExtensionPracticeTestAnswers.selected(restored));
         assertFalse(restored.session().correct());
     }
 
@@ -199,14 +170,14 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void repeatedSubmitFailsClosedAndNeverAddsSecondInitial() {
-        runtime.select("opt_a"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_a"); runtime.submit();
         assertThrows(IllegalStateException.class, runtime::submit);
         assertThrows(IllegalStateException.class, () -> service.submitAnswer(runtime.sessionId(), codec.contentId(bank), "q_one"));
         assertEquals(1, attempts("q_one").size());
     }
 
     @Test void concurrentConfirmCreatesExactlyOneInitialAttempt() throws Exception {
-        runtime.select("opt_a");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_a");
         String id = runtime.sessionId(), revision = codec.contentId(bank);
         CountDownLatch ready = new CountDownLatch(2), start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
@@ -224,7 +195,7 @@ class PersistentPracticeRuntimeIntegrationTest {
 
     @ParameterizedTest @ValueSource(strings = {"question", "activity"})
     void failedSubmitRollsBackAttemptStateAndDraftAndDoesNotHydrateSuccess(String failurePoint) throws Exception {
-        runtime.select("opt_b");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b");
         var beforeQuestion = question("q_one"); var beforeSession = session();
         sql(failurePoint.equals("question")
                 ? "CREATE TRIGGER fail_submit BEFORE UPDATE OF practice_state ON practice_session_question WHEN NEW.practice_state = 'SUBMITTED' BEGIN SELECT RAISE(ABORT, 'forced failure'); END"
@@ -234,31 +205,33 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(beforeSession, session());
         assertTrue(attempts("q_one").isEmpty());
         assertEquals(QuestionBankPracticeSession.State.SELECTED, runtime.session().state());
-        assertEquals(Set.of("opt_b"), runtime.session().selected());
+        assertEquals(Set.of("opt_b"), ExtensionPracticeTestAnswers.selected(runtime));
     }
 
     @Test void failedDraftAndNavigationLeaveRuntimeAndPersistedStateUnchanged() throws Exception {
-        runtime.select("opt_a");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_a");
         sql("CREATE TRIGGER fail_touch BEFORE UPDATE OF last_activity_at ON practice_session BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
-        assertThrows(RuntimeException.class, () -> runtime.select("opt_b"));
+        assertThrows(RuntimeException.class, () -> ExtensionPracticeTestAnswers.select(runtime,"opt_b"));
         assertThrows(RuntimeException.class, runtime::next);
-        assertEquals(Set.of("opt_a"), runtime.session().selected());
+        assertEquals(Set.of("opt_a"), ExtensionPracticeTestAnswers.selected(runtime));
         assertEquals(new PracticePayload(List.of("opt_a")), question("q_one").draftAnswer());
         assertEquals(0, runtime.session().index());
         assertEquals("q_one", session().currentQuestionId());
     }
 
     @Test void summaryPersistsAndRebuildHydratesExistingResultStatistics() {
-        runtime.select("opt_b"); runtime.submit(); runtime.next();
-        runtime.select("opt_d"); runtime.select("opt_e"); runtime.submit(); runtime.next();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit(); runtime.next();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_d"); ExtensionPracticeTestAnswers.select(runtime,"opt_e"); runtime.submit(); runtime.next();
         assertEquals(PracticeSession.View.SUMMARY, session().currentView());
         var restored = new PersistentPracticeRuntime(service(database), bank, codec.contentId(bank));
         assertTrue(restored.session().finished());
-        assertEquals(new QuestionBankPracticeSession.Result(2, 1, 1), restored.session().result());
+        assertEquals(2, restored.summary().totalCount());
+        assertEquals(1, restored.summary().correctCount());
+        assertEquals(1, restored.summary().incorrectCount());
     }
 
     @Test void retryClearsCurrentAnswerButPreservesInitialAttemptAcrossRebuild() {
-        runtime.select("opt_b"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit();
         var initial = attempts("q_one").getFirst();
         runtime.retry();
         assertEquals(PracticeSessionQuestion.State.RETRYING, question("q_one").practiceState());
@@ -267,18 +240,18 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(QuestionBankPracticeSession.State.UNANSWERED, runtime.session().state());
         var restored = new PersistentPracticeRuntime(service(database), bank, codec.contentId(bank));
         assertEquals(QuestionBankPracticeSession.State.UNANSWERED, restored.session().state());
-        assertTrue(restored.session().selected().isEmpty());
+        assertTrue(ExtensionPracticeTestAnswers.selected(restored).isEmpty());
         assertEquals(1, attempts("q_one").size());
         assertEquals(0, restored.summary().submittedCount());
         assertEquals(2, restored.summary().unfinishedCount());
     }
 
     @Test void retryDraftRemainsRetryingAndMultipleSubmissionsAppendImmutableFacts() {
-        runtime.select("opt_b"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit();
         var initial = attempts("q_one").getFirst();
         for (int attempt = 2; attempt <= 4; attempt++) {
             runtime.retry();
-            runtime.select(attempt == 3 ? "opt_a" : "opt_b");
+            ExtensionPracticeTestAnswers.select(runtime,attempt == 3 ? "opt_a" : "opt_b");
             assertEquals(PracticeSessionQuestion.State.RETRYING, question("q_one").practiceState());
             assertNotNull(question("q_one").draftAnswer());
             runtime.submit();
@@ -295,8 +268,8 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void emptyRetryDraftKeepsRetryContextAndPreviousAttempts() {
-        runtime.goTo(1); runtime.select("opt_d"); runtime.submit(); runtime.retry();
-        runtime.select("opt_d"); runtime.select("opt_d");
+        runtime.goTo(1); ExtensionPracticeTestAnswers.select(runtime,"opt_d"); runtime.submit(); runtime.retry();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_d"); ExtensionPracticeTestAnswers.select(runtime,"opt_d");
         assertEquals(PracticeSessionQuestion.State.RETRYING, question("q_two").practiceState());
         assertNull(question("q_two").draftAnswer());
         assertEquals(1, attempts("q_two").size());
@@ -305,7 +278,7 @@ class PersistentPracticeRuntimeIntegrationTest {
 
     @Test void invalidRetryAndRetryTransactionFailureLeaveFactsUntouched() throws Exception {
         assertThrows(IllegalStateException.class, runtime::retry);
-        runtime.select("opt_b");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b");
         assertThrows(IllegalStateException.class, runtime::retry);
         runtime.submit();
         var before = question("q_one"); var facts = attempts("q_one"); var activity = session().lastActivityAt();
@@ -337,18 +310,18 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void summaryUsesLatestSubmittedResultAndTreatsRetryingAsUnfinished() {
-        runtime.select("opt_b"); runtime.submit(); runtime.goTo(1); runtime.select("opt_d");
-        runtime.select("opt_e"); runtime.submit(); runtime.next();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit(); runtime.goTo(1); ExtensionPracticeTestAnswers.select(runtime,"opt_d");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_e"); runtime.submit(); runtime.next();
         assertEquals(new PracticeSummary(2, 2, 1, 1, 0, java.util.Optional.of(java.math.BigDecimal.valueOf(1)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))), runtime.summary());
         runtime.goTo(0); runtime.retry(); runtime.goTo(1); runtime.next();
         assertEquals(new PracticeSummary(2, 1, 1, 0, 1, java.util.Optional.of(java.math.BigDecimal.valueOf(1)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))), runtime.summary());
-        runtime.goTo(0); runtime.select("opt_a"); runtime.submit(); runtime.goTo(1); runtime.next();
+        runtime.goTo(0); ExtensionPracticeTestAnswers.select(runtime,"opt_a"); runtime.submit(); runtime.goTo(1); runtime.next();
         assertEquals(new PracticeSummary(2, 2, 2, 0, 0, java.util.Optional.of(java.math.BigDecimal.valueOf(2)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))), runtime.summary());
         assertEquals(2, attempts("q_one").size());
     }
 
     @Test void submittingLastQuestionDoesNotOpenSummaryUntilNext() {
-        runtime.goTo(1); runtime.select("opt_d"); runtime.select("opt_e"); runtime.submit();
+        runtime.goTo(1); ExtensionPracticeTestAnswers.select(runtime,"opt_d"); ExtensionPracticeTestAnswers.select(runtime,"opt_e"); runtime.submit();
         assertEquals(PracticeSession.View.QUESTION, session().currentView());
         assertFalse(runtime.session().finished());
         runtime.next();
@@ -356,7 +329,7 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void restartArchivesEntireOldRoundAndCreatesFreshActiveFromCurrentBank() {
-        runtime.select("opt_b"); runtime.submit(); runtime.goTo(1); runtime.select("opt_d"); runtime.next();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit(); runtime.goTo(1); ExtensionPracticeTestAnswers.select(runtime,"opt_d"); runtime.next();
         String oldId = runtime.sessionId();
         var oldSession = session();
         var oldRows = new SqlitePracticeSessionQuestionRepository(database).findBySessionId(oldId);
@@ -379,7 +352,7 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void restartUsesUpdatedBankSnapshotWithoutChangingArchivedQuestion() {
-        runtime.select("opt_a"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_a"); runtime.submit();
         String oldId = runtime.sessionId();
         var oldRow = question("q_one");
         var first = bank.questions().getFirst();
@@ -396,7 +369,7 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void failedNewSessionCreationRollsBackArchiveAndKeepsRuntime() throws Exception {
-        runtime.select("opt_b"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit();
         String oldId = runtime.sessionId(); var oldSession = session(); var oldRow = question("q_one");
         sql("CREATE TRIGGER fail_new_round BEFORE INSERT ON practice_session WHEN NEW.status = 'ACTIVE' BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
         assertThrows(RuntimeException.class, runtime::restart);
@@ -423,8 +396,8 @@ class PersistentPracticeRuntimeIntegrationTest {
     @Test void historyQueryExcludesActiveAndUsesArchivedSnapshotsAndLatestAttempts() {
         var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
         assertTrue(history.listArchived(bank.assetId()).isEmpty());
-        runtime.select("opt_b"); runtime.submit(); runtime.retry(); runtime.select("opt_a"); runtime.submit();
-        runtime.goTo(1); runtime.select("opt_d");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit(); runtime.retry(); ExtensionPracticeTestAnswers.select(runtime,"opt_a"); runtime.submit();
+        runtime.goTo(1); ExtensionPracticeTestAnswers.select(runtime,"opt_d");
         String archivedId = runtime.sessionId();
         runtime.restart();
         var entries = history.listArchived(bank.assetId());
@@ -432,7 +405,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(archivedId, entries.getFirst().sessionId());
         assertEquals(new PracticeSummary(2, 1, 1, 0, 1, java.util.Optional.of(java.math.BigDecimal.valueOf(1)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))), entries.getFirst().summary());
         assertEquals(PracticeSession.Status.ACTIVE, session().status());
-        runtime.select("opt_b"); runtime.submit(); // An ACTIVE round is never History.
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit(); // An ACTIVE round is never History.
         assertEquals(entries, history.listArchived(bank.assetId()));
         var original = bank.questions().getFirst();
         var changed = Question.choice(original.id(), original.type(), new TextContent("changed"), original.analysis(), original.sourceRefs(), original.choicePayload(), original.choiceAnswerSpec());
@@ -443,14 +416,14 @@ class PersistentPracticeRuntimeIntegrationTest {
 
     @Test void historyOrderingAndRetryingUnfinishedWithZeroScore() {
         var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
-        runtime.select("opt_b"); runtime.submit(); runtime.retry();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit(); runtime.retry();
         String first = runtime.sessionId(); runtime.restart();
         assertEquals(new PracticeSummary(2, 0, 0, 0, 2, java.util.Optional.of(java.math.BigDecimal.valueOf(0)), java.util.Optional.of(java.math.BigDecimal.valueOf(2))),
                 history.listArchived(bank.assetId()).getFirst().summary());
         var laterService = new PracticeSessionService(new SqlitePracticeTransaction(database),
                 Clock.fixed(NOW.plusSeconds(60), ZoneOffset.UTC));
         var later = new PersistentPracticeRuntime(laterService, bank, codec.contentId(bank));
-        later.select("opt_b"); later.submit();
+        ExtensionPracticeTestAnswers.select(later,"opt_b"); later.submit();
         String second = later.sessionId(); later.restart();
         assertEquals(List.of(second, first), history.listArchived(bank.assetId()).stream()
                 .map(PracticeHistoryEntry::sessionId).toList());
@@ -460,7 +433,7 @@ class PersistentPracticeRuntimeIntegrationTest {
 
     @Test void deletingArchivedCascadesOnlyThatRoundAndRejectsActiveOrOtherBank() {
         var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
-        runtime.select("opt_b"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit();
         String oldId = runtime.sessionId();
         String oldQuestionId = question("q_one").id();
         runtime.restart();
@@ -478,7 +451,7 @@ class PersistentPracticeRuntimeIntegrationTest {
 
     @Test void failedHistoryDeleteRollsBackAndLeavesCardSourceRows() throws Exception {
         var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
-        runtime.select("opt_b"); runtime.submit(); String archivedId = runtime.sessionId(); runtime.restart();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit(); String archivedId = runtime.sessionId(); runtime.restart();
         var before = history.listArchived(bank.assetId());
         sql("CREATE TRIGGER fail_history_delete BEFORE DELETE ON practice_session BEGIN SELECT RAISE(ABORT, 'forced failure'); END");
         assertThrows(RuntimeException.class, () -> history.deleteArchivedSession(bank.assetId(), archivedId));
@@ -499,8 +472,8 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void archivedDetailLoadsOrderedSnapshotAndAllAttemptsWithoutCurrentBank() {
-        runtime.select("opt_b"); runtime.submit(); runtime.retry(); runtime.select("opt_a"); runtime.submit();
-        runtime.goTo(1); runtime.select("opt_d");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit(); runtime.retry(); ExtensionPracticeTestAnswers.select(runtime,"opt_a"); runtime.submit();
+        runtime.goTo(1); ExtensionPracticeTestAnswers.select(runtime,"opt_d");
         String archived = runtime.sessionId();
         runtime.restart();
         var history = new PracticeHistoryService(new SqlitePracticeTransaction(database));
@@ -550,7 +523,7 @@ class PersistentPracticeRuntimeIntegrationTest {
                 history.loadArchivedSessionDetail(bank.assetId(), unanswered).questions().getFirst().finalState());
         assertTrue(history.loadArchivedSessionDetail(bank.assetId(), unanswered).questions().getFirst().attempts().isEmpty());
 
-        runtime.select("opt_b"); runtime.submit(); runtime.retry(); runtime.select("opt_a");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit(); runtime.retry(); ExtensionPracticeTestAnswers.select(runtime,"opt_a");
         String retrying = runtime.sessionId(); runtime.restart();
         var question = history.loadArchivedSessionDetail(bank.assetId(), retrying).questions().getFirst();
         assertEquals(PracticeSessionQuestion.State.RETRYING, question.finalState());
@@ -560,7 +533,7 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void archivedDetailRetainsRevisionAttemptPayloadAndDoesNotWriteOnRead() {
-        runtime.select("opt_b"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit();
         String archived = runtime.sessionId();
         String rowId = question("q_one").id();
         new SqliteQuestionAttemptRepository(database).append(new QuestionAttempt("attempt_revision", rowId, 2,
@@ -582,7 +555,7 @@ class PersistentPracticeRuntimeIntegrationTest {
 
     @Test void editSaveReopenSynchronizesNonSemanticThenSemanticRevisionAndRejectsStaleRuntime() throws Exception {
         Path file = temp.resolve("bank.qbank"); QBankTestPackageBuilder.write(file, codec.write(bank));
-        runtime.select("opt_a"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_a"); runtime.submit();
         String id = runtime.sessionId();
         var old = bank.questions().getFirst();
         var changed = Question.choice(old.id(), old.type(), old.prompt(), new TextContent("new analysis"), old.sourceRefs(), old.choicePayload(), old.choiceAnswerSpec());
@@ -603,7 +576,7 @@ class PersistentPracticeRuntimeIntegrationTest {
     }
 
     @Test void archivedSessionCannotReceiveCommandsAndOpenCreatesAnotherActiveWithoutTouchingHistory() {
-        runtime.select("opt_b"); runtime.submit();
+        ExtensionPracticeTestAnswers.select(runtime,"opt_b"); runtime.submit();
         var saved = question("q_one"); var savedAttempts = attempts("q_one");
         var sessions = new SqlitePracticeSessionRepository(database);
         sessions.archive(runtime.sessionId(), NOW);
@@ -626,13 +599,13 @@ class PersistentPracticeRuntimeIntegrationTest {
         Path registry = paths.workspaceRoot(one.id()).resolve(".quizforge/workspace.db");
         byte[] registryBefore = Files.readAllBytes(registry);
         var provider = new SqliteWorkspacePracticeRuntimeProvider(paths, codec, Clock.fixed(NOW, ZoneOffset.UTC));
-        var a = provider.open(one.id(), bank); a.select("opt_b");
+        var a = provider.open(one.id(), bank); ExtensionPracticeTestAnswers.select(a,"opt_b");
         var b = provider.open(two.id(), bank);
         assertNotEquals(a.sessionId(), b.sessionId());
         assertEquals(QuestionBankPracticeSession.State.UNANSWERED, b.session().state());
         provider = new SqliteWorkspacePracticeRuntimeProvider(paths, codec, Clock.fixed(NOW, ZoneOffset.UTC));
         var restored = provider.open(one.id(), codec.parse(codec.write(bank)));
-        assertEquals(a.sessionId(), restored.sessionId()); assertEquals(Set.of("opt_b"), restored.session().selected());
+        assertEquals(a.sessionId(), restored.sessionId()); assertEquals(Set.of("opt_b"), ExtensionPracticeTestAnswers.selected(restored));
         assertArrayEquals(registryBefore, Files.readAllBytes(registry));
         assertTrue(Files.exists(paths.workspaceRoot(one.id()).resolve(".quizforge/quizforge.db")));
         assertFalse(Files.exists(paths.workspaceRoot(one.id()).resolve(".quizforge/workspaces")));
@@ -645,7 +618,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         var provider = new SqliteWorkspacePracticeRuntimeProvider(paths, codec, Clock.fixed(NOW, ZoneOffset.UTC));
         new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(paths.workspaceRoot(workspace.id()).resolve("question-banks/review.qbank"),bank);
         var original = provider.open(workspace.id(), bank);
-        original.select("opt_a"); original.submit();
+        ExtensionPracticeTestAnswers.select(original,"opt_a"); original.submit();
         var essay = io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst();
         var mixed = new QuestionBank(bank.assetId(), bank.title(), List.of(),
                 List.of(essay, bank.questions().get(0), bank.questions().get(1)), List.of());
@@ -664,14 +637,14 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(codec.contentId(mixed), new SqlitePracticeSessionRepository(db)
                 .findById(restored.sessionId()).orElseThrow().questionBankContentId());
         assertEquals(List.of("q_essay","q_one", "q_two"), restored.session().bank().questions().stream().map(Question::id).toList());
-        restored.goTo(2); restored.select("opt_d"); restored.select("opt_e");
+        restored.goTo(2); ExtensionPracticeTestAnswers.select(restored,"opt_d"); ExtensionPracticeTestAnswers.select(restored,"opt_e");
         var editedEssay = io.quizforge.infrastructure.testing.EssayTestBanks.essay(essay.id(),
                 new TextContent("Edited essay only"), essay.essayPayload(), null);
         var edited = new QuestionBank(bank.assetId(), bank.title(), List.of(),
                 List.of(editedEssay, bank.questions().get(0), bank.questions().get(1)), List.of());
         new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(paths.workspaceRoot(workspace.id()).resolve("question-banks/review.qbank"),edited);
         var afterEdit = provider.open(workspace.id(), edited);
-        assertEquals(Set.of("opt_d", "opt_e"), afterEdit.session().selected());
+        assertEquals(Set.of("opt_d", "opt_e"), ExtensionPracticeTestAnswers.selected(afterEdit));
         assertEquals(priorAttempts, attempts.listBySessionQuestion(priorRows.getFirst().id()));
         afterEdit.submit(); afterEdit.next();
         assertEquals(3, afterEdit.summary().totalCount()); assertEquals(2, afterEdit.summary().correctCount());
@@ -691,7 +664,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         Path root=paths.workspaceRoot(workspace.id()), file=root.resolve("question-banks/original.qbank");
         new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(file,bank);
         var provider=new SqliteWorkspacePracticeRuntimeProvider(paths,codec,Clock.fixed(NOW,ZoneOffset.UTC));
-        var original=provider.open(workspace.id(),bank);original.select("opt_a");original.submit();
+        var original=provider.open(workspace.id(),bank);ExtensionPracticeTestAnswers.select(original,"opt_a");original.submit();
         var attempts=new SqliteQuestionAttemptRepository(new SqliteDatabase(root.resolve(".quizforge/quizforge.db")));
         var questions=new SqlitePracticeSessionQuestionRepository(new SqliteDatabase(root.resolve(".quizforge/quizforge.db")));
         var row=questions.findBySessionIdAndQuestionId(original.sessionId(),"q_one").orElseThrow();
@@ -704,109 +677,16 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(facts,attempts.listBySessionQuestion(row.id()));
     }
 
-    @Test void scoresCountGradedAttemptsAndLeaveEssayPending() {
-        runtime.select("opt_a");runtime.submit();
-        assertEquals(java.math.BigDecimal.ONE,runtime.summary().score().orElseThrow());
-        runtime.next();runtime.select("opt_d");
-        assertEquals(java.math.BigDecimal.ONE,runtime.summary().score().orElseThrow());
-        var essay=io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst();
-        var mixed=new QuestionBank("qb_scores","scores",List.of(),List.of(bank.questions().getFirst(),essay),List.of());
-        var active=new PersistentPracticeRuntime(service,mixed,codec.contentId(mixed));
-        active.select("opt_a");active.submit();active.next();active.saveEssayDraft(essay.id(),new EssayPracticeAnswer("answer",null));active.submit();
-        assertEquals(2,active.summary().submittedCount());assertEquals(1,active.summary().unscoredCount());
-        assertEquals(java.math.BigDecimal.ONE,active.summary().score().orElseThrow());
-        assertEquals(new java.math.BigDecimal("21.25"),active.summary().maxScore().orElseThrow());
-    }
-
-    @Test void unsubmittedEssayDocumentAndEmbeddedImageSurviveDatabaseReopenAndClear() throws Exception {
-        var essayBank=io.quizforge.infrastructure.testing.EssayTestBanks.bank();
-        var image=java.util.Base64.getEncoder().encodeToString(io.quizforge.infrastructure.testing.EssayTestBanks.image("png"));
-        String document="{\"version\":\"1.0.4\",\"options\":{},\"data\":{\"main\":[{\"value\":\"未提交的作文\\n第二行\"},{\"type\":\"image\",\"value\":\"data:image/png;base64,"+image+"\",\"width\":24,\"height\":16}]}}";
-        var answer=new EssayPracticeAnswer("未提交的作文\n第二行",document);
-        var essay=new PersistentPracticeRuntime(service,essayBank,codec.contentId(essayBank));
-        essay.saveEssayDraft("q_essay",answer);
-        var questions=new SqlitePracticeSessionQuestionRepository(database);
-        var row=questions.findBySessionIdAndQuestionId(essay.sessionId(),"q_essay").orElseThrow();
-        assertEquals(PracticeSessionQuestion.State.DRAFT,row.practiceState());
-        assertTrue(new SqliteQuestionAttemptRepository(database).listBySessionQuestion(row.id()).isEmpty());
-        essay.goTo(1);
-        var reopenedDb=new SqliteDatabase(new QuizForgeDataDirectory(temp));
-        var restored=new PersistentPracticeRuntime(service(reopenedDb),essayBank,codec.contentId(essayBank));
-        assertEquals(essay.sessionId(),restored.sessionId());assertEquals(1,restored.session().index());
-        assertEquals(answer,restored.essayAnswer("q_essay"));
-        restored.goTo(0);restored.saveEssayDraft("q_essay",new EssayPracticeAnswer("",null));
-        var cleared=new PersistentPracticeRuntime(service(reopenedDb),essayBank,codec.contentId(essayBank));
-        assertTrue(cleared.essayAnswer("q_essay").empty());
-        assertEquals(QuestionBankPracticeSession.State.UNANSWERED,cleared.session().state());
-        assertNull(questions.findBySessionIdAndQuestionId(cleared.sessionId(),"q_essay").orElseThrow().draftAnswer());
-    }
-
-    @Test void essaySubmissionLocksAnswerUntilRetryAndArchivesRetryDraft() {
-        var essayBank=io.quizforge.infrastructure.testing.EssayTestBanks.bank();
-        var essay=new PersistentPracticeRuntime(service,essayBank,codec.contentId(essayBank));
-        essay.saveEssayDraft("q_essay",new EssayPracticeAnswer("Initial answer",null));essay.submit();
-        assertEquals(1,essay.summary().submittedCount());assertEquals(1,essay.summary().unscoredCount());
-        assertEquals(0,essay.summary().incorrectCount());
-        var row=essay.questionState("q_essay");var initial=row.attempts().getFirst();
-        assertEquals(QuestionAttempt.Result.UNSCORED,initial.result());assertNull(row.sessionQuestion().draftAnswer());
-        assertThrows(IllegalStateException.class,()->essay.saveEssayDraft("q_essay",new EssayPracticeAnswer("Direct edit",null)));
-        essay.retry();
-        essay.saveEssayDraft("q_essay",new EssayPracticeAnswer("Revising without submitting",null));
-        var restored=new PersistentPracticeRuntime(service(database),essayBank,codec.contentId(essayBank));
-        assertEquals("Revising without submitting",restored.essayAnswer("q_essay").text());
-        assertEquals(PracticeSessionQuestion.State.RETRYING,restored.questionState("q_essay").sessionQuestion().practiceState());
-        assertEquals(List.of(initial),restored.questionState("q_essay").attempts());
-        String archived=restored.sessionId();restored.restart();
-        var history=new PracticeHistoryService(new SqlitePracticeTransaction(database)).loadArchivedSessionDetail(essayBank.assetId(),archived);
-        assertEquals("Revising without submitting",EssayPracticeAnswer.from(history.questions().getFirst().draftAnswer()).text());
-        assertEquals(1,history.questions().getFirst().attempts().size());
-    }
-
     @Test void previousChoiceOnlyActiveAtSameRevisionExpandsWithoutLosingChoiceDraft() {
         var essay=io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst();
         var mixed=new QuestionBank(bank.assetId(),bank.title(),List.of(),List.of(essay,bank.questions().get(0),bank.questions().get(1)),List.of());
         // Model the old provider: persisted choices, but the full mixed-bank contentId.
-        var old=new PersistentPracticeRuntime(service,bank,codec.contentId(mixed));old.select("opt_b");
+        var old=new PersistentPracticeRuntime(service,bank,codec.contentId(mixed));ExtensionPracticeTestAnswers.select(old,"opt_b");
         var restored=new PersistentPracticeRuntime(service,mixed,codec.contentId(mixed));
         assertEquals(old.sessionId(),restored.sessionId());assertEquals(1,restored.session().index());
-        assertEquals(Set.of("opt_b"),restored.session().selected());
+        assertEquals(Set.of("opt_b"),ExtensionPracticeTestAnswers.selected(restored));
         assertEquals(PracticeSessionQuestion.State.UNANSWERED,restored.questionState(essay.id()).sessionQuestion().practiceState());
         assertTrue(restored.questionState("q_one").attempts().isEmpty());
-    }
-
-    @Test void essayHistoryOwnsPromptResourcesScoreAndReferenceWithoutResettingExistingAttempt() throws Exception {
-        byte[] bytes=("{\"version\":\"1.0.4\",\"options\":{},\"data\":{\"main\":[{\"value\":\"Directions\",\"bold\":true},{\"type\":\"image\",\"value\":\"data:image/png;base64,"
-                +java.util.Base64.getEncoder().encodeToString(io.quizforge.infrastructure.testing.EssayTestBanks.image("png"))+"\",\"width\":24,\"height\":16}]}}")
-                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        String hash=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
-        var resource=new QBankResource("res_canvas_"+hash,ResourceKind.DOCUMENT,"application/vnd.quizforge.canvas+json","resources/prompt.canvas.json",hash);
-        var essay=new Question("q_history_essay","ESSAY",List.of(),new DocumentContent(resource.id(),"Directions"),new EssayPayload(null),
-                new EssayAnswerSpec(new TextContent("Reference answer")),new ScoreSpec(new java.math.BigDecimal("20.25")),
-                new EvaluationSpec(List.of(new EvaluationCriterion("content","Content",java.math.BigDecimal.ONE)),"Rubric guidance"),new TextContent("Analysis"),List.of());
-        var original=new QuestionBank("qb_history_essay","History",List.of(),List.of(essay),List.of(resource));
-        io.quizforge.core.port.QuestionResourceInput input=r->new java.io.ByteArrayInputStream(bytes);
-        String revision=codec.contentId(original);
-        var active=new PersistentPracticeRuntime(service,original,revision,input);
-        active.saveEssayDraft(essay.id(),new EssayPracticeAnswer("My answer",null));active.submit();
-        var before=active.questionState(essay.id());
-        // Simulate an existing ACTIVE snapshot from before presentation resources were saved.
-        new SqlitePracticeSessionQuestionRepository(database).updateSnapshot(active.sessionId(),essay.id(),0,
-                PracticeQuestionSnapshotMapper.logical(before.sessionQuestion().snapshot()),NOW);
-        var enriched=new PersistentPracticeRuntime(service,original,revision,input);
-        assertEquals(before.attempts(),enriched.questionState(essay.id()).attempts());
-        assertEquals(before.sessionQuestion().id(),enriched.questionState(essay.id()).sessionQuestion().id());
-        String archived=enriched.sessionId();enriched.restart();
-        var history=new PracticeHistoryService(new SqlitePracticeTransaction(new SqliteDatabase(new QuizForgeDataDirectory(temp))))
-                .loadArchivedSessionDetail(original.assetId(),archived);
-        var fields=QuestionContentData.map(history.questions().getFirst().contentSnapshot().value());
-        var saved=EssayQuestionSnapshot.from(new PracticePayload(fields.get("essayPresentation")));
-        assertEquals(revision,history.bankContentId());assertEquals(essay.prompt(),saved.prompt());
-        assertEquals(new java.math.BigDecimal("20.25"),saved.maxScore());
-        assertEquals(new TextContent("Reference answer"),saved.reference());assertEquals(new TextContent("Analysis"),saved.analysis());
-        assertEquals("Rubric guidance",saved.guidance());
-        try(var stream=saved.open(resource)){assertArrayEquals(bytes,stream.readAllBytes());}
-        assertEquals(1,history.questions().getFirst().attempts().size());
-        assertEquals("My answer",EssayPracticeAnswer.from(history.questions().getFirst().attempts().getFirst().answer()).text());
     }
 
     @Test void weightedScoresSurviveReopenAndArchivedTotalsRemainFrozen(){
@@ -815,7 +695,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         var b=new Question(second.id(),second.type(),second.stimulusRefs(),second.prompt(),second.payload(),second.answerSpec(),new ScoreSpec(new java.math.BigDecimal("3.25")),second.evaluationSpec(),second.analysis(),second.sourceRefs());
         var weighted=new QuestionBank(bank.assetId(),bank.title(),bank.stimuli(),List.of(a,b),bank.resources());
         var active=new PersistentPracticeRuntime(service,weighted,codec.contentId(weighted));
-        active.select("opt_a");active.submit();active.next();active.select("opt_f");active.submit();active.next();
+        ExtensionPracticeTestAnswers.select(active,"opt_a");active.submit();active.next();ExtensionPracticeTestAnswers.select(active,"opt_f");active.submit();active.next();
         assertEquals(new java.math.BigDecimal("0.5"),active.summary().score().orElseThrow());
         assertEquals(new java.math.BigDecimal("3.75"),active.summary().maxScore().orElseThrow());
         var reopened=new PersistentPracticeRuntime(service(new SqliteDatabase(new QuizForgeDataDirectory(temp))),weighted,codec.contentId(weighted));
@@ -827,7 +707,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(new java.math.BigDecimal("3.75"),frozen.maxScore().orElseThrow());
     }
     @Test void addingScoreMetadataToLegacyActiveRoundKeepsSubmittedAttemptsAndDrafts() throws Exception {
-        runtime.select("opt_a");runtime.submit();runtime.next();runtime.select("opt_d");
+        ExtensionPracticeTestAnswers.select(runtime,"opt_a");runtime.submit();runtime.next();ExtensionPracticeTestAnswers.select(runtime,"opt_d");
         var submitted=question("q_one");var draft=question("q_two");
         for(var row:List.of(submitted,draft)){
             var snapshot=row.snapshot();var fields=new java.util.LinkedHashMap<>(QuestionContentData.map(snapshot.correctAnswer().value()));fields.remove("maxScore");

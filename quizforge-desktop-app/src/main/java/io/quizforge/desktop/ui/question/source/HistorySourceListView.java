@@ -38,4 +38,6 @@ public final class HistorySourceListView extends VBox {
             getChildren().add(UiTheme.label("来源暂不可读取", "question-source-status"));
         }
     }
+    public java.util.List<java.util.Map<String,Object>> pageSources(){return sources.inspect(workspace,snapshot).stream().map(source->java.util.Map.<String,Object>of("label",source.label(),"message",source.message(),"navigable",source.navigable())).toList();}
+    public void openSource(int index){sources.open(workspace,sources.inspect(workspace,snapshot).get(index).ref());}
 }

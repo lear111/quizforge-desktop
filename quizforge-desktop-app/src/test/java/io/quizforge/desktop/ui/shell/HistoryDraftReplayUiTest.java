@@ -49,12 +49,16 @@ class HistoryDraftReplayUiTest extends WorkspaceUiTestSupport {
     @Test void selectedAttemptOwnsFrozenAnswerInkAndGeometryAcrossModesQuestionsAndRepeatedToggles() throws Exception {
         var prepared=prepare(true,true);
         var codec=new QuestionBankV2Codec();var bank=codec.parse(io.quizforge.infrastructure.testing.QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(prepared.path())));
-        var old=bank.questions().getFirst();String frozenStem=io.quizforge.core.question.type.objective.choice.QuestionText.prompt(old);
+        var old=bank.questions().getFirst();String frozenStem=io.quizforge.core.question.content.QuestionText.prompt(old);
         var changed=io.quizforge.core.question.model.Question.choice(old.id(),old.type(),new io.quizforge.core.question.content.TextContent("CURRENT BANK TEXT MUST NOT APPEAR"),old.analysis(),old.sourceRefs(),old.choicePayload(),old.choiceAnswerSpec());
         fixture.write(prepared.path(),codec.write(new io.quizforge.core.question.model.QuestionBank(bank.assetId(),bank.title(),"2.0",List.of(),List.of(changed,bank.questions().getLast()),List.of())));
         fx(()->openHistory(prepared));var host=onFx(this::host);
-        assertNull(onFx(host::draftView),"Lazy WebView");int windows=onFx(()->Window.getWindows().size());
+        assertNotNull(onFx(host::draftView),"Default fixed view uses the shared WebView");await(()->!onFx(host::busy));
+        assertEquals(HistorySurfaceMode.RESULT,onFx(host::mode));
+        assertEquals(1,((Number)script(host,"document.querySelector('#strokes').children.length")).intValue());
+        script(host,"window.historyCardRef=document.querySelector('#question-card')");int windows=onFx(()->Window.getWindows().size());
         enter(host);var web=onFx(host::draftView);
+        assertEquals(Boolean.TRUE,script(host,"window.historyCardRef===document.querySelector('#question-card')"));
         assertEquals(prepared.second(),attempt(host));assertEquals(ink("B",1),document(host));
         assertEquals(frozenStem,script(host,"window.historyDraftReplay.getViewState().question.prompt.text"));
         assertEquals("opt_outline_0_0",script(host,"window.historyDraftReplay.getViewState().question.selectedOptionIds[0]"));
@@ -63,7 +67,8 @@ class HistoryDraftReplayUiTest extends WorkspaceUiTestSupport {
         assertEquals("opt_outline_0_1",script(host,"window.historyDraftReplay.getViewState().question.selectedOptionIds[0]"));
         assertEquals(3,((Number)script(host,"document.querySelector('#strokes').children.length")).intValue());
         fx(()->host.toggleButton().fire());assertEquals(HistorySurfaceMode.RESULT,onFx(host::mode));
-        fx(()->assertTrue(text(shell.lookup("#history-detail-question")).contains("第 1 / 2 次作答")));
+        fx(()->assertTrue(text(shell.lookup("#history-attempt-controls")).contains("第 1 / 2 次作答")));
+        assertEquals(3,((Number)script(host,"document.querySelector('#strokes').children.length")).intValue());
         for(int i=0;i<3;i++){enter(host);assertSame(web,onFx(host::draftView));assertEquals(prepared.first(),attempt(host));fx(()->host.toggleButton().fire());}
         enter(host);fx(()->button("history-next-attempt").fire());await(()->prepared.second().equals(attempt(host)));
         assertEquals(ink("B",1),document(host));
@@ -96,13 +101,13 @@ class HistoryDraftReplayUiTest extends WorkspaceUiTestSupport {
         assertEquals(0,((Number)script(host,"window.historyChanges")).intValue());assertEquals(before,rows());
         var web=onFx(host::draftView);fx(()->shell.tabs().closeAll());assertTrue(web.isDestroyed());assertEquals(before,rows());
     }
-    @Test void missingSnapshotHidesEntryAndQuestionSwitchClearsPreviousInkWhileBadJsonKeepsResultUsable() throws Exception {
+    @Test void absentAnnotationsUseNewCardAndCorruptSnapshotsDoNotFallBackToOldCards() throws Exception {
         var prepared=prepare(true,false);fx(()->openHistory(prepared));var host=onFx(this::host);enter(host);var web=onFx(host::draftView);
         fx(()->button("history-draft-next-question").fire());
-        assertEquals(HistorySurfaceMode.RESULT,onFx(host::mode));fx(()->assertFalse(host.toggleButton().isVisible()));
+        await(()->!onFx(host::busy));assertEquals(HistorySurfaceMode.DRAFT,onFx(host::mode));fx(()->assertTrue(host.toggleButton().isVisible()));
         assertEquals(0,((Number)script(host,"document.querySelector('#strokes').children.length")).intValue());
-        fx(()->assertNotNull(shell.lookup("#history-attempt-result")));
-        fx(()->button("history-previous-question").fire());enter(host);assertSame(web,onFx(host::draftView));assertEquals(ink("B",1),document(host));
+        assertNotNull(script(host,"window.historyDraftReplay.getViewState().question.result"));
+        fx(()->button("history-draft-previous-question").fire());enter(host);assertSame(web,onFx(host::draftView));assertEquals(ink("B",1),document(host));
         fx(()->button("history-detail-back").fire());assertTrue(web.isDestroyed());
         // A separate archived attempt with no snapshot is corrupt only after an INSERT; frozen UPDATE remains forbidden.
         fx(()->shell.tabs().closeAll());
@@ -110,11 +115,11 @@ class HistoryDraftReplayUiTest extends WorkspaceUiTestSupport {
         try(var c=practiceDb().openConnection();var s=c.prepareStatement("INSERT INTO attempt_draft_snapshot(attempt_id,document_json,created_at) VALUES(?,?,?)")){
             s.setString(1,legacy.second());s.setString(2,"{");s.setString(3,Instant.now().toString());s.executeUpdate();
         }
-        fx(()->openHistory(legacy));var invalid=onFx(this::host);var before=rows();fx(()->invalid.toggleButton().fire());
-        assertEquals(HistorySurfaceMode.DRAFT,onFx(invalid::mode));fx(()->assertTrue(text(shell.lookup("#history-draft-error")).contains("格式")));
-        fx(()->invalid.toggleButton().fire());fx(()->assertNotNull(shell.lookup("#history-attempt-result")));
-        fx(()->button("history-previous-attempt").fire());assertEquals(HistorySurfaceMode.RESULT,onFx(invalid::mode));fx(()->assertFalse(invalid.toggleButton().isVisible()));
-        assertNull(onFx(invalid::draftView),"No fake document or WebView for legacy history");assertEquals(before,rows());
+        fx(()->openHistory(legacy));var invalid=onFx(this::host);var before=rows();
+        fx(()->{assertFalse(invalid.toggleButton().isVisible());assertTrue(text(shell.lookup("#history-draft-error")).contains("格式"));assertNull(shell.lookup("#history-attempt-result"));});
+        assertNull(onFx(invalid::draftView),"Corrupt snapshot does not create a replacement document");
+        fx(()->button("history-previous-attempt").fire());enter(invalid);
+        assertTrue(document(invalid).strokes().isEmpty());assertNotNull(attempt(invalid));assertEquals(before,rows());
     }
     private HistorySurfaceHost host(){return (HistorySurfaceHost)shell.lookup("#history-surface-host");}
     private static DraftCanvasDocument ink(String name,int count){
@@ -129,7 +134,7 @@ class HistoryDraftReplayUiTest extends WorkspaceUiTestSupport {
     private static Object script(HistorySurfaceHost host,String code)throws Exception{return onFx(()->host.draftView().view().getEngine().executeScript(code));}
     private static String attempt(HistorySurfaceHost host)throws Exception{return (String)script(host,"window.historyDraftReplay.getViewState().question.result.attemptId");}
     private static DraftCanvasDocument document(HistorySurfaceHost host)throws Exception{return DraftCanvasJsonCodec.decode((String)script(host,"window.draftCanvas.getDraft()"));}
-    private static void enter(HistorySurfaceHost host)throws Exception{fx(()->host.toggleButton().fire());await(()->!onFx(host::busy));assertEquals(HistorySurfaceMode.DRAFT,onFx(host::mode));fx(()->assertFalse(host.lookup("#history-draft-error").isVisible()));}
+    private static void enter(HistorySurfaceHost host)throws Exception{await(()->!onFx(host::busy));if(onFx(host::mode)!=HistorySurfaceMode.DRAFT)fx(()->host.toggleButton().fire());await(()->!onFx(host::busy));assertEquals(HistorySurfaceMode.DRAFT,onFx(host::mode));fx(()->assertFalse(host.lookup("#history-draft-error").isVisible()));}
     private static <T>T onFx(Callable<T> action)throws Exception{var task=new FutureTask<>(action);Platform.runLater(task);return task.get(20,TimeUnit.SECONDS);}
     private static void await(Callable<Boolean> condition)throws Exception{long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(20);while(System.nanoTime()<end){if(condition.call())return;Thread.sleep(50);}fail("Timed out waiting for History replay");}
 }

@@ -30,7 +30,7 @@ import java.util.*;
 
 /** Maps the supported Canvas Editor element subset to portable QBank content. */
 final class CanvasEditorAdapter {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = io.quizforge.infrastructure.json.DocumentJson.mapper();
     record ImageData(String dataUrl, int width, int height) { }
     private CanvasEditorAdapter() { }
 

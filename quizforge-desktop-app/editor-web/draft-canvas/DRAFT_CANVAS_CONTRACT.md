@@ -63,6 +63,8 @@ The canonical parser requires all shown fields. Coordinates must be finite numbe
 
 ### Java / JS boundary
 
+The floating whiteboard toolbar adds optional `texts` and `paper` fields to schema 1.0/layout 1. `texts` stores plain World annotations `{id,x,y,width,size,color,text}` with unique IDs and at most 10000 characters per item; `paper` stores `{color,pattern}` where pattern is PLAIN, DOTS, LINES or GRID. Missing extensions retain the original five-field JSON encoding. Straight lines and rectangles use ordinary PEN point arrays. Undo includes annotations and paper; camera changes remain independent. These fields are part of active/frozen draft snapshots, never formal answers.
+
 - JS `src/canvas/document.js`: `parseDraftCanvasDocument`, `createDraftCanvasDocument`, `upgradePocDraft`.
 - Core `practice.draft.DraftCanvasDocument`: immutable record with nested Viewport/QuestionCard/Stroke/Point, `createEmpty`, `withViewport`. Infrastructure `DraftCanvasJsonCodec`: `decode`, `encode`, explicit `upgradePoc`. The desktop adapter consumes the one Core model.
 - Both tests read `test/fixtures/document-v1.json`. Java lists and points are immutable; JS normalized values are detached copies.

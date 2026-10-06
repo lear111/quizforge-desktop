@@ -4,7 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/** Independent, self-contained rich answers keyed by translation sentence identity. */
+/** Stored rich-answer decoder for historical translation records, keyed by sentence identity. */
 public record TranslationPracticeAnswer(Map<String, EssayPracticeAnswer> answers) {
     public TranslationPracticeAnswer {
         var values = new LinkedHashMap<String, EssayPracticeAnswer>();

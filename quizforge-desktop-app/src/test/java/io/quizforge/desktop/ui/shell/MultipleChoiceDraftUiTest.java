@@ -109,10 +109,10 @@ class MultipleChoiceDraftUiTest extends WorkspaceUiTestSupport {
         var original=codec.parse(io.quizforge.infrastructure.testing.QBankTestPackageBuilder.read(fixture.alphaRoot.resolve(path)));
         var questions=new java.util.ArrayList<io.quizforge.core.question.model.Question>();
         for(int i=0;i<types.length;i++){
-            var old=original.questions().get(i);var options=new java.util.ArrayList<io.quizforge.core.question.type.objective.choice.ChoiceOption>();
-            for(int j=0;j<4;j++)options.add(new io.quizforge.core.question.type.objective.choice.ChoiceOption("opt_outline_"+i+"_"+j,new io.quizforge.core.question.content.TextContent("Option "+j)));
+            var old=original.questions().get(i);var options=new java.util.ArrayList<io.quizforge.core.question.model.choice.ChoiceOption>();
+            for(int j=0;j<4;j++)options.add(new io.quizforge.core.question.model.choice.ChoiceOption("opt_outline_"+i+"_"+j,new io.quizforge.core.question.content.TextContent("Option "+j)));
             var correct=types[i].equals("MULTIPLE_CHOICE")?List.of(options.get(0).id(),options.get(2).id()):List.of(options.get(0).id());
-            questions.add(io.quizforge.core.question.model.Question.choice(old.id(),old.type(),old.prompt(),old.analysis(),old.sourceRefs(),new io.quizforge.core.question.type.objective.choice.ChoicePayload(options),new io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec(correct)));
+            questions.add(io.quizforge.core.question.model.Question.choice(old.id(),old.type(),old.prompt(),old.analysis(),old.sourceRefs(),new io.quizforge.core.question.model.choice.ChoicePayload(options),new io.quizforge.core.question.model.choice.ChoiceAnswerSpec(correct)));
         }
         fixture.write(path,codec.write(new io.quizforge.core.question.model.QuestionBank(original.assetId(),original.title(),"2.0",List.of(),questions,List.of())));return path;
     }

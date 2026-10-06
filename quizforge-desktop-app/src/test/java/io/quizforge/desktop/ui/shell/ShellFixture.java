@@ -11,9 +11,9 @@ import io.quizforge.core.question.service.QuestionBankFileEditService;
 import io.quizforge.core.question.source.QuestionBankReferenceResolver;
 import io.quizforge.core.question.source.QuestionSourceDocument;
 import io.quizforge.core.question.source.SourceRef;
-import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
-import io.quizforge.core.question.type.objective.choice.ChoiceOption;
-import io.quizforge.core.question.type.objective.choice.ChoicePayload;
+import io.quizforge.core.question.model.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.model.choice.ChoiceOption;
+import io.quizforge.core.question.model.choice.ChoicePayload;
 import io.quizforge.core.workspace.model.Workspace;
 import io.quizforge.core.workspace.service.WorkspaceFileService;
 import io.quizforge.core.workspace.service.WorkspaceService;
@@ -45,8 +45,16 @@ final class ShellFixture implements AutoCloseable {
     final AtomicInteger settingsOpened = new AtomicInteger();
     final AtomicInteger aiOpened = new AtomicInteger();
     final AtomicReference<String> copiedText = new AtomicReference<>();
+    private final String previousPracticeUi;
 
     ShellFixture(Path temp) throws Exception {
+        this(temp, false);
+    }
+    /** Older fixtures explicitly compare the transitional JavaFX UI; new tests opt into the production default. */
+    ShellFixture(Path temp, boolean sharedLearning) throws Exception {
+        previousPracticeUi = System.getProperty("quizforge.practice.legacyUi");
+        if (sharedLearning) System.clearProperty("quizforge.practice.legacyUi");
+        else System.setProperty("quizforge.practice.legacyUi", "true");
         String previous = System.getProperty("quizforge.dataDir");
         System.setProperty("quizforge.dataDir", temp.resolve("data").toString());
         try { context = new AnnotationConfigApplicationContext(DesktopConfiguration.class); }
@@ -117,5 +125,9 @@ final class ShellFixture implements AutoCloseable {
         QBankTestPackageBuilder.write(file, text);
     }
 
-    @Override public void close() { context.close(); }
+    @Override public void close() {
+        context.close();
+        if(previousPracticeUi == null) System.clearProperty("quizforge.practice.legacyUi");
+        else System.setProperty("quizforge.practice.legacyUi", previousPracticeUi);
+    }
 }

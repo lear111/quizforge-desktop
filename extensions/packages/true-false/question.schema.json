@@ -1,0 +1,54 @@
+{
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "prompt",
+    "payload",
+    "answerSpec",
+    "scoreSpec"
+  ],
+  "properties": {
+    "type": {
+      "const": "TRUE_FALSE"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "kind",
+        "options"
+      ],
+      "properties": {
+        "kind": {
+          "const": "CHOICE"
+        },
+        "options": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "answerSpec": {
+      "type": "object",
+      "required": [
+        "kind",
+        "correctOptionIds"
+      ],
+      "properties": {
+        "kind": {
+          "const": "CHOICE"
+        },
+        "correctOptionIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

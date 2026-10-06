@@ -56,7 +56,7 @@ public final class QuestionBankValidator {
         Map<String,String> revisions = new HashMap<>();
         for (var question : bank.questions()) {
             if (!id(question.id(), "q_") || !questionIds.add(question.id())) fail("Invalid question id");
-            var type=io.quizforge.core.question.type.QuestionTypes.require(question.type());
+            var type=io.quizforge.core.question.type.QuestionTypes.forData(question);
             Set<String> usedStimuli = new HashSet<>();
             for (String ref : question.stimulusRefs())
                 if (!stimuli.contains(ref) || !usedStimuli.add(ref)) fail("Invalid stimulusRef");

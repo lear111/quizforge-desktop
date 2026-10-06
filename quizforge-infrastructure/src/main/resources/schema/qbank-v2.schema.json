@@ -400,6 +400,9 @@
         },
         {
           "$ref": "#/$defs/translationPayload"
+        },
+        {
+          "$ref": "#/$defs/extensionData"
         }
       ]
     },
@@ -422,6 +425,9 @@
         },
         {
           "$ref": "#/$defs/translationAnswer"
+        },
+        {
+          "$ref": "#/$defs/extensionData"
         }
       ]
     },
@@ -531,15 +537,8 @@
           "pattern": "^q_[A-Za-z0-9_-]+$"
         },
         "type": {
-          "enum": [
-            "SINGLE_CHOICE",
-            "MULTIPLE_CHOICE",
-            "ESSAY",
-            "CLOZE",
-            "READING",
-            "MATCHING",
-            "TRANSLATION"
-          ]
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
         },
         "stimulusRefs": {
           "type": "array",
@@ -689,12 +688,19 @@
                     }
                   },
                   "else": {
-                    "properties": {
-                      "payload": {
-                        "$ref": "#/$defs/choicePayload"
-                      },
-                      "answerSpec": {
-                        "$ref": "#/$defs/choiceAnswer"
+                    "if": {
+                      "properties": { "type": { "enum": ["SINGLE_CHOICE", "MULTIPLE_CHOICE"] } }
+                    },
+                    "then": {
+                      "properties": {
+                        "payload": { "$ref": "#/$defs/choicePayload" },
+                        "answerSpec": { "$ref": "#/$defs/choiceAnswer" }
+                      }
+                    },
+                    "else": {
+                      "properties": {
+                        "payload": { "$ref": "#/$defs/extensionData" },
+                        "answerSpec": { "$ref": "#/$defs/extensionData" }
                       }
                     }
                   }
@@ -757,6 +763,15 @@
         "locator",
         "sha256"
       ]
+    },
+    "extensionData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "EXTENSION" },
+        "data": { "type": "object" }
+      },
+      "required": ["kind", "data"]
     },
     "choicePayload": {
       "type": "object",

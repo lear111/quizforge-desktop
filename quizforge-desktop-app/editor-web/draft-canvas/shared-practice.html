@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'none'; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>QuizForge · Shared Practice SINGLE_CHOICE</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-eval' 'nonce-qf-isolated-page-v1'; frame-src 'self'; worker-src blob: data:; child-src blob: data:; style-src 'self' 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>QuizForge · 练习</title>
 </head>
 <body>
 <main id="draft-canvas-root" data-mode="INTERACT">
   <header class="toolbar">
-    <strong>Draft Canvas <small>Shared Practice UI v1</small></strong>
+    <strong>草稿工具</strong>
     <nav aria-label="白板工具">
       <button type="button" data-mode="INTERACT" aria-pressed="true">交互</button>
       <button type="button" data-mode="PEN" aria-pressed="false">画笔</button>
@@ -26,7 +26,7 @@
   </header>
   <div id="viewport" aria-label="草稿白板">
     <div id="world">
-      <article id="question-card" aria-label="练习题卡"><p class="practice-loading">正在载入单选练习…</p></article>
+      <article id="question-card" aria-label="练习题卡"><p class="practice-loading">正在载入题目…</p></article>
       <svg id="annotation" xmlns="http://www.w3.org/2000/svg" width="1" height="1" aria-hidden="true"><g id="strokes"></g><g id="active-stroke"></g></svg>
     </div>
   </div>

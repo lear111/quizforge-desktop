@@ -1,5 +1,7 @@
 package io.quizforge.desktop.poc.sharedpractice;
 
+import io.quizforge.desktop.browser.javafx.SharedPracticeCanvasWebView;
+
 import java.nio.file.Path;
 import javafx.application.Application;
 import javafx.application.Platform;

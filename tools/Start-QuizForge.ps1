@@ -21,6 +21,12 @@ if ($LiveCss) {
 try {
     [void][System.IO.Directory]::CreateDirectory($logDirectory)
     Set-Location -LiteralPath $repository
+    $nativeLibrary = Join-Path $repository 'target/webview2-native/quizforge_webview2.dll'
+    $nativeSource = Join-Path $repository 'quizforge-desktop-app/native/webview2/quizforge_webview2.cpp'
+    if (-not (Test-Path -LiteralPath $nativeLibrary) -or (Get-Item -LiteralPath $nativeSource).LastWriteTimeUtc -gt (Get-Item -LiteralPath $nativeLibrary).LastWriteTimeUtc) {
+        & (Join-Path $PSScriptRoot 'Build-WebView2.ps1')
+        if ($LASTEXITCODE -ne 0) { throw 'WebView2 native build failed. Close any running QuizForge instance before rebuilding.' }
+    }
     if ($LiveWeb) {
         $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
         $npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue

@@ -11,10 +11,22 @@ import javafx.scene.layout.Priority;
 
 final class FileHeader extends HBox {
     private final Button mode;
+    private final Label name;
+    private final String fileName;
+    private Button draftButton, historyBack;
     private Button historyButton;
     void setDraftButton(Button button) {
-        getChildren().removeIf(node -> "practice-draft-toggle".equals(node.getId()));
+        if(draftButton!=null)getChildren().remove(draftButton);
+        draftButton=button;
         if(button!=null)getChildren().add(Math.max(1,getChildren().size()-1),button);
+    }
+    void showHistoryDetail(String title,Button back,Button draft) {
+        resetHistoryDetail();name.setText(title);historyBack=back;
+        getChildren().addFirst(back);setDraftButton(draft);
+    }
+    void resetHistoryDetail() {
+        if(historyBack!=null)getChildren().remove(historyBack);
+        historyBack=null;name.setText(fileName);setDraftButton(null);
     }
 
     FileHeader(FilePresentation file, Runnable toggle, Runnable history) {
@@ -22,7 +34,8 @@ final class FileHeader extends HBox {
         getStyleClass().add("file-header");
         setAlignment(Pos.CENTER_LEFT);
         setSpacing(4);
-        Label name = UiTheme.label(file.file().entry().name(), "file-title");
+        fileName=file.file().entry().name();
+        name = UiTheme.label(fileName, "file-title");
         name.setId("file-title");
         name.setWrapText(false);
         name.setMaxWidth(Double.MAX_VALUE);
@@ -36,9 +49,7 @@ final class FileHeader extends HBox {
         mode = UiTheme.iconButton("book", "切换到编辑模式", toggle);
         mode.setId("file-mode-toggle");
         mode.setDisable(file.file().questionBank() != null
-                && !(MixedQuestionPracticeView.requiresMixedView(file.file().questionBank())
-                    ? MixedQuestionPracticeView.supportsEditing(file.file().questionBank())
-                    : io.quizforge.core.question.type.objective.choice.QuestionText.supports(file.file().questionBank())));
+                && !MixedQuestionPracticeView.supportsEditing(file.file().questionBank()));
         if (file.supportsMode()) getChildren().add(mode);
 
         updateMode(FileMode.BROWSE);

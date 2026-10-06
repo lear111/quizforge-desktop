@@ -1,4 +1,8 @@
-# Practice Draft Mode v1
+# Practice Draft Mode v1 (transitional legacy)
+
+> 2026-10-04 迁移状态：当前只启用新版 HTML SDK 2 单选/多选，旧题型专项实现已删除。本文公共白板、状态、事务和历史契约继续适用；七题型覆盖描述属于此前阶段。当前开发入口与 API 以仓库 extensions/SDK_README.md 为准。
+
+本页记录旧的 NORMAL JavaFX / DRAFT WebView 设计，供旧 fixture 对照。正式默认已由 [Shared Learning Surface Unification v1](SHARED_LEARNING_SURFACE.md) 取代：七种 TEXT 题型共用 WebView / Renderer / DOM，仅切换 PRACTICE / DRAFT capability。
 
 正式入口：QuizForge Desktop 打开题库，浏览当前 SINGLE_CHOICE / MULTIPLE_CHOICE + TEXT，右上角 **草稿 / 退出草稿**。切换只替换当前浏览区域，不创建 Stage、Workspace 或 Practice Session。开发 POC 启动脚本仍保留。两种题型由静态注册表和共享 Runtime 管理，见 [SHARED_RENDERER_CONTRACT.md](SHARED_RENDERER_CONTRACT.md)。
 

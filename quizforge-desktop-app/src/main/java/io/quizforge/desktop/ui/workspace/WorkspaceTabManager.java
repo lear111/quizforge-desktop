@@ -26,6 +26,7 @@ public final class WorkspaceTabManager extends BorderPane {
     private final ScrollPane bar;
     private WorkspaceTab active;
     private HBox activeTabItem;
+    private boolean awaitingCloseAll;
     private Consumer<String> onActivate = ignored -> { };
 
     public WorkspaceTabManager(Supplier<FilePane> panes, FilePane emptyPane, BooleanSupplier discardDirty) {
@@ -59,7 +60,8 @@ public final class WorkspaceTabManager extends BorderPane {
             return existing;
         }
         WorkspaceTab preview = tabs.stream().filter(tab -> !tab.pinned()).findFirst().orElse(null);
-        if(!pin && preview!=null && !preview.pane().prepareClose())return null;
+        String requestedPath=path;
+        if(!pin && preview!=null && !preview.pane().prepareClose(()->open(workspace,requestedPath,false)))return null;
         FilePane pane = panes.get();
         pane.open(workspace, path);
         if (pane.currentFile() == null) return null;
@@ -93,10 +95,14 @@ public final class WorkspaceTabManager extends BorderPane {
     }
 
     public boolean close(WorkspaceTab tab) {
+        return close(tab, false);
+    }
+
+    private boolean close(WorkspaceTab tab, boolean discardConfirmed) {
         int index = tabs.indexOf(tab);
         if (index < 0) return false;
-        if (tab.pane().hasUnsavedChanges() && !discardDirty.getAsBoolean()) return false;
-        if (!tab.pane().prepareClose()) return false;
+        if (!discardConfirmed && tab.pane().hasUnsavedChanges() && !discardDirty.getAsBoolean()) return false;
+        if (!tab.pane().prepareClose(()->close(tab, true))) return false;
         tabs.remove(index);
         tab.pane().clear();
         if (tab == active) active = tabs.isEmpty() ? null : tabs.get(Math.min(index, tabs.size() - 1));
@@ -105,7 +111,23 @@ public final class WorkspaceTabManager extends BorderPane {
     }
 
     public boolean closeAll() {
-        if(tabs.stream().anyMatch(tab->!tab.pane().prepareClose()))return false;
+        return closeAll(null);
+    }
+    public java.util.concurrent.CompletionStage<Boolean> prepareAllAsync(){
+        var captured=List.copyOf(tabs);var futures=captured.stream().map(tab->tab.pane().prepareCloseAsync().toCompletableFuture()).toList();
+        var result=new java.util.concurrent.CompletableFuture<Boolean>();
+        java.util.concurrent.CompletableFuture.allOf(futures.toArray(java.util.concurrent.CompletableFuture[]::new)).whenComplete((v,failure)->{
+            Runnable finish=()->{boolean ok=failure==null&&captured.equals(tabs)&&futures.stream().allMatch(f->Boolean.TRUE.equals(f.getNow(false)));if(!ok)captured.forEach(tab->tab.pane().cancelClosePreparation());result.complete(ok);};
+            if(javafx.application.Platform.isFxApplicationThread())finish.run();else javafx.application.Platform.runLater(finish);
+        });return result.minimalCompletionStage();
+    }
+    public boolean closeAll(Runnable retry) {
+        if(awaitingCloseAll)return false;
+        var prepared=prepareAllAsync().toCompletableFuture();
+        if(!prepared.isDone()){
+            awaitingCloseAll=true;prepared.whenComplete((ok,failure)->javafx.application.Platform.runLater(()->{awaitingCloseAll=false;if(failure==null&&Boolean.TRUE.equals(ok)&&retry!=null)retry.run();}));return false;
+        }
+        if(!Boolean.TRUE.equals(prepared.join()))return false;
         for (WorkspaceTab tab : tabs) tab.pane().clear();
         tabs.clear();
         active = null;
@@ -134,7 +156,7 @@ public final class WorkspaceTabManager extends BorderPane {
     public void closeUnder(String path) {
         for (WorkspaceTab tab : List.copyOf(tabs)) {
             if (tab.path().equals(path) || tab.path().startsWith(path + "/")) {
-                if (!tab.pane().prepareClose()) continue;
+                if (!tab.pane().prepareClose(()->closeUnder(path))) continue;
                 int index = tabs.indexOf(tab);
                 tabs.remove(tab);
                 tab.pane().clear();

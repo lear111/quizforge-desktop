@@ -84,6 +84,10 @@ final class MainWorkspaceView extends WorkspaceLayout {
             @Override public void rename(WorkspaceFileEntry entry) { fileCommands.rename(entry); }
             @Override public void delete(WorkspaceFileEntry entry) { fileCommands.delete(entry); }
         }, settings, this::refresh, () -> fileCommands.createFolder(""), type -> fileCommands.createFile("", type));
+        var extensions = UiTheme.iconButton("book", "题型扩展", () -> io.quizforge.desktop.extension.ExtensionManagementDialog.show(stage));
+        extensions.setId("question-extensions-button");extensions.getStyleClass().add("sidebar-settings");
+        var settingsArea = (javafx.scene.layout.HBox)sidebar.lookup("#workspace-settings-area");
+        settingsArea.getChildren().add(extensions);
         fileCommands=new WorkspaceFileCommands(files,()->current,sidebar,tabs,stage,clipboard,
                 this::refreshTree,this::selectPath,this::confirmDiscard);
         installLayout(stage);
@@ -104,7 +108,11 @@ final class MainWorkspaceView extends WorkspaceLayout {
 
     void switchWorkspace(Workspace workspace) {
         if (tabs.hasUnsavedChanges() && !confirmDiscard()) return;
-        if(!tabs.closeAll())return;
+        finishWorkspaceSwitch(workspace);
+    }
+
+    private void finishWorkspaceSwitch(Workspace workspace) {
+        if(!tabs.closeAll(()->finishWorkspaceSwitch(workspace)))return;
         sidebar.tree().setRoot(null);
         current = workspace;
         history.visit(workspace);
@@ -120,6 +128,16 @@ final class MainWorkspaceView extends WorkspaceLayout {
 
     boolean prepareExit() {
         if(tabs.tabs().stream().anyMatch(tab->!tab.pane().prepareClose()))return false;
+        boolean confirmed=confirmExitChanges();if(!confirmed)tabs.tabs().forEach(tab->tab.pane().cancelClosePreparation());return confirmed;
+    }
+    java.util.concurrent.CompletionStage<Boolean> prepareExitAsync(){
+        var result=new java.util.concurrent.CompletableFuture<Boolean>();
+        tabs.prepareAllAsync().whenComplete((ok,failure)->{
+            Runnable finish=()->{try{boolean confirmed=failure==null&&Boolean.TRUE.equals(ok)&&confirmExitChanges();if(!confirmed)tabs.tabs().forEach(tab->tab.pane().cancelClosePreparation());result.complete(confirmed);}catch(RuntimeException problem){tabs.tabs().forEach(tab->tab.pane().cancelClosePreparation());result.completeExceptionally(problem);}};
+            if(javafx.application.Platform.isFxApplicationThread())finish.run();else javafx.application.Platform.runLater(finish);
+        });return result.minimalCompletionStage();
+    }
+    private boolean confirmExitChanges(){
         if (!tabs.hasUnsavedChanges()) return true;
         ButtonType save = new ButtonType("保存并退出");
         ButtonType discard = new ButtonType("放弃修改");

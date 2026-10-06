@@ -39,4 +39,6 @@ public final class QuestionSourceListView extends VBox {
             getChildren().add(row);
         }
     }
+    public List<java.util.Map<String,Object>> pageSources(){return sources.inspect(workspace,refs).stream().map(source->java.util.Map.<String,Object>of("label",source.label(),"message",source.message(),"navigable",source.navigable())).toList();}
+    public void openSource(int index){sources.open(workspace,refs.get(index));}
 }

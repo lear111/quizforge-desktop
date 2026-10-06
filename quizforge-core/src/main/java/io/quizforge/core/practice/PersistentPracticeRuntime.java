@@ -37,61 +37,51 @@ public final class PersistentPracticeRuntime {
     public void saveActiveDraftCanvas(io.quizforge.core.practice.draft.DraftCanvasDocument document) {
         service.saveActiveDraftCanvas(sessionId, contentId, session.current().id(), document);
     }
+    /** Display source switches atomically with the authoritative answer lifecycle. */
+    public io.quizforge.core.practice.draft.DraftCanvasDocument loadDisplayedDraftCanvas() {
+        return findDisplayedDraftCanvas().orElseGet(io.quizforge.core.practice.draft.DraftCanvasDocument::createEmpty);
+    }
+    public java.util.Optional<io.quizforge.core.practice.draft.DraftCanvasDocument> findDisplayedDraftCanvas() {
+        var current = questionState(session.current().id());
+        if (current.sessionQuestion().practiceState() == PracticeSessionQuestion.State.SUBMITTED) {
+            if (current.attempts().isEmpty()) return java.util.Optional.empty();
+            return service.findAttemptDraftSnapshot(current.attempts().getLast().id())
+                    .map(io.quizforge.core.practice.draft.AttemptDraftSnapshot::document);
+        }
+        return service.loadActiveDraftCanvas(sessionId, contentId, session.current().id())
+                .map(io.quizforge.core.practice.draft.ActiveDraftCanvas::document);
+    }
     public void saveChoiceDraft(java.util.Set<String> selected) {
         hydrate(service.saveDraft(sessionId, contentId, session.current().id(), selected));
     }
+    public void saveExtensionDraft(PracticePayload answer) {
+        hydrate(service.saveExtensionDraft(sessionId, contentId, session.current().id(), answer));
+    }
+    public PracticePayload extensionAnswer(String questionId) {
+        var row = questionState(questionId);
+        return row.sessionQuestion().practiceState() == PracticeSessionQuestion.State.SUBMITTED
+                ? row.attempts().getLast().answer() : row.sessionQuestion().draftAnswer();
+    }
     public PracticeSummary summary() { return PracticeSummary.from(snapshot); }
+
+    /** Only attempts belonging to the current question may be replayed. No active state is changed. */
+    public io.quizforge.core.practice.draft.DraftCanvasDocument attemptDraft(String attemptId) {
+        var current = questionState(session.current().id());
+        if (current.attempts().stream().noneMatch(attempt -> attempt.id().equals(attemptId)))
+            throw new IllegalArgumentException("Attempt does not belong to current question");
+        return service.findAttemptDraftSnapshot(attemptId)
+                .map(io.quizforge.core.practice.draft.AttemptDraftSnapshot::document)
+                .orElseGet(io.quizforge.core.practice.draft.DraftCanvasDocument::createEmpty);
+    }
 
     public ActivePracticeSnapshot.Question questionState(String questionId) {
         return snapshot.questions().stream().filter(row -> row.sessionQuestion().questionId().equals(questionId))
                 .findFirst().orElseThrow(() -> new IllegalArgumentException("Unknown practice question"));
     }
 
-    public EssayPracticeAnswer essayAnswer(String questionId) {
-        var row = questionState(questionId);
-        var answer = row.sessionQuestion().practiceState() == PracticeSessionQuestion.State.SUBMITTED
-                ? row.attempts().getLast().answer() : row.sessionQuestion().draftAnswer();
-        return EssayPracticeAnswer.from(answer);
-    }
-
-    public void saveEssayDraft(String questionId, EssayPracticeAnswer answer) {
-        hydrate(service.saveEssayDraft(sessionId, contentId, questionId, answer));
-    }
-
     private void hydrate(ActivePracticeSnapshot state) {
         mapper.hydrate(session, state);
         snapshot = state;
-    }
-
-    public void select(String optionId) {
-        var selected = session.selectionAfter(optionId);
-        hydrate(service.saveDraft(sessionId, contentId, session.current().id(), selected));
-    }
-    public java.util.Map<String,String> matchingAnswers(String questionId) {
-        var row = questionState(questionId);
-        var answer = row.sessionQuestion().practiceState() == PracticeSessionQuestion.State.SUBMITTED
-                ? row.attempts().getLast().answer() : row.sessionQuestion().draftAnswer();
-        return MatchingPracticeAnswer.from(answer).assignments();
-    }
-    public void saveMatchingDraft(java.util.Map<String,String> assignments) {
-        hydrate(service.saveMatchingDraft(sessionId,contentId,session.current().id(),assignments));
-    }
-    public void assignMatching(String blankId, String optionId) {
-        var assignments = session.matchingAfter(blankId, optionId);
-        hydrate(service.saveMatchingDraft(sessionId, contentId, session.current().id(), assignments));
-    }
-    public java.util.Map<String,EssayPracticeAnswer> translationAnswers(String questionId) {
-        var row = questionState(questionId);
-        var answer = row.sessionQuestion().practiceState() == PracticeSessionQuestion.State.SUBMITTED
-                ? row.attempts().getLast().answer() : row.sessionQuestion().draftAnswer();
-        return TranslationPracticeAnswer.from(answer).answers();
-    }
-    public void saveTranslationDraft(java.util.Map<String,EssayPracticeAnswer> answers) {
-        hydrate(service.saveTranslationDraft(sessionId,contentId,session.current().id(),answers));
-    }
-    public void assignTranslation(String itemId, EssayPracticeAnswer answer) {
-        var answers = session.translationAfter(itemId, answer);
-        hydrate(service.saveTranslationDraft(sessionId, contentId, session.current().id(), answers));
     }
 
     public void submit() {

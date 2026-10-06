@@ -40,6 +40,7 @@ final class QuestionBankFileView implements FileView {
     private Page page=Page.BROWSE;
     private PracticeHistoryView historyList;
     private PracticeHistoryDetailView historyDetail;
+    private String historyDetailSessionId;
     private FileHeader header;
     private Node browseContent;
     private QuestionBankEditorView bankEditor;
@@ -48,14 +49,37 @@ final class QuestionBankFileView implements FileView {
         if(browseContent instanceof MixedQuestionPracticeView mixed)return mixed.surface();
         return null;
     }
-    public void dispose(){if(historyDetail!=null){historyDetail.destroy();historyDetail=null;}if(surface()!=null)surface().destroy();}
+    public void dispose(){if(bankEditor!=null)bankEditor.destroy();if(historyDetail!=null){historyDetail.destroy();historyDetail=null;}if(surface()!=null)surface().destroy();}
     public boolean prepareClose(){return surface()==null || surface().prepareClose();}
+    public java.util.concurrent.CompletionStage<Boolean> prepareCloseAsync(){
+        var editor=bankEditor==null?java.util.concurrent.CompletableFuture.<Void>completedFuture(null):bankEditor.prepareCloseAsync();
+        return editor.thenCompose(v->surface()==null?java.util.concurrent.CompletableFuture.completedFuture(true):surface().prepareCloseAsync());
+    }
+    public void cancelClose(){if(mode==FileMode.EDIT&&bankEditor!=null)bankEditor.cancelClose();if(mode==FileMode.BROWSE&&page==Page.BROWSE&&surface()!=null)surface().cancelClose();}
+    public boolean usesAsyncClose(){return bankEditor!=null&&bankEditor.nativeEditor()||surface()!=null&&surface().learningSurface()!=null&&surface().learningSurface().nativeSurface();}
     private void leaveSurface(Runnable action){
+        if(mode==FileMode.EDIT&&bankEditor!=null&&bankEditor.nativeEditor()){
+            var editor=bankEditor;
+            editor.prepareCloseAsync().whenComplete((v,failure)->{
+                if(failure==null)leavePracticeSurface(action,()->{if(mode==FileMode.EDIT)editor.cancelClose();});
+            });return;
+        }
+        leavePracticeSurface(action);
+    }
+    private void leavePracticeSurface(Runnable action){
+        leavePracticeSurface(action,()->{});
+    }
+    private void leavePracticeSurface(Runnable action,Runnable completed){
         var surface=surface();
-        if(surface!=null && surface.mode()==io.quizforge.desktop.ui.question.practice.PracticeSurfaceMode.DRAFT){
-            if(surface.busy())return;
-            surface.leaveDraft().whenComplete((ignored,failure)->{if(failure==null)action.run();});
-        }else action.run();
+        if(surface!=null && (surface.unified() || surface.mode()==io.quizforge.desktop.ui.question.practice.PracticeSurfaceMode.DRAFT)){
+            if(surface.busy()){completed.run();return;}
+            if(surface.learningSurface()!=null&&surface.learningSurface().nativeSurface()) {
+                surface.prepareCloseAsync().whenComplete((saved,failure)->{
+                    try {if(failure==null&&Boolean.TRUE.equals(saved))action.run();}
+                    finally {if(mode==FileMode.BROWSE&&page==Page.BROWSE)surface.cancelClose();completed.run();}
+                });
+            } else surface.flushBeforeLeave().whenComplete((ignored,failure)->{try{if(failure==null)action.run();}finally{completed.run();}});
+        }else {try{action.run();}finally{completed.run();}}
     }
     QuestionBankFileView(FilePageHost host,FilePresentationLoader loader,FileViewerRouter router,QuestionBankFileEditService edits,
             QuestionSourceLinkService sourceLinks,QuestionSourceNavigationAdapter sourceNavigation,
@@ -108,45 +132,58 @@ final class QuestionBankFileView implements FileView {
         header.updateMode(mode);
         if(mode==FileMode.EDIT)header.setDraftButton(null);
         if (mode == FileMode.EDIT && current.file().questionBank() != null) {
-            bankEditor = new QuestionBankEditorView(current.file().questionBank(), workspace,
+            if(bankEditor==null)bankEditor = new QuestionBankEditorView(current.file().questionBank(), workspace,
                     sourceLinks, sourceNavigation, this::saveBank,loader.resources(workspace,current.file().entry().relativePath()));
-            StackPane centered = new StackPane(bankEditor);
-            centered.setAlignment(Pos.TOP_CENTER);
-            ScrollPane editorScroll = UiTheme.scroll(centered);
+            bankEditor.cancelClose();
+            ScrollPane editorScroll;
+            Node editorContent;
+            if(bankEditor.nativeEditor()){editorScroll=null;editorContent=bankEditor;}
+            else {
+                StackPane centered = new StackPane(bankEditor);centered.setAlignment(Pos.TOP_CENTER);
+                editorScroll=UiTheme.scroll(centered);editorContent=editorScroll;
+            }
             if (browseContent instanceof QuestionPracticeLayout practiceLayout) {
                 QuestionBankEditorView editor = bankEditor;
+                editor.onUiChange(preferences->{if(mode==FileMode.EDIT&&page==Page.BROWSE)practiceLayout.setOutlineVisible(preferences.getOrDefault("outline",true));});
                 editor.jumpTo(practiceLayout.outline().currentIndex());
                 practiceLayout.outline().setMoveAction(editor::moveQuestion);
                 editor.onQuestionChange((bank, selected) ->
                         practiceLayout.outline().showEditor(bank, selected, target -> {
                             editor.jumpTo(target);
-                            editorScroll.setVvalue(0);
+                            if(editorScroll!=null)editorScroll.setVvalue(0);
                         }));
-                practiceLayout.setContent(editorScroll);
+                practiceLayout.setContent(editorContent);
             } else if(browseContent instanceof MixedQuestionPracticeView authoring) {
                 var editor=bankEditor;editor.jumpTo(authoring.currentIndex());
+                editor.onUiChange(preferences->{if(mode==FileMode.EDIT&&page==Page.BROWSE)authoring.setOutlineVisible(preferences.getOrDefault("outline",true));});
                 ((io.quizforge.desktop.ui.question.shared.QuestionOutlineView)authoring.outline()).setMoveAction(editor::moveQuestion);
                 editor.onQuestionChange(authoring::updateEditor);
-                authoring.showEditor(editorScroll,target->{editor.jumpTo(target);editorScroll.setVvalue(0);});
+                authoring.showEditor(editorContent,target->{editor.jumpTo(target);if(editorScroll!=null)editorScroll.setVvalue(0);});
             } else {
-                setCenter(editorScroll);
+                setCenter(editorContent);
             }
         } else {
             if (mode == FileMode.BROWSE && current.kind() == WorkspaceFileKind.QUESTION_BANK) {
-                // Re-read the file and synchronize the active revision on every Edit -> Practice entry.
+                // Keep the browser when the persisted revision did not change. Dirty exits and saves
+                // still reopen the file, so uncommitted edits never leak into practice.
                 try {
-                    current = loader.load(workspace, current.file().entry().relativePath());
-                    Node renewed = router.view(current, FileMode.BROWSE);
-                    if (renewed instanceof QuestionPracticeLayout next
-                            && browseContent instanceof QuestionPracticeLayout previous) {
-                        next.keepDividerPosition(previous);
-                        previous.setHeader(null);
-                    }
-                    dispose();browseContent = renewed;
+                    var loaded = loader.load(workspace, current.file().entry().relativePath());
+                    boolean changed=!java.util.Objects.equals(current.file().bankRevision(),loaded.file().bankRevision());
+                    current=loaded;
+                    if(changed || bankEditor==null || !bankEditor.nativeEditor()) {
+                        Node renewed = router.view(current, FileMode.BROWSE);
+                        if (renewed instanceof QuestionPracticeLayout next
+                                && browseContent instanceof QuestionPracticeLayout previous) {
+                            next.keepDividerPosition(previous);
+                            previous.setHeader(null);
+                        }
+                        dispose();browseContent = renewed;bankEditor=null;
+                    }else if(browseContent instanceof QuestionPracticeLayout layout){
+                        layout.setContent(layout.surface());layout.outline().refresh();
+                    }else if(browseContent instanceof MixedQuestionPracticeView mixed){mixed.showPractice();}
                 } catch (RuntimeException error) {
                     browseContent = UiTheme.quietState("无法恢复练习", error.getMessage());
                 }
-                bankEditor = null;
             }
             if (mode == FileMode.BROWSE) showBrowseContent();
             else setCenter(router.view(current, mode));
@@ -155,6 +192,7 @@ final class QuestionBankFileView implements FileView {
     }
 
     private void showBrowseContent() {
+        if(surface()!=null)surface().cancelClose();
         header.setDraftButton(surface()==null?null:surface().toggleButton());
         if (browseContent instanceof QuestionPracticeLayout practiceLayout) {
             practiceLayout.outline().setMoveAction(this::moveBankQuestion);
@@ -206,7 +244,8 @@ final class QuestionBankFileView implements FileView {
     }
     private void openHistoryNow() {
         if (page != Page.BROWSE) return;
-        if (mode == FileMode.EDIT && bankEditor != null) toggleMode();
+        // leaveSurface has already completed both save barriers before this action.
+        if (mode == FileMode.EDIT && bankEditor != null) toggleModeNow();
         if (current == null || workspace == null || mode != FileMode.BROWSE
                 || current.kind() != WorkspaceFileKind.QUESTION_BANK || current.file().entry().assetId() == null) return;
         try {
@@ -230,13 +269,18 @@ final class QuestionBankFileView implements FileView {
     private void openHistoryDetail(String sessionId) {
         if (page != Page.HISTORY_LIST || historyList == null) return;
         try {
+            if(historyDetail==null || !sessionId.equals(historyDetailSessionId)) {
+            if(historyDetail!=null)historyDetail.destroy();
             var detail = practice.history(workspace).loadArchivedSessionDetail(current.file().entry().assetId(), sessionId);
             historyDetail = new PracticeHistoryDetailView(detail, this::returnToHistoryList, workspace,
                     new HistorySourceNavigationAdapter(sourceNavigation),current.file().questionBank(),current.file().bankRevision(),
                     loader.resources(workspace,current.file().entry().relativePath()),
                     new io.quizforge.desktop.ui.question.history.HistoryDraftAdapter(practice.history(workspace),
                             current.file().entry().assetId(),detail));
+            historyDetailSessionId=sessionId;
+            }
             setTop(null);
+            header.showHistoryDetail(historyDetail.titleText(),historyDetail.returnButton(),historyDetail.headerDraftButton());
             historyDetail.setHeader(header);
             setCenter(historyDetail);
             page = Page.HISTORY_DETAIL;
@@ -247,13 +291,20 @@ final class QuestionBankFileView implements FileView {
 
     private void returnToHistoryList() {
         page = Page.HISTORY_LIST;
-        if (historyDetail != null) {historyDetail.destroy();historyDetail=null;}
+        if (historyDetail != null) {
+            historyDetail.setHeader(null);
+            if(historyDetail.surface().learningSurface()==null||!historyDetail.surface().learningSurface().nativeSurface()){
+                historyDetail.destroy();historyDetail=null;historyDetailSessionId=null;
+            }
+        }
+        header.resetHistoryDetail();
         setTop(header);
         setCenter(historyList);
     }
 
     private void returnToBank() {
         page = Page.BROWSE;
+        header.resetHistoryDetail();
         header.showHistory(true);
         header.showMode(true);
         showBrowseContent();
@@ -263,6 +314,7 @@ final class QuestionBankFileView implements FileView {
         if (page == Page.HISTORY_DETAIL && historyDetail != null) historyDetail.refreshSources();
         else if (page == Page.HISTORY_LIST) return;
         else if (mode == FileMode.EDIT && bankEditor != null) bankEditor.refreshSources();
+        else if (browseContent instanceof MixedQuestionPracticeView mixed) mixed.refreshSources();
         else if (browseContent != null
                 && browseContent.lookup("#question-practice") instanceof QuestionBankPracticeView practice)
             practice.refreshSources();

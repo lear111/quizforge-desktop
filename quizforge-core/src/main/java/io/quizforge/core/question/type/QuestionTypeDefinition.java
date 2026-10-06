@@ -12,6 +12,10 @@ import java.util.function.Function;
 public interface QuestionTypeDefinition {
     enum Family { OBJECTIVE, SUBJECTIVE }
     String id();
+    default String label() { return id(); }
+    default List<QuestionTarget> outlineTargets(Question question) {
+        return List.of(new QuestionTarget(question.id(), 1, true, false, label()));
+    }
     Family family();
     String payloadKind();
     Class<? extends QuestionPayload> payloadClass();
@@ -19,6 +23,8 @@ public interface QuestionTypeDefinition {
     Class<? extends QuestionAnswerSpec> answerClass();
     /** Selection behavior for types reusing the existing choice response model. */
     default boolean multipleSelection() { return false; }
+    /** Shared stimuli need a separate snapshot contract; registered types otherwise share the full round. */
+    default boolean supportsPractice(Question question) { return question.stimulusRefs().isEmpty(); }
     void validate(Question question,QuestionValidationContext context);
     Question createDraft(Function<String,String> newId,List<SourceRef> sources);
     Question duplicate(Question question,Function<String,String> newId);

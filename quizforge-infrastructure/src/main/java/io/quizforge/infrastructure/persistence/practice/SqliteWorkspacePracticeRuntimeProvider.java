@@ -8,7 +8,6 @@ import io.quizforge.core.practice.PracticeSessionService;
 import io.quizforge.core.question.model.QuestionBank;
 import io.quizforge.core.question.service.QuestionBankValidator;
 import io.quizforge.core.question.type.QuestionTypes;
-import io.quizforge.core.question.type.objective.choice.QuestionText;
 import io.quizforge.core.workspace.model.WorkspaceId;
 import io.quizforge.infrastructure.filesystem.workspace.WorkspacePathResolver;
 import io.quizforge.infrastructure.persistence.SqliteAssetIndexRepository;
@@ -45,15 +44,14 @@ public final class SqliteWorkspacePracticeRuntimeProvider implements PracticeRun
         if (!unique) throw new IllegalStateException("题库身份不可用或重复，请检查工作区中的题库文件。 "
                 + scan.issues().stream().map(issue -> issue.currentPath() + ": " + issue.detail())
                         .collect(java.util.stream.Collectors.joining("; ")));
-        var choices = bank.questions().stream().filter(q -> QuestionText.supports(q)
-                || (QuestionTypes.isEssay(q.type()) || QuestionTypes.isCloze(q.type()) || QuestionTypes.isReading(q.type()) || QuestionTypes.isMatching(q.type()) || QuestionTypes.isTranslation(q.type())) && q.stimulusRefs().isEmpty()).toList();
-        if (choices.isEmpty()) throw new IllegalArgumentException("This bank has no supported practice questions");
-        // All supported types share one ACTIVE round and the full-file logical revision.
-        var practiceBank = choices.size() == bank.questions().size() ? bank
-                : new QuestionBank(bank.assetId(), bank.title(), bank.schemaVersion(),
-                        bank.stimuli(), choices, bank.resources());
+        // A formal round always contains the entire bank. Never silently omit extension questions.
+        for (var question : bank.questions()) {
+            var type = QuestionTypes.require(question.type());
+            if (!type.supportsPractice(question))
+                throw new IllegalArgumentException("This question cannot be practiced yet: " + question.id());
+        }
         var service = new PracticeSessionService(new SqlitePracticeTransaction(database(workspace)), clock);
-        return new PersistentPracticeRuntime(service, practiceBank, codec.contentId(bank),resources);
+        return new PersistentPracticeRuntime(service, bank, codec.contentId(bank),resources);
     }
 
     @Override public PracticeHistoryService history(WorkspaceId workspace) {

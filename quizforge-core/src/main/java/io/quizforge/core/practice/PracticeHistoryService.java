@@ -68,7 +68,20 @@ public final class PracticeHistoryService {
         return List.copyOf(options);
     }
 
-    /** Read-only archived projection. Never accesses the mutable Active Draft repository. */
+    /** Final unsubmitted canvas: this session is archived and cannot accept further writes. */
+    public HistoryDraftReplay loadFinalDraftReplay(String bankAssetId,String sessionId,String sessionQuestionId) {
+        return transactions.execute(repositories -> {
+            var session=repositories.sessions().findById(sessionId).orElseThrow(() -> new IllegalArgumentException("Practice history was not found"));
+            if(session.status()!=PracticeSession.Status.ARCHIVED || !bankAssetId.equals(session.questionBankAssetId()))
+                throw new IllegalStateException("Archived practice for this bank is unavailable");
+            if(repositories.questions().findBySessionId(sessionId).stream().noneMatch(row -> row.id().equals(sessionQuestionId)))
+                throw new IllegalArgumentException("History question was not found");
+            try { return repositories.activeDrafts().find(sessionQuestionId).map(draft -> HistoryDraftReplay.ready(draft.document())).orElseGet(HistoryDraftReplay::missing); }
+            catch(IllegalArgumentException malformed) { return HistoryDraftReplay.unavailable("此历史草稿暂时无法读取。"); }
+        });
+    }
+
+    /** Read-only submitted projection uses only the immutable Attempt snapshot. */
     public HistoryDraftReplay loadDraftReplay(String bankAssetId, String sessionId,
             String sessionQuestionId, String attemptId) {
         if (attemptId == null || attemptId.isBlank()) return HistoryDraftReplay.missing();

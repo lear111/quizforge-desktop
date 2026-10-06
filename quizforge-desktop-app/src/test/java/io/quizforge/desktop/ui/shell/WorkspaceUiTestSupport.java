@@ -1,14 +1,16 @@
 package io.quizforge.desktop.ui.shell;
 
+import io.quizforge.infrastructure.testing.ExtensionPracticeTestAnswers;
+
 import io.quizforge.core.question.content.DocumentContent;
 import io.quizforge.core.question.content.TextContent;
 import io.quizforge.core.question.model.Question;
 import io.quizforge.core.question.model.QuestionBank;
 import io.quizforge.core.question.service.QuestionBankEditorModel;
 import io.quizforge.core.question.source.SourceRef;
-import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
-import io.quizforge.core.question.type.objective.choice.ChoiceOption;
-import io.quizforge.core.question.type.objective.choice.ChoicePayload;
+import io.quizforge.core.question.model.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.model.choice.ChoiceOption;
+import io.quizforge.core.question.model.choice.ChoicePayload;
 import io.quizforge.core.workspace.model.WorkspaceFileEntry;
 import io.quizforge.desktop.ui.content.document.canvas.CanvasEditorTestDriver;
 import io.quizforge.desktop.ui.shared.UiTheme;
@@ -40,6 +42,7 @@ abstract class WorkspaceUiTestSupport {
     protected ShellFixture fixture;
     protected MainWorkspaceView shell;
     protected Stage stage;
+    protected boolean useSharedLearningUi() { return false; }
 
     @BeforeAll static void startFx() throws Exception {
         CountDownLatch started = new CountDownLatch(1);
@@ -49,7 +52,7 @@ abstract class WorkspaceUiTestSupport {
     }
 
     @BeforeEach void setup() throws Exception {
-        fixture = new ShellFixture(temp);
+        fixture = new ShellFixture(temp, useSharedLearningUi());
         fx(() -> {
             stage = new Stage();
             shell = fixture.shell(stage);
@@ -178,8 +181,8 @@ abstract class WorkspaceUiTestSupport {
         var runtime = fixture.context.getBean(io.quizforge.core.port.PracticeRuntimeProvider.class).open(fixture.alpha.id(), bank);
         for (int i = 0; i < 2; i++) {
             String prefix = i == 0 ? "opt_nav_" : "opt_second_";
-            runtime.select(prefix + "b"); runtime.submit(); runtime.retry();
-            runtime.select(prefix + "a"); runtime.submit();
+            ExtensionPracticeTestAnswers.select(runtime,prefix + "b"); runtime.submit(); runtime.retry();
+            ExtensionPracticeTestAnswers.select(runtime,prefix + "a"); runtime.submit();
             if (i == 0) runtime.next();
         }
         String id = runtime.sessionId();

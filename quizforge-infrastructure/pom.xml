@@ -11,6 +11,11 @@
     <artifactId>quizforge-infrastructure</artifactId>
     <dependencies>
         <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>1.5.9</version>
+        </dependency>
+        <dependency>
             <groupId>io.quizforge</groupId>
             <artifactId>quizforge-core</artifactId>
         </dependency>

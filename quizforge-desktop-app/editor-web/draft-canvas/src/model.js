@@ -1,5 +1,5 @@
 /** Draft Canvas v1. Durable geometry is always expressed in world coordinates. */
-import { createDraftCanvasDocument, normalizePocDraft, normalizeStroke } from './canvas/document.js';
+import { createDraftCanvasDocument, normalizePocDraft, normalizeStroke, normalizeText, normalizePaper } from './canvas/document.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -100,6 +100,9 @@ export class DraftModel {
   }
 
   getDraft() { return clone(this.#draft); }
+  getViewport() { return {...this.#draft.viewport}; }
+  getQuestionCard() { return {...this.#draft.questionCard}; }
+  getPaper() { return this.#draft.paper?{...this.#draft.paper}:undefined; }
   get canUndo() { return this.#undo.length > 0; }
   get canRedo() { return this.#redo.length > 0; }
 
@@ -140,11 +143,12 @@ export class DraftModel {
     for (const stroke of this.#draft.strokes) {
       for (const point of stroke.points) worldToScreen(point, next);
     }
+    for(const text of this.#draft.texts||[])worldToScreen(text,next);
     this.#draft.viewport = next;
   }
 
   beginEdit() {
-    if (this.#editDepth === 0) this.#editBefore = clone(this.#draft.strokes);
+    if (this.#editDepth === 0) this.#editBefore = this.#annotationState();
     this.#editDepth++;
   }
 
@@ -158,7 +162,7 @@ export class DraftModel {
   }
 
   #record(before) {
-    const after = clone(this.#draft.strokes);
+    const after = this.#annotationState();
     if (JSON.stringify(before) === JSON.stringify(after)) return false;
     this.#undo.push({ before, after });
     this.#redo = [];
@@ -166,10 +170,16 @@ export class DraftModel {
   }
 
   #replaceStrokes(next) {
-    const before = this.#editDepth === 0 ? clone(this.#draft.strokes) : null;
+    const before = this.#editDepth === 0 ? this.#annotationState() : null;
     this.#draft.strokes = next;
     if (before) this.#record(before);
   }
+
+  #annotationState(){return clone({strokes:this.#draft.strokes,texts:this.#draft.texts||[],paper:this.#draft.paper||null});}
+  #restoreAnnotations(state){this.#draft.strokes=clone(state.strokes);if(state.texts.length)this.#draft.texts=clone(state.texts);else delete this.#draft.texts;if(state.paper)this.#draft.paper=clone(state.paper);else delete this.#draft.paper;}
+  setPaper(paper){const next=normalizePaper(paper),before=this.#annotationState();this.#draft.paper=next;this.#record(before);}
+  putText(text){const next=normalizeText(text),before=this.#editDepth===0?this.#annotationState():null;this.#draft.texts=[...(this.#draft.texts||[]).filter(t=>t.id!==next.id),next];if(before)this.#record(before);}
+  removeText(id){const before=this.#editDepth===0?this.#annotationState():null;const texts=(this.#draft.texts||[]).filter(t=>t.id!==id);if(texts.length)this.#draft.texts=texts;else delete this.#draft.texts;if(before)this.#record(before);}
 
   addStroke(value) {
     const next = normalizeStroke(value, true);
@@ -196,8 +206,8 @@ export class DraftModel {
   }
 
   clear() {
-    if (this.#draft.strokes.length === 0) return false;
-    this.#replaceStrokes([]);
+    if (this.#draft.strokes.length === 0 && !(this.#draft.texts||[]).length) return false;
+    const before=this.#annotationState();this.#draft.strokes=[];delete this.#draft.texts;this.#record(before);
     return true;
   }
 
@@ -205,7 +215,7 @@ export class DraftModel {
     if (this.#editDepth) throw new Error('Finish the current edit before undo');
     const entry = this.#undo.pop();
     if (!entry) return false;
-    this.#draft.strokes = clone(entry.before);
+    this.#restoreAnnotations(entry.before);
     this.#redo.push(entry);
     return true;
   }
@@ -214,7 +224,7 @@ export class DraftModel {
     if (this.#editDepth) throw new Error('Finish the current edit before redo');
     const entry = this.#redo.pop();
     if (!entry) return false;
-    this.#draft.strokes = clone(entry.after);
+    this.#restoreAnnotations(entry.after);
     this.#undo.push(entry);
     return true;
   }

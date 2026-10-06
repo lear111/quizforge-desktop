@@ -4,8 +4,7 @@ import io.quizforge.core.practice.*;
 import io.quizforge.core.practice.draft.*;
 import io.quizforge.core.question.model.*;
 import io.quizforge.core.question.service.QuestionBankEditorModel;
-import io.quizforge.core.question.type.objective.matching.*;
-import io.quizforge.core.question.type.subjective.translation.TranslationPayload;
+import io.quizforge.core.question.compat.matching.*;
 import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.practice.*;
@@ -16,14 +15,18 @@ import java.time.Instant;
 import java.util.*;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import io.quizforge.core.question.type.QuestionTypes;
+import io.quizforge.core.question.type.QuestionTypeDefinition;
+import io.quizforge.core.question.type.extension.ExternalQuestionTypeDefinition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Real SQLite, real services, deliberately injected SQL failures. No Workspace creation. */
 class DraftCanvasPersistenceTest {
+    private static final String TYPE = "test.draft.persistence";
+    @AfterEach void unregisterType() { QuestionTypes.unregister(TYPE); }
     @TempDir Path temp;
     SqliteDatabase db;
     SqlitePracticeTransaction tx;
@@ -33,10 +36,19 @@ class DraftCanvasPersistenceTest {
     String sid, qid, psqid, revision;
 
     @BeforeEach void start() {
+        QuestionTypes.register(new ExternalQuestionTypeDefinition(TYPE,"Draft test",QuestionTypeDefinition.Family.OBJECTIVE,"1.0.0",
+                (operation,input)->switch(operation) {
+                    case "createDraft" -> Map.of("prompt",Map.of("kind","TEXT","text","Prompt"),"payload",Map.of("statement","Example"),"answerSpec",Map.of("correct",true),"maxScore",1);
+                    case "validate" -> Map.of("errors",List.of());
+                    case "snapshot","targets" -> Map.of("targets",List.of(Map.of("id","decision","number",1)));
+                    case "validateAnswer" -> Map.of("errors",List.of(),"empty",!ExternalQuestionTypeDefinition.object(input.get("answer")).containsKey("value"));
+                    case "grade" -> Map.of("status","CORRECT","score",1,"maxScore",1);
+                    default -> throw new IllegalArgumentException(operation);
+                }));
         db = new SqliteDatabase(temp.resolve("practice.db")); tx = new SqlitePracticeTransaction(db);
         service = new PracticeSessionService(tx, Clock.systemUTC());
         var editor = new QuestionBankEditorModel(new QuestionBank("qb_draft", "Draft", List.of(), List.of(), List.of()));
-        editor.addQuestion("SINGLE_CHOICE"); bank = editor.bank();
+        editor.addQuestion(TYPE); bank = editor.bank();
         revision = new QuestionBankV2Codec().contentId(bank); opened = service.openOrCreateActiveSession(bank, revision);
         sid = opened.session().id(); qid = bank.questions().getFirst().id(); psqid = opened.questions().getFirst().sessionQuestion().id();
     }
@@ -46,7 +58,7 @@ class DraftCanvasPersistenceTest {
                         List.of(new DraftCanvasDocument.Point(250, 155, .5), new DraftCanvasDocument.Point(350, 175, .8)))));
     }
     void save(DraftCanvasDocument document) { service.saveActiveDraftCanvas(sid, revision, qid, document); }
-    void answer() { service.saveDraft(sid, revision, qid, Set.of(bank.questions().getFirst().choicePayload().options().getFirst().id())); }
+    void answer() { service.saveExtensionDraft(sid, revision, qid, new PracticePayload(Map.of("value",true))); }
     Optional<ActiveDraftCanvas> active() { return service.loadActiveDraftCanvas(sid, revision, qid); }
     QuestionAttempt submit() { return service.submitAnswer(sid, revision, qid).questions().getFirst().attempts().getLast(); }
     long count(String table) { return tx.execute(r -> { try(var c=db.openConnection();var st=c.createStatement();var rows=st.executeQuery("SELECT count(*) FROM " + table)) { rows.next(); return rows.getLong(1); } catch(SQLException e) { throw new RuntimeException(e); } }); }
@@ -143,6 +155,26 @@ class DraftCanvasPersistenceTest {
                 text.replaceFirst("\\{", "{\"unexpected\":42,"), text.replace("\"zoom\":1.4", "\"zoom\":\"1.4\"")))
             assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(bad), bad);
     }
+    @Test void codecKeepsLegacyShapeAndRoundTripsOptionalTextAndPaper() {
+        var codec = new DraftCanvasJsonCodec();
+        var legacy = ink("A"); var legacyJson = codec.encode(legacy);
+        assertFalse(legacyJson.contains("\"texts\"")); assertFalse(legacyJson.contains("\"paper\""));
+        assertEquals(legacy, DraftCanvasJsonCodec.decode(legacyJson));
+        var note = new DraftCanvasDocument.TextAnnotation("note", 15, -20, 240, 18, "#333", "notes\n草稿");
+        for (var pattern : DraftCanvasDocument.PaperPattern.values()) {
+            var paper = new DraftCanvasDocument.Paper("#fff8dc", pattern);
+            var document = new DraftCanvasDocument("1.0", "1", legacy.viewport(), legacy.questionCard(), legacy.strokes(), List.of(note), paper);
+            var encoded = codec.encode(document);
+            assertEquals(document, DraftCanvasJsonCodec.decode(encoded));
+            for (String bad : List.of(encoded.replace("\"pattern\":\"" + pattern + "\"", "\"pattern\":\"UNKNOWN\""),
+                    encoded.replace("\"size\":18.0", "\"size\":\"18\""),
+                    encoded.replace("\"text\":\"notes", "\"extra\":1,\"text\":\"notes")))
+                assertThrows(IllegalArgumentException.class, () -> DraftCanvasJsonCodec.decode(bad), bad);
+        }
+        save(new DraftCanvasDocument("1.0", "1", legacy.viewport(), legacy.questionCard(), legacy.strokes(), List.of(note),
+                new DraftCanvasDocument.Paper("#fff8dc", DraftCanvasDocument.PaperPattern.GRID)));
+        assertEquals(List.of(note), active().orElseThrow().document().texts());
+    }
     @Test void migrationFromV5PreservesLegacyRowsAndChecksums() throws Exception {
         var file = temp.resolve("v5.db"); var url = "jdbc:sqlite:" + file;
         Flyway.configure().dataSource(url, "", "").target("5").load().migrate();
@@ -159,29 +191,5 @@ class DraftCanvasPersistenceTest {
             try(var rows=st.executeQuery("SELECT name FROM workspace WHERE id='legacy'")) { assertTrue(rows.next()); assertEquals("Keep",rows.getString(1)); }
             try(var rows=st.executeQuery("SELECT count(*) FROM attempt_draft_snapshot")) { rows.next(); assertEquals(0,rows.getInt(1)); }
         }
-    }
-    @ParameterizedTest @ValueSource(strings={"SINGLE_CHOICE","MULTIPLE_CHOICE","CLOZE","READING","MATCHING","TRANSLATION","ESSAY"})
-    void everySupportedSubmitTypeFreezesViaTheSameTransaction(String type) {
-        var editor = new QuestionBankEditorModel(new QuestionBank("qb_" + type, type, List.of(), List.of(), List.of())); editor.addQuestion(type);
-        var typeBank=editor.bank(); var question=typeBank.questions().getFirst(); var rev=new QuestionBankV2Codec().contentId(typeBank);
-        var state=service.openOrCreateActiveSession(typeBank,rev); var session=state.session().id();
-        service.saveActiveDraftCanvas(session,rev,question.id(),ink(type));
-        switch(type) {
-            case "ESSAY" -> service.saveEssayDraft(session,rev,question.id(),new EssayPracticeAnswer("Essay",null));
-            case "TRANSLATION" -> service.saveTranslationDraft(session,rev,question.id(),Map.of(((TranslationPayload)question.payload()).items().getFirst().id(),new EssayPracticeAnswer("Translation",null)));
-            case "MATCHING" -> {
-                var answers = new LinkedHashMap<String,String>(); var spec=((MatchingAnswerSpec)question.answerSpec()).assignments();
-                ((MatchingPayload)question.payload()).blanks().stream().filter(b -> !b.locked()).forEach(b -> answers.put(b.id(),spec.get(b.id())));
-                service.saveMatchingDraft(session,rev,question.id(),answers);
-            }
-            default -> {
-                var data=(Map<?,?>)state.questions().getFirst().sessionQuestion().snapshot().correctAnswer().value();
-                var ids=(List<?>)data.get("correctOptionIds"); var selected=new HashSet<String>(); ids.forEach(v -> selected.add((String)v));
-                service.saveDraft(session,rev,question.id(),selected);
-            }
-        }
-        var attempt=service.submitAnswer(session,rev,question.id()).questions().getFirst().attempts().getLast();
-        assertEquals(ink(type),service.findAttemptDraftSnapshot(attempt.id()).orElseThrow().document());
-        assertTrue(service.loadActiveDraftCanvas(session,rev,question.id()).isEmpty());
     }
 }

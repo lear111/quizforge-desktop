@@ -36,4 +36,26 @@ class DraftCanvasValueTest {
         assertEquals(first.questionCard(), active.document().questionCard());
         assertEquals(first.strokes(), active.document().strokes());
     }
+    @Test void textAndPaperAreImmutableValidatedAndPreservedByCameraChanges() {
+        var empty = DraftCanvasDocument.createEmpty();
+        assertTrue(empty.texts().isEmpty()); assertNull(empty.paper());
+        var note = new DraftCanvasDocument.TextAnnotation("note", -5, 12, 180, 16, "#252933", "草稿\n第二行");
+        var texts = new ArrayList<>(List.of(note));
+        var paper = new DraftCanvasDocument.Paper("#fff8dc", DraftCanvasDocument.PaperPattern.LINES);
+        var document = new DraftCanvasDocument("1.0", "1", empty.viewport(), empty.questionCard(), List.of(), texts, paper);
+        texts.clear();
+        assertEquals(List.of(note), document.texts());
+        assertThrows(UnsupportedOperationException.class, () -> document.texts().clear());
+        var moved = document.withViewport(new DraftCanvasDocument.Viewport(1, 2, 3));
+        assertEquals(document.texts(), moved.texts()); assertEquals(paper, moved.paper());
+        assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument("1.0", "1", empty.viewport(), empty.questionCard(), List.of(), List.of(note, note), paper));
+        assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.TextAnnotation(" ", 0, 0, 1, 1, "#fff", ""));
+        assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.TextAnnotation("n", Double.NaN, 0, 1, 1, "#fff", ""));
+        assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.TextAnnotation("n", 0, 0, 0, 1, "#fff", ""));
+        assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.TextAnnotation("n", 0, 0, 1, 0, "#fff", ""));
+        assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.TextAnnotation("n", 0, 0, 1, 1, "blue", ""));
+        assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.TextAnnotation("n", 0, 0, 1, 1, "#fff", null));
+        assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.TextAnnotation("n", 0, 0, 1, 1, "#fff", "x".repeat(10001)));
+        assertThrows(IllegalArgumentException.class, () -> new DraftCanvasDocument.Paper("paper", DraftCanvasDocument.PaperPattern.PLAIN));
+    }
 }

@@ -1,20 +1,21 @@
 # QuizForge Desktop V2
 
-Java 21 + JavaFX 本地桌面题库应用，独立于 V1。支持工作区文件管理、Markdown 编辑与命名来源引用，以及单选、多选、完形填空、阅读理解、段落排序、翻译、作文的编辑与练习。作答支持草稿、提交确认、重做和归档历史，统计统一使用得分。AI 仅保留设置、凭据和连接测试。
+> 当前阶段（2026-10-06）：HTML SDK 2，示例扩展为单选、多选、判断题，需用户导入并授权；Windows 正式练习、草稿、题目编辑与历史题卡使用 WebView2。当前包职责及业务入口见 [代码地图](docs/code-guide.md)。
+
+Java 21 + JavaFX 本地桌面题库应用，独立于 V1。支持工作区文件管理、Markdown 编辑与命名来源引用；题目的编辑与练习由安装的 HTML 扩展提供。宿主管理作答保存、公共白板、提交确认、重做和归档历史，统计统一使用得分。AI 仅保留设置、凭据和连接测试。
 
 ## 构建与运行
 
 在本目录使用 JDK 21 与 Maven：
 
 ```powershell
-mvn test
-mvn install -DskipTests
-mvn -pl quizforge-desktop-app javafx:run
-# 或使用项目启动器
+mvn.cmd -pl quizforge-desktop-app -am '-Dquizforge.build.directory=target/launcher' -DskipTests clean install
 .\Start-QuizForge.cmd
 ```
 
 根目录统一使用 `.cmd` 启动入口：`Start-QuizForge.cmd` 普通启动，`Start-QuizForge-LiveUi.cmd` 开发启动，两者均可双击。共用的启动实现位于 `tools/Start-QuizForge.ps1`，参数由 `.cmd` 原样传入，例如 `.\Start-QuizForge.cmd -LiveCss`。
+
+Windows 学习与题目编辑后端需要 WebView2 Runtime；源码启动器在 DLL 缺失或更新时使用 Visual Studio C++ Build Tools x64 构建原生适配器。历史列表、作答切换、大纲和统计沿用宿主控件，历史题卡与只读白板使用 WebView2。详见 [WebView2 后端与验证说明](extensions/WEBVIEW2_BACKEND.md)。
 
 普通启动使用包内 Canvas 页面，不要求 Node/npm。修改 Canvas 前端时：
 
@@ -27,23 +28,23 @@ Set-Location ../../..
 .\Start-QuizForge-LiveUi.cmd
 ```
 
-LiveUi 合并 Java、CSS 与 Vite 更新，需要支持增强类重定义的 JBR 21。普通 JDK 21 可用于 Maven 编译与普通启动。详见 [开发热更新说明](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/development-live-update.md)。
+LiveUi 合并 Java、CSS 与 Vite 更新，需要支持增强类重定义的 JBR 21。普通 JDK 21 可用于 Maven 编译与普通启动。详见 [开发热更新说明](docs/development-live-update.md)。
 
-Practice Draft Mode v1 已嵌入正式浏览区：当前七种正式 TEXT 题型右上角点击“草稿 / 退出草稿”，原地切换 JavaFX 题卡与 Draft Canvas。沿用当前 Session、作答状态及 Workspace SQLite，切题前等待保存确认，逐题恢复笔迹与视口。提交冻结、重试清空继续复用 Core 持久化流程。详见 [正式模式说明](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/PRACTICE_DRAFT_MODE.md) 和 [验收记录](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/PRACTICE_DRAFT_MODE_ACCEPTANCE.md)。独立开发入口 `.\tools\Start-SharedPracticeCanvas.ps1` 仍保留，默认使用 `target/draft-persistence-acceptance/practice.db`，可通过 `-Database` 指定隔离路径；正式页面不依赖它。
+正式练习与草稿共用 HTML 扩展题卡，草稿在练习页上叠加公共白板。单选、多选、判断题需安装对应外部包后执行；原题型没有新版扩展时显示缺失提示，底层题库及资源保留。提交冻结、重试清空、历史与统计由宿主管理。
 
-History Draft Replay v1 已接入正式历史详情：按当前 Attempt 显示“草稿 / 返回结果”，冻结题目、答案和笔迹一起回放。只读 Canvas 与 Practice 共用渲染器和 CSS，平移缩放不写库；无快照的旧历史继续显示原结果。详见 [History Replay 架构](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/HISTORY_DRAFT_REPLAY.md)。
+历史详情按当前 Attempt 显示“草稿 / 返回结果”，冻结题目、答案和笔迹一起回放。只读白板的平移缩放不写库；无快照的旧历史保留原结果。当前调用链见 [代码地图](docs/code-guide.md)，早期契约见 [History Replay](quizforge-desktop-app/editor-web/draft-canvas/HISTORY_DRAFT_REPLAY.md)。
 
-Shared Renderer Coverage v1 已接入七种正式题型：SINGLE_CHOICE、MULTIPLE_CHOICE、READING、CLOZE、MATCHING、TRANSLATION、ESSAY。各题型在 Active 与只读 History 复用同一 Runtime 和 renderer，父题共用一个 Draft，内部小题由通用 focusTarget 定位。Core 仍负责判分与 Attempts，翻译/作文保持 UNSCORED，Shared 本轮仅保证 TEXT。详见 [Renderer Contract](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/SHARED_RENDERER_CONTRACT.md) 与 [验收](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/quizforge-desktop-app/editor-web/draft-canvas/SHARED_RENDERER_COVERAGE_ACCEPTANCE.md)。
+HTML SDK 2 已接入单选、多选和判断题外部包：独立 editor.html、practice.html、default.json、页面脚本和同步题型逻辑。两个页面复用公共富文本、题库保存、白板和历史宿主。题型源码位于 `extensions/packages/`。应用不包含题型包，需要手动导入和授权；完整空配置流程见 [外部拓展测试](extensions/README.md)。详细开发、独立打包和热预览见 [SDK 2 开发说明](extensions/SDK_README.md)。
 
 ## 模块与目录
 
 | 模块 | 职责 | 项目依赖 |
 | --- | --- | --- |
-| quizforge-core | 通用模型、具体题型规则、内容/资源、业务流程与端口 | 无 |
+| quizforge-core | 通用模型、扩展规则契约、内容/资源、业务流程与端口 | 无 |
 | quizforge-infrastructure | 本地文件与 ZIP、SQLite/Flyway、Windows DPAPI、DeepSeek HTTP | core |
 | quizforge-desktop-app | JavaFX 交互、内容组件和 Spring 组合入口 | core、infrastructure |
 
-题目按 model/type/content/resource/source/service 分工。客观题在 objective/choice、cloze、reading、matching，主观题在 subjective/essay、translation；桌面题型组件使用对应包结构。桌面 UI 按 shell/workspace/file/markdown/question/content/ai/shared 组织，开发刷新在 dev。旧 extension-api、default-extensions、Material 和标准文档生成链路已退出构建。
+题目按 model/type/content/resource/source/service 分工。当前题型界面、模板、Schema 和评分规则位于 `extensions/packages`；原专项快照、题卡和废弃编辑/作答入口已删除。Core 保留题库编解码所需的值类型，其中 `CHOICE` 结构也供当前单选、多选、判断扩展使用。练习导航模型仅恢复通用状态，题型答案统一走扩展事务。桌面共用练习适配位于 `learning`，浏览器后端位于 `browser`，界面位于 `ui`，扩展管理与沙箱位于 `extension`，开发刷新位于 `dev`。`poc/sharedpractice` 仅保留独立演示。旧 extension-api、default-extensions、Material 和标准文档生成链路已退出构建。
 
 ## 文件与数据
 
@@ -61,8 +62,8 @@ Shared Renderer Coverage v1 已接入七种正式题型：SINGLE_CHOICE、MULTIP
 
 ## 开发文档
 
-本阶段补齐考研英语题型、按实际顺序展开小题的大纲、整张题卡拖动排序，以及 Canvas 对齐、首行缩进和只读预览缓存。小作文复用 `ESSAY`；人工/AI 评分仍未实现。可直接打开 `examples/qbank-v2` 中四个新增题型的示例包验证编辑、练习与历史。
+新增题型从独立 HTML 扩展模板开始，不需要为题型增加 Java 页面分支。原七种题型的产品要求见题型设计说明；对应新版扩展未提供时只能保留数据，不能按旧组件编辑或作答。人工/AI 评分流程仍未实现。
 
-完整目录见 [开发文档导航](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/README.md)。新人从 [项目结构与新增题型指南](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/new-developer-guide.md) 开始，实施新题型时填写 [五步模板](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/templates/new-question-type.md)。题库协议统一维护在 [文件格式与内容资源](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/qbank-format.md)。
+完整目录见 [开发文档导航](docs/README.md)。新人先读 [运行与接入指南](docs/new-developer-guide.md)，再沿 [代码地图与五条业务链路](docs/code-guide.md) 阅读实现。开发新题型使用 [五步模板](docs/templates/new-question-type.md)。题库协议统一维护在 [文件格式与内容资源](docs/qbank-format.md)，验证按新人指南选择与改动对应的入口。
 
 每次修改同步实际行为、协议/兼容说明和相关测试。业务事实的保存放在核心流程与事务中，界面不建立第二条保存旁路。新增媒体、作答结构或评分机制时先扩展共享协议和历史基础，再接题型组件。

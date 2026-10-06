@@ -4,13 +4,6 @@ import io.quizforge.core.practice.QuestionBankPracticeSession;
 import io.quizforge.core.question.model.Question;
 import io.quizforge.core.question.model.QuestionBank;
 import io.quizforge.core.question.type.QuestionTypes;
-import io.quizforge.core.question.type.objective.cloze.ClozeAnswerSpec;
-import io.quizforge.core.question.type.objective.cloze.ClozePayload;
-import io.quizforge.core.question.type.objective.reading.ReadingPayload;
-import io.quizforge.core.question.type.objective.reading.ReadingAnswerSpec;
-import io.quizforge.core.question.type.objective.matching.MatchingPayload;
-import io.quizforge.core.question.type.objective.matching.MatchingAnswerSpec;
-import io.quizforge.core.question.type.subjective.translation.TranslationPayload;
 import io.quizforge.desktop.ui.shared.UiTheme;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -38,6 +31,7 @@ public final class QuestionOutlineView extends VBox {
     private final Map<String, Integer> practiceIndexes = new LinkedHashMap<>();
     private final VBox groups = new VBox();
     private List<Question> questions;
+    private boolean editing;
     private IntConsumer jump;
     private java.util.function.BiConsumer<Integer,Integer> itemJump;
     private java.util.function.BiConsumer<Integer,Integer> moveAction;
@@ -114,7 +108,8 @@ public final class QuestionOutlineView extends VBox {
                     cell.getStyleClass().add("question-number-cell");
                     int itemNumber=blank+1;
                     cell.setOnAction(event -> {
-                        if((QuestionTypes.isReading(questions.get(index).type()) || QuestionTypes.isCloze(questions.get(index).type()) || QuestionTypes.isMatching(questions.get(index).type()) || QuestionTypes.isTranslation(questions.get(index).type())) && itemJump!=null)itemJump.accept(index,itemNumber);
+                        if(itemJump!=null && (QuestionTypes.isExtension(questions.get(index).type())
+                                || QuestionTypes.forData(questions.get(index)).outlineTargets(questions.get(index)).size() > 1))itemJump.accept(index,itemNumber);
                         else this.jump.accept(index);
                     });
                     cells.add(new Cell(index, blank, cell));
@@ -228,18 +223,9 @@ public final class QuestionOutlineView extends VBox {
         clearMoveTargets();cells.forEach(c -> c.button().getStyleClass().remove("reorder-source"));
     }
 
-    private static int cellCount(Question question) {
-        if(QuestionTypes.isTranslation(question.type()))return ((TranslationPayload)question.payload()).items().size();
-        if(QuestionTypes.isMatching(question.type()))return ((MatchingPayload)question.payload()).blanks().size();
-        if(QuestionTypes.isReading(question.type()))return ((ReadingPayload)question.payload()).items().size();
-        return QuestionTypes.isCloze(question.type()) ? ((ClozePayload) question.payload()).blanks().size() : 1;
-    }
-
-    private static List<Integer> cellIndexes(Question question) {
-        return java.util.stream.IntStream.range(0, cellCount(question))
-                .filter(index -> !QuestionTypes.isMatching(question.type())
-                        || !((MatchingPayload) question.payload()).blanks().get(index).locked())
-                .boxed().toList();
+    private List<Integer> cellIndexes(Question question) {
+        return (editing ? QuestionTypes.forData(question).outlineTargets(question) : session.outlineTargets(question)).stream()
+                .filter(target -> target.gradable() && !target.locked()).map(target -> target.number() - 1).toList();
     }
 
     public void setItemJump(java.util.function.BiConsumer<Integer,Integer> action) { itemJump=action; }
@@ -247,6 +233,7 @@ public final class QuestionOutlineView extends VBox {
     public int currentIndex() { return session.index(); }
 
     public void showEditor(QuestionBank bank, int selected, IntConsumer editorJump) {
+        editing=true;
         List<Question> edited = bank.questions();
         boolean changed = questions.size() != edited.size();
         for (int i = 0; !changed && i < edited.size(); i++)
@@ -270,17 +257,8 @@ public final class QuestionOutlineView extends VBox {
             int index = entry.questionIndex();
             Button cell = entry.button();
             Integer practiceIndex = practiceIndexes.get(questions.get(index).id());
-            String state = QuestionTypes.isTranslation(questions.get(index).type())
-                    ? translationState(questions.get(index), entry.blankIndex(), practiceIndex)
-                    : QuestionTypes.isMatching(questions.get(index).type())
-                    ? matchingState(questions.get(index), entry.blankIndex(), practiceIndex)
-                    : QuestionTypes.isReading(questions.get(index).type())
-                    ? readingState(questions.get(index), entry.blankIndex(), practiceIndex)
-                    : QuestionTypes.isCloze(questions.get(index).type())
-                    ? clozeState(questions.get(index), entry.blankIndex(), practiceIndex)
-                    : practiceIndex != null && session.state(practiceIndex) == QuestionBankPracticeSession.State.SUBMITTED
-                    ? QuestionTypes.isEssay(questions.get(index).type()) ? "unscored"
-                            : session.correct(practiceIndex) ? "correct" : "incorrect"
+            String state = practiceIndex != null && session.state(practiceIndex) == QuestionBankPracticeSession.State.SUBMITTED
+                    ? session.correct(practiceIndex) ? "correct" : "incorrect"
                     : practiceIndex != null && session.state(practiceIndex) == QuestionBankPracticeSession.State.SELECTED
                             ? "draft" : "unsubmitted";
             boolean current = index == selected;
@@ -288,14 +266,6 @@ public final class QuestionOutlineView extends VBox {
             cell.getStyleClass().add(state);
             if (current) cell.getStyleClass().add("current");
             String description = "第 " + cell.getText() + " 题"
-                    + (QuestionTypes.isCloze(questions.get(index).type()) ? " · 完形第 "
-                            + ((ClozePayload) questions.get(index).payload()).blanks().get(entry.blankIndex()).number() + " 空" : "")
-                    + (QuestionTypes.isReading(questions.get(index).type()) ? " · 阅读第 "
-                            + ((ReadingPayload)questions.get(index).payload()).items().get(entry.blankIndex()).number()+" 小题" : "")
-                    + (QuestionTypes.isMatching(questions.get(index).type()) ? " · 匹配第 "
-                            + ((MatchingPayload)questions.get(index).payload()).blanks().get(entry.blankIndex()).number()+" 空" : "")
-                    + (QuestionTypes.isTranslation(questions.get(index).type()) ? " · 翻译第 "
-                            + ((TranslationPayload)questions.get(index).payload()).items().get(entry.blankIndex()).number()+" 句" : "")
                     + " · " + switch (state) {
                 case "correct" -> "回答正确";
                 case "incorrect" -> "回答错误";
@@ -310,37 +280,4 @@ public final class QuestionOutlineView extends VBox {
         });
     }
 
-    private String clozeState(Question question, int blankIndex, Integer practiceIndex) {
-        if (practiceIndex == null) return "unsubmitted";
-        var blank = ((ClozePayload) question.payload()).blanks().get(blankIndex);
-        var selection = session.selected(practiceIndex);
-        var chosen = blank.options().stream().filter(option -> selection.contains(option.id())).findFirst();
-        if (chosen.isEmpty()) return "unsubmitted";
-        if (session.state(practiceIndex) != QuestionBankPracticeSession.State.SUBMITTED) return "draft";
-        return ((ClozeAnswerSpec) question.answerSpec()).correctOptionIds().contains(chosen.get().id()) ? "correct" : "incorrect";
-    }
-    private String matchingState(Question question,int blankIndex,Integer practiceIndex) {
-        var blank=((MatchingPayload)question.payload()).blanks().get(blankIndex);
-        if(blank.locked())return "hint";
-        if(practiceIndex==null)return "unsubmitted";
-        var chosen=session.matchingAnswers(practiceIndex).get(blank.id());
-        if(chosen==null)return "unsubmitted";
-        if(session.state(practiceIndex)!=QuestionBankPracticeSession.State.SUBMITTED)return "draft";
-        return chosen.equals(((MatchingAnswerSpec)question.answerSpec()).assignments().get(blank.id()))?"correct":"incorrect";
-    }
-    private String readingState(Question question,int itemIndex,Integer practiceIndex) {
-        if(practiceIndex==null)return "unsubmitted";
-        var item=((ReadingPayload)question.payload()).items().get(itemIndex);var selection=session.selected(practiceIndex);
-        var chosen=item.options().stream().filter(option->selection.contains(option.id())).findFirst();
-        if(chosen.isEmpty())return "unsubmitted";
-        if(session.state(practiceIndex)!=QuestionBankPracticeSession.State.SUBMITTED)return "draft";
-        return ((ReadingAnswerSpec)question.answerSpec()).correctOptionIds().contains(chosen.get().id())?"correct":"incorrect";
-    }
-    private String translationState(Question question,int itemIndex,Integer practiceIndex) {
-        if(practiceIndex==null)return "unsubmitted";
-        var item=((TranslationPayload)question.payload()).items().get(itemIndex);
-        var answer=session.translationAnswers(practiceIndex).get(item.id());
-        if(answer==null || answer.empty())return "unsubmitted";
-        return session.state(practiceIndex)==QuestionBankPracticeSession.State.SUBMITTED?"unscored":"draft";
-    }
 }

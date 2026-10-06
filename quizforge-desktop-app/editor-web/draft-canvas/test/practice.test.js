@@ -2,62 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readPractice } from '../src/practice/contract.js';
 import { practiceChannel } from '../src/bridge/practice.js';
-
-const text = value => ({ kind: 'TEXT', text: value });
-function initial() {
-  return { schemaVersion: '1.0', session: { sessionId: 's', bankAssetId: 'b', bankContentId: 'c' },
-    question: { sessionQuestionId: 'sq', questionId: 'q', type: 'SINGLE_CHOICE', index: 0, total: 4,
-      prompt: text('Question'), options: ['a', 'b', 'c'].map(id => ({ id, content: text(id), feedback: 'NONE' })),
-      selectedOptionIds: [], state: 'UNANSWERED', maxScore: 2, result: null } };
-}
-
-test('explicit contract preserves actual option count and detaches its snapshot', () => {
-  const source = initial(); source.internalRepository = 'must not cross contract';
-  const view = readPractice(JSON.stringify(source));
-  assert.equal(view.question.options.length, 3);
-  assert.equal(view.internalRepository, undefined);
-  view.question.options[0].content.text = 'changed';
-  assert.equal(source.question.options[0].content.text, 'a');
+import { card, installChoices } from './fixtures/html-choice.js';
+installChoices();
+test('HTML contract detaches snapshot and removes host internals',()=>{
+  const source=card();source.internalRepository='private';const parsed=readPractice(source);
+  assert.equal(parsed.internalRepository,undefined);parsed.question.presentation.question.prompt.text='changed';
+  assert.notEqual(source.question.prompt.text,'changed');assert.equal(parsed.question.selectionMode,'EXTENSION');
 });
-
-test('unsubmitted contract rejects result and feedback leaks', () => {
-  const source = initial(); source.question.options[0].feedback = 'CORRECT';
-  assert.throws(() => readPractice(source), /must not expose/);
-  source.question.options[0].feedback = 'NONE'; source.question.result = {};
-  assert.throws(() => readPractice(source), /must not expose/);
+test('unsubmitted HTML presentation cannot expose reference or result',()=>{
+  const source=card();source.question.presentation.reference={answerSpec:{}};
+  assert.throws(()=>readPractice(source),/exposes its answer/);source.question.presentation.reference=null;
+  source.question.result={};assert.throws(()=>readPractice(source),/must not expose/);
 });
-
-test('contract displays the supplied score without independently judging answers', () => {
-  const source = initial(); source.question.state = 'SUBMITTED'; source.question.selectedOptionIds = ['b'];
-  source.question.result = { status: 'INCORRECT', score: 0.75, maxScore: 2, attemptId: 'attempt',
-    attemptNo: 2, attemptMode: 'RETRY', correctOptionIds: ['a'], analysis: text('Explanation') };
-  source.question.options[0].feedback = 'CORRECT'; source.question.options[1].feedback = 'INCORRECT';
-  const view = readPractice(source);
-  assert.equal(view.question.result.score, 0.75);
-  assert.equal(view.question.result.attemptMode, 'RETRY');
-});
-
-test('unknown types, versions, duplicate IDs and multiple single-choice answers are rejected', () => {
-  for (const mutate of [v => v.schemaVersion = '2.0', v => v.question.type = 'UNKNOWN_TYPE',
-    v => v.question.options[1].id = 'a', v => v.question.selectedOptionIds = ['a', 'b'],
-    v => v.question.selectedOptionIds = ['unknown']]) {
-    const source = initial(); mutate(source); assert.throws(() => readPractice(source));
+test('contract rejects unknown option identities and unsupported type/version',()=>{
+  for(const mutate of [v=>v.schemaVersion='2.0',v=>v.question.type='ESSAY',v=>v.question.presentation.answer.selectedOptionIds=['missing']]){
+    const value=card();mutate(value);assert.throws(()=>readPractice(value));
   }
 });
-
-test('retry snapshot may show either empty or chosen answers while retaining Core RETRYING', () => {
-  const source = initial(); source.question.state = 'RETRYING';
-  assert.deepEqual(readPractice(source).question.selectedOptionIds, []);
-  source.question.selectedOptionIds = ['c'];
-  assert.equal(readPractice(source).question.state, 'RETRYING');
+test('retry preserves authoritative state and selected answer',()=>{
+  const value=card('SINGLE_CHOICE',['opt_template_a']);value.question.state='RETRYING';
+  assert.equal(readPractice(value).question.state,'RETRYING');assert.deepEqual(readPractice(value).question.selectedOptionIds,['opt_template_a']);
 });
-
-test('channel sends only the semantic envelope and propagates disconnected host errors', () => {
-  let received, ready = 0;
-  const channel = practiceChannel(() => ({ onEvent: json => received = JSON.parse(json), ready: () => ready++ }));
-  const event = { type: 'ANSWER_CHANGED', sessionId: 's', sessionQuestionId: 'sq', operationSeq: 1, selectedOptionIds: ['b'] };
-  channel.ready(); channel.send(event);
-  assert.equal(ready, 1); assert.deepEqual(received, event); assert.equal(channel.diagnostics().sent, 1);
-  assert.throws(() => practiceChannel(() => null).send(event), /尚未就绪/);
-  assert.throws(() => practiceChannel(() => ({ onEvent() { throw new Error('host failed'); } })).send(event), /host failed/);
+test('bridge sends semantic envelope and propagates disconnected host failures',()=>{
+  let received,ready=0;const channel=practiceChannel(()=>({onEvent:json=>received=JSON.parse(json),ready:()=>ready++}));
+  const event={type:'ANSWER_CHANGED',sessionId:'session',sessionQuestionId:'sq',operationSeq:1,answer:{selectedOptionIds:['opt_template_b']}};
+  channel.ready();channel.send(event);assert.equal(ready,1);assert.deepEqual(received,event);
+  assert.throws(()=>practiceChannel(()=>null).send(event),/尚未就绪/);
 });

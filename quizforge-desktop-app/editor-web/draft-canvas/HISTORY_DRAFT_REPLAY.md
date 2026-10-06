@@ -1,63 +1,39 @@
-# History Draft Replay v1
+# History Learning Surface
 
-正式题库的 **历史记录 → 详情** 中，在当前 Attempt 存在冻结草稿时显示 **草稿 / 返回结果**。浏览区域原地切换 `HistorySurfaceMode.RESULT / DRAFT`，不创建 Stage 或新 Workspace。支持 `SINGLE_CHOICE / MULTIPLE_CHOICE + TEXT`；其他题型保留原历史展示。两者通过 [Shared Renderer Contract](SHARED_RENDERER_CONTRACT.md) 使用与 Active 相同的题型实现。
+> 2026-10-04 迁移状态：当前只启用新版 HTML SDK 2 单选/多选，旧题型专项实现已删除。本文公共白板、状态、事务和历史契约继续适用；七题型覆盖描述属于此前阶段。当前开发入口与 API 以仓库 extensions/SDK_README.md 为准。
 
-## 三种状态
+历史详情复用正式练习的七种题型 Renderer、富文本、题卡 DOM、World 和注释层。旧 JavaFX 历史结果题卡已移除。默认打开 PRACTICE 视图，笔迹和白板文本立即可见；右上角“草稿 / 返回练习”只切换视口能力，不更换题卡、不清除注释。
 
-| 状态 | 身份 | 所有者 | 读写规则 |
+| 历史视图 | 题卡与注释 | 视口 | 工具 |
 | --- | --- | --- | --- |
-| Active Draft | `sessionQuestionId` | 当前练习 | mutable working state，保留原自动保存、提交和重试语义 |
-| Attempt DraftSnapshot | `attemptId` | 已提交作答 | immutable historical state，提交事务冻结后不可覆盖 |
-| History Replay | 当前选中的 `attemptId` | 历史详情页 | read-only projection，查看中的平移缩放只保留在 WebView 内存 |
+| PRACTICE（内部 HistorySurfaceMode.RESULT） | 只读 | 使用快照保存的纸张底色和纹理，固定居中，长题阅读滚动 | 隐藏 |
+| DRAFT | 相同 DOM 和 World 内容，只读 | 恢复快照视口，允许拖动及 Ctrl+滚轮缩放 | 只读拖动、缩放 |
+
+## 数据来源
+
+- 已提交题目：冻结内容快照、当前选中的 Attempt 答案/结果/得分、该 Attempt 的 DraftSnapshot。不同作答次数独立读取，不覆盖其他次数。
+- 未提交题目：冻结内容快照、归档时的正式答案草稿、该 sessionQuestion 的最终白板草稿。`PracticeHistoryService.loadFinalDraftReplay` 先检查 session 已归档、题库和题目归属；归档后 Core 禁止修改，重开练习创建新的 sessionQuestion，不复用旧草稿。
+- 没有保存过白板的题目：新 Renderer 搭配空注释层，保留真正的未提交状态，不伪造 Attempt。
+- 缺少新版内容快照、损坏或不支持的格式：显示不可用，不回退到旧题卡，不用当前 `.qbank` 内容修补历史。
 
 ```text
-Question
-  Attempt #1 → AttemptDraftSnapshot #1
-  Attempt #2 → AttemptDraftSnapshot #2
-  Attempt #3 → AttemptDraftSnapshot #3
-```
-
-不能使用 `Question → DraftSnapshot` 模型。缺失快照不是空白草稿：隐藏入口，不创建假 document。
-
-## 数据与 capability 边界
-
-```text
-PracticeHistoryDetailView：既有题目/Attempt 上下次按钮
-  HistoryDraftAdapter：只持有冻结 detail、History service 和 bankAssetId
-    PracticeHistoryService.loadDraftReplay(bankAssetId, sessionId, sessionQuestionId, attemptId)
-      校验归档轮次、题库、题目、Attempt 归属
-      AttemptDraftSnapshotRepository.find(attemptId)
-        DraftCanvasDocument v1.0 / layout v1
-    SharedPracticeViewModel：冻结 stem/options/correct IDs/analysis + 选中 Attempt 的 answer/result/score
-  HistorySurfaceHost：RESULT / DRAFT、懒加载和选择版本隔离
-    HistoryDraftWebView：本地 history-replay.html；仅 ReadyHost.ready()
-      readHistoryReplay → Shared Runtime → static renderer registry → Choice renderer(READ_ONLY_HISTORY)
+PracticeHistoryDetailView: 题目 / 作答次数 / 大纲 / 来源导航
+  HistoryDraftAdapter: 归档身份及题目、答案、结果投影
+    PracticeHistoryService: 校验归属，读取归档草稿
+  HistorySurfaceHost: 一个 WebView，两种只读显示视口
+    HistoryDraftWebView: 本地 history-replay.html，仅 ReadyHost.ready()
+      readHistoryReplay → Shared Runtime → 七种静态 Renderer
                        + Canvas Core(READ_ONLY)
 ```
 
-JavaFX View 不查询 SQLite。History service 不访问 `activeDrafts`，Adapter 不持有 current bank 或 Practice runtime；不会以当前 `.qbank` 替换历史题干、答案或分数。无新增 SQLite migration，沿用 V6。
+历史默认页和草稿页均使用 `shared-practice.css`。提交反馈、选中标记、完形空位、排序反馈及富文本答案沿用正式题卡，Radio / checkbox / textarea 只读，没有提交、重试或格式编辑功能。前后题箭头在两个视图中均位于视口两侧。
 
-History 页面不暴露 `practiceHost`、`sharedPractice`、保存、提交、重试 bridge，也不创建 Practice channel / DraftAutosave。Radio / checkbox disabled，无 Submit/Retry 按钮，无 Answer change listener。表单只拦截原生提交导航，不生成业务 intent。
+最后一道题右侧箭头进入本轮得分统计页，展示归档得分、总分及正确/错误/未作答/未评分数量。统计页沿用前一题的纸张背景与居中布局，只显示上一题箭头，返回最后一道题；隐藏草稿开关和作答次数控件。大纲仍可直接返回任意题目。统计读取 `PracticeHistoryDetail.summary`，不随所选 Attempt 改变，也不根据当前题库重算。
 
-Canvas `READ_ONLY` 只允许 PAN、Zoom、Fit；拒绝 PEN/ERASER/INTERACT，隐藏并禁用 Clear、Undo/Redo、JSON 导入导出，拦截 Ctrl+Z，所有文档变化都不通知 `onChange`。查看时 `viewport` 可变，始终不发送 DRAFT_CHANGED，不调用 `saveActiveDraftCanvas`，不写 Active 或 Frozen 表。
+## 生命周期与只读边界
 
-## 切换和生命周期
+模式切换仅调用 `canvas.setLearningMode`，不重建 DOM、不重新读取快照。切题或切作答次数立即清空旧题卡和注释，然后加载对应内容；selectionVersion 阻止延迟回调串题。每个历史详情只创建一个 WebView，返回列表、关闭 Tab 和切工作区时销毁。
 
-- `RESULT → DRAFT → RESULT` 不改变当前 Attempt。Attempt 控件在 DRAFT 时移到视口上方，RESULT 时回到原结果卡位置。
-- 切 Attempt/Question：立即清空旧题卡和 SVG 笔迹，递增 selection version，然后载入新 Attempt 的卡片及草稿；延迟 ready 回调不得覆盖后续选择。
-- 新选择有快照则保持 DRAFT；缺失则回 RESULT 并隐藏入口。损坏或不支持的快照显示错误，仍可返回 RESULT。
-- 每个 History Detail 懒创建一个 WebView；切模式、Attempt、Question 复用。返回列表、关闭 Tab、切 Workspace、替换题库/归档详情时 destroy JS bridge、清页面并释放详情引用，不 flush、不保存。
+History 不暴露 Practice mutation bridge，不创建 DraftAutosave，不写答案、笔迹或快照。查看中的拖动和缩放只修改内存 camera。Canvas 的 `READ_ONLY` 始终禁止绘画、擦除、文本编辑、纸张编辑、撤销、清空和导入；PRACTICE 支持只读题卡内容及阅读滚动，DRAFT 支持拖动和缩放。
 
-## 几何与严格格式
-
-题卡使用快照的 `questionCard.width / x / y`、原 world-coordinate strokes 和 viewport。窗口 resize 不重新计算逻辑宽度；适配使用平移缩放。
-
-History HTML 直接引用 `shared-practice.css`，Canvas Core 和题卡 renderer 与 Practice 共用；无 History CSS 副本。JSON 在 Java codec 和 History JS 入口都校验格式与版本，额外字段也报错；不升级、不丢弃字段、不重写快照。解码失败不影响原 RESULT 渲染。
-
-## 限制与后续接口
-
-当前只覆盖 SINGLE_CHOICE + TEXT。共享基础字体栈与 CSS 不等于固定字体二进制；系统字体、WebKit 和未来 renderer 排版变化仍可能影响笔迹与文字的相对位置。本阶段未解决长期跨平台排版一致性。
-
-后续类型迁移需要明确 renderer 的 `loadActive / loadHistory`、`setReadOnly`、`getViewState`、`destroy` 接口，以及内容资源解析和 mutation capability 的边界。Canvas 继续只负责 world geometry/tools，题型 renderer 负责语义与卡片布局。本阶段不实施其他六种题型迁移。
-
-测试和正式工作区验收见 [HISTORY_DRAFT_REPLAY_ACCEPTANCE.md](HISTORY_DRAFT_REPLAY_ACCEPTANCE.md)。
+文档保持 schemaVersion=1.0/layoutVersion=1，沿用 V6 数据库，没有新增 migration。JSON 保留并校验 strokes、texts、paper、questionCard、viewport，未知字段不会被静默丢弃或重写。题干、选项和文档资源来自归档内容快照，不依赖当前题库。

@@ -65,14 +65,24 @@ public final class QuestionBankV2Codec implements QuestionBankFileCodec {
     private final QuestionBankValidator validator = new QuestionBankValidator();
 
     public QuestionBankV2Codec() {
-        for(var type:io.quizforge.core.question.type.QuestionTypes.definitions()) {
-            json.registerSubtypes(new com.fasterxml.jackson.databind.jsontype.NamedType(type.payloadClass(),type.payloadKind()),
-                    new com.fasterxml.jackson.databind.jsontype.NamedType(type.answerClass(),type.answerKind()));
-        }
+        // Generic data remains readable even when its owning extension is not installed.
+        json.registerSubtypes(new com.fasterxml.jackson.databind.jsontype.NamedType(io.quizforge.core.question.model.extension.ExtensionPayload.class,"EXTENSION"),
+                new com.fasterxml.jackson.databind.jsontype.NamedType(io.quizforge.core.question.model.extension.ExtensionAnswerSpec.class,"EXTENSION"));
+        // Stored data codecs are independent from executable extensions. Missing types stay readable.
+        storedType("CHOICE",io.quizforge.core.question.model.choice.ChoicePayload.class,io.quizforge.core.question.model.choice.ChoiceAnswerSpec.class);
+        storedType("CLOZE",io.quizforge.core.question.compat.cloze.ClozePayload.class,io.quizforge.core.question.compat.cloze.ClozeAnswerSpec.class);
+        storedType("READING",io.quizforge.core.question.compat.reading.ReadingPayload.class,io.quizforge.core.question.compat.reading.ReadingAnswerSpec.class);
+        storedType("MATCHING",io.quizforge.core.question.compat.matching.MatchingPayload.class,io.quizforge.core.question.compat.matching.MatchingAnswerSpec.class);
+        storedType("TRANSLATION",io.quizforge.core.question.compat.translation.TranslationPayload.class,io.quizforge.core.question.compat.translation.TranslationAnswerSpec.class);
+        storedType("ESSAY",io.quizforge.core.question.compat.essay.EssayPayload.class,io.quizforge.core.question.compat.essay.EssayAnswerSpec.class);
         json.coercionConfigFor(LogicalType.Textual)
                 .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
                 .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
                 .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail);
+    }
+    private void storedType(String kind,Class<?> payload,Class<?> answer) {
+        json.registerSubtypes(new com.fasterxml.jackson.databind.jsontype.NamedType(payload,kind),
+                new com.fasterxml.jackson.databind.jsontype.NamedType(answer,kind));
     }
 
     @JsonTypeInfo(use=JsonTypeInfo.Id.NAME,property="kind")
@@ -134,6 +144,12 @@ public final class QuestionBankV2Codec implements QuestionBankFileCodec {
                 address.set("value",object.remove("anchorName"));
                 address.set("occurrence",object.remove("occurrence"));
                 object.set("address",address);
+            }
+            // Check raw extension data before deserialization can drop unknown fields or coerce values.
+            for (JsonNode q : root.path("questions")) {
+                var definition = QuestionTypes.find(q.path("type").asText()).orElse(null);
+                if (definition instanceof io.quizforge.core.question.type.extension.ExternalQuestionTypeDefinition extension)
+                    extension.validateQuestionData(json.convertValue(q,new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,Object>>() { }));
             }
             QuestionBank bank=json.treeToValue(root,QuestionBank.class);
             if (draft) validator.validateEmptyDraft(bank); else validate(bank);

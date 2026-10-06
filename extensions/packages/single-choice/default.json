@@ -1,0 +1,57 @@
+{
+  "id": "q_template",
+  "type": "SINGLE_CHOICE",
+  "stimulusRefs": [],
+  "prompt": {
+    "kind": "TEXT",
+    "text": "请选择一个正确选项。"
+  },
+  "payload": {
+    "kind": "CHOICE",
+    "options": [
+      {
+        "id": "opt_template_a",
+        "content": {
+          "kind": "TEXT",
+          "text": "选项 A"
+        }
+      },
+      {
+        "id": "opt_template_b",
+        "content": {
+          "kind": "TEXT",
+          "text": "选项 B"
+        }
+      },
+      {
+        "id": "opt_template_c",
+        "content": {
+          "kind": "TEXT",
+          "text": "选项 C"
+        }
+      },
+      {
+        "id": "opt_template_d",
+        "content": {
+          "kind": "TEXT",
+          "text": "选项 D"
+        }
+      }
+    ]
+  },
+  "answerSpec": {
+    "kind": "CHOICE",
+    "correctOptionIds": [
+      "opt_template_a"
+    ]
+  },
+  "scoreSpec": {
+    "defaultMaxScore": 1
+  },
+  "evaluationSpec": null,
+  "analysis": {
+    "kind": "TEXT",
+    "text": "在此填写答案与解析。"
+  },
+  "sourceRefs": []
+}

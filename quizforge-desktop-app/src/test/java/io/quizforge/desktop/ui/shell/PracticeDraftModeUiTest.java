@@ -115,9 +115,9 @@ class PracticeDraftModeUiTest extends WorkspaceUiTestSupport {
         var rich=new io.quizforge.core.question.content.RichContent(new io.quizforge.core.question.content.RichDocument(List.of(
                 new io.quizforge.core.question.content.ParagraphNode(List.of(new io.quizforge.core.question.content.InlineTextNode("Rich preview",List.of()))))));
         var options=new java.util.ArrayList<>(second.choicePayload().options());
-        options.set(0,new io.quizforge.core.question.type.objective.choice.ChoiceOption(options.getFirst().id(),rich));
+        options.set(0,new io.quizforge.core.question.model.choice.ChoiceOption(options.getFirst().id(),rich));
         var preview=io.quizforge.core.question.model.Question.choice(second.id(),second.type(),second.prompt(),second.analysis(),second.sourceRefs(),
-                new io.quizforge.core.question.type.objective.choice.ChoicePayload(options),second.choiceAnswerSpec());
+                new io.quizforge.core.question.model.choice.ChoicePayload(options),second.choiceAnswerSpec());
         var bank=new io.quizforge.core.question.model.QuestionBank("qb_draft_rich_preview","Draft rich preview",List.of(),List.of(
                 original.questions().getFirst(),preview,io.quizforge.infrastructure.testing.EssayTestBanks.bank().questions().getFirst()),List.of());
         String path="题库/DraftRichPreview.qbank";fixture.write(path,codec.write(bank));

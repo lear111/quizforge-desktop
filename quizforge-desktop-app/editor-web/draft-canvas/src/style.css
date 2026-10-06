@@ -7,14 +7,15 @@ button:hover { background: #f1eef8; }
 button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid #8066b2; outline-offset: 2px; }
 button:disabled { opacity: .4; cursor: default; }
 [hidden] { display: none !important; }
-#draft-canvas-root { display: flex; flex-direction: column; height: 100%; position: relative; background: #f5f4f7; }
+#draft-canvas-root { display: flex; flex-direction: column; height: 100%; position: relative; background: #fff; }
+#draft-canvas-root[data-learning-mode=PRACTICE] #viewport { touch-action: auto; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #e8e5ed; z-index: 2; }
 .toolbar strong { margin-right: 8px; font-size: 16px; white-space: nowrap; }
 .toolbar small { display: block; font-size: 11px; font-weight: 400; color: #817989; margin-top: 3px; }
 nav, .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 button[aria-pressed=true], #submit-card { background: #7b63ad; color: #fff; border-color: #7b63ad; }
 .actions { margin-left: auto; }
-#viewport { flex: 1; min-height: 0; overflow: hidden; position: relative; touch-action: none; background-image: radial-gradient(#dedbe7 1px, transparent 1px); background-size: 24px 24px; }
+#viewport { flex: 1; min-height: 0; overflow: hidden; position: relative; touch-action: none; background-color: #fff; background-image: none; background-size: 24px 24px; }
 #world { position: absolute; left: 0; top: 0; width: 1px; height: 1px; transform-origin: 0 0; }
 #question-card { position: absolute; width: 720px; flex-shrink: 0; padding: 28px; background: #fff; border-radius: 12px; box-shadow: 0 3px 12px #2721360e; line-height: 1.7; }
 .card-heading { display: flex; justify-content: space-between; align-items: center; color: #8b8194; font-size: 12px; }
@@ -30,6 +31,7 @@ input[type=radio], input[type=checkbox] { width: 19px; height: 19px; margin: 0; 
 #card-feedback { margin: 10px 0 0; color: #70599f; min-height: 24px; }
 #annotation { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 #draft-canvas-root:not([data-mode=INTERACT]) #question-card { pointer-events: none; user-select: none; }
+#question-card [data-qf-host-controls] { pointer-events:auto;user-select:auto; }
 [data-mode=PEN] #viewport, [data-mode=ERASER] #viewport { cursor: crosshair; user-select: none; }
 [data-mode=PAN] #viewport { cursor: grab; user-select: none; }
 [data-mode=PAN] #viewport.dragging { cursor: grabbing; }

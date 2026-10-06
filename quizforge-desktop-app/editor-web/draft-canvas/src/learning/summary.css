@@ -1,0 +1,10 @@
+.learning-summary{position:fixed;inset:0;display:grid;place-items:center;overflow:auto;padding:28px 20px;background:#fff;z-index:150;box-sizing:border-box}
+.learning-summary[hidden]{display:none}
+.learning-summary-card{width:720px;max-width:100%;box-sizing:border-box;padding:28px;border-radius:14px;background:#fff;box-shadow:0 3px 12px #2520350d;color:#413953}
+.learning-summary-card header{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#8e879d}
+.learning-summary-results{display:flex;justify-content:center;align-items:center;gap:36px;margin:28px 0}
+.learning-summary-ring{width:132px;height:132px;border-radius:50%;padding:12px;box-sizing:border-box;flex-shrink:0}
+.learning-summary-ring>div{height:100%;background:white;border-radius:50%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px}
+.learning-summary-ring strong{font-size:24px}.learning-summary-ring small{font-size:12px}
+.learning-summary-results dl{width:190px;max-width:50%;margin:0}.learning-summary-results dl>div{display:flex;justify-content:space-between;margin:15px 0;font-size:14px}
+.learning-summary-results dt:before{content:'●';margin-right:10px;font-size:12px}.learning-summary-results dd{margin:0;font-weight:600}

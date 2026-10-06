@@ -74,15 +74,23 @@ public final class DesktopView {
         stage.setMinWidth(800);
         stage.setMinHeight(540);
         WindowChrome.installFrame(stage, scene);
+        installCloseLifecycle(stage, shell, stopLiveCss);
+        return scene;
+    }
+
+    static void installCloseLifecycle(Stage stage, MainWorkspaceView shell, Runnable stopLiveCss) {
         installExitGuard(stage,shell);
         stage.setOnHidden(event -> {
             stopLiveCss.run();
             shell.tabs().closeAll();
         });
-        return scene;
     }
 
     static void installExitGuard(Stage stage,MainWorkspaceView shell) {
-        stage.setOnCloseRequest(event -> { if(!shell.prepareExit())event.consume(); });
+        boolean[] waiting={false};
+        stage.setOnCloseRequest(event -> {
+            event.consume();if(waiting[0])return;waiting[0]=true;
+            shell.prepareExitAsync().whenComplete((ok,failure)->javafx.application.Platform.runLater(()->{waiting[0]=false;if(failure==null&&Boolean.TRUE.equals(ok))stage.hide();}));
+        });
     }
 }

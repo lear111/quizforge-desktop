@@ -1,5 +1,7 @@
 package io.quizforge.desktop.poc.sharedpractice;
 
+import io.quizforge.desktop.learning.SharedPracticeAdapter;
+
 import io.quizforge.core.practice.ActivePracticeSnapshot;
 import io.quizforge.core.practice.PracticeSession;
 import io.quizforge.core.practice.PracticeSessionService;

@@ -7,6 +7,9 @@ import javafx.scene.layout.Region;
 interface FileView {
     default void dispose() { }
     default boolean prepareClose() { return true; }
+    default java.util.concurrent.CompletionStage<Boolean> prepareCloseAsync(){return java.util.concurrent.CompletableFuture.completedFuture(prepareClose());}
+    default void cancelClose(){}
+    default boolean usesAsyncClose(){return false;}
     FilePresentation currentFile();
     FileMode mode();
     boolean hasUnsavedChanges();

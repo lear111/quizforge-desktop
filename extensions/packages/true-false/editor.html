@@ -1,0 +1,52 @@
+<!-- 编辑页片段：宿主按 manifest 加载 editor.js 和 style.css；data-* 是脚本查询的绑定点。 -->
+<section class="qf-judgment-editor">
+  <!-- 自定义题库管理 UI，对应 QF.bank；独立开发预览没有正式题库操作时由 JS 隐藏。 -->
+  <header class="qf-type-heading qf-editor-heading">
+    <div class="qf-heading-copy"><span class="qf-eyebrow">题目编辑</span><strong data-type-title>判断题编辑</strong></div>
+    <span data-bank-position class="muted"></span><button type="button" data-bank-save class="primary"
+      hidden>保存题库</button>
+  </header>
+  <nav data-bank-actions class="qf-type-actions qf-editor-actions" aria-label="题目操作" hidden>
+    <select data-bank-add aria-label="新增题目类型"></select>
+    <button type="button" data-bank-duplicate>复制题目</button><button type="button" data-bank-delete
+      class="quiet-danger">删除题目</button>
+  </nav>
+  <!-- 这里只绘制删除确认，真正删除当前整张题卡由宿主接口执行。 -->
+  <section data-delete-confirm class="qf-inline-confirm" hidden>
+    <span>删除当前整张题卡？</span><button type="button" data-delete-cancel>取消</button><button type="button" data-delete-accept
+      class="danger">确认删除</button>
+  </section>
+  <!-- 题干为普通文本；editor.js 使用 textarea.value 与 QF.editor.update 绑定。 -->
+  <section class="qf-editor-section">
+    <label class="qf-field"><span class="qf-field-title">题干</span><textarea data-prompt rows="4"
+        placeholder="输入题目内容…"></textarea></label>
+  </section>
+  <section class="qf-editor-section">
+    <div class="qf-section-heading"><strong>正确答案</strong><span class="muted">单选</span></div>
+    <p class="muted">选择这句话的判断结果，练习时由用户作答。</p>
+    <!-- 编辑标准答案：固定两项，具体选项 ID 从数据读取，不在 HTML 中写死。 -->
+    <div class="qf-judgment-options" role="radiogroup" aria-label="正确答案">
+      <label class="qf-choice-option"><input type="radio" name="correct-answer" data-correct-true><span
+          class="qf-judgment-symbol" aria-hidden="true">✓</span><span class="qf-option-text">正确</span></label>
+      <label class="qf-choice-option"><input type="radio" name="correct-answer" data-correct-false><span
+          class="qf-judgment-symbol" aria-hidden="true">×</span><span class="qf-option-text">错误</span></label>
+    </div>
+  </section>
+  <section class="qf-editor-section qf-score-section">
+    <label class="qf-field"><span class="qf-field-title">分值</span><span class="qf-score-input"><input data-score
+          type="number" min="0.01" step="0.5"><span>分</span></span></label>
+  </section>
+  <section class="qf-editor-section">
+    <div class="qf-section-heading"><strong>答案与解析</strong><span class="muted">支持富文本</span></div>
+    <!-- 公共富文本编辑器挂载点；内容变化仍需要 editor.update 才能进入保存流程。 -->
+    <div data-analysis class="qf-analysis-editor"></div>
+  </section>
+  <!-- 引用来源由宿主解析和打开，页面仅绑定 sources 接口。 -->
+  <section data-source-section class="qf-type-sources" hidden>
+    <strong>引用来源</strong>
+    <div data-sources></div>
+    <div class="qf-source-input"><input data-source-link placeholder="粘贴来源链接…" aria-label="来源链接"><button type="button"
+        data-source-add>添加来源</button></div>
+  </section>
+  <p data-qf-error class="practice-error" role="alert" hidden></p>
+</section>

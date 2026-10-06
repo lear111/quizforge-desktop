@@ -1,0 +1,39 @@
+<section id="qf-editor-shell" hidden>
+  <header class="qf-editor-toolbar">
+    <span>题库编辑</span>
+    <button id="qbank-save" type="button" title="保存题库 · Ctrl+S" aria-label="保存题库">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l3 3v15H4V3h1ZM8 3v7h8V3M8 21v-7h8v7"/></svg>
+    </button>
+  </header>
+  <nav class="qf-editor-navigation" aria-label="题目导航">
+    <button id="qbank-editor-previous" type="button" title="上一题" aria-label="上一题">←</button>
+    <span id="qbank-editor-position"></span>
+    <button id="qbank-editor-next" type="button" title="下一题" aria-label="下一题">→</button>
+    <select id="qbank-add-question" aria-label="添加题目"><option value="">＋ 添加题目</option></select>
+    <span class="qf-editor-spacer"></span>
+    <span id="qbank-question-type"></span>
+    <button id="qbank-delete-question" type="button" title="删除题目" aria-label="删除题目">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></svg>
+    </button>
+    <button id="qbank-duplicate-question" type="button" title="复制题目" aria-label="复制题目">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h13v13H8zM16 8V3H3v13h5"/></svg>
+    </button>
+  </nav>
+  <p id="qbank-editor-error" role="alert" hidden></p>
+  <section id="qbank-delete-confirm" class="qf-editor-confirm" hidden>
+    <p>确定删除当前题目？题干、选项及相关内容将一并移除。</p>
+    <button type="button" data-cancel-delete>取消</button>
+    <button type="button" data-confirm-delete>删除</button>
+  </section>
+  <div id="qbank-editor-empty" class="qf-editor-state" hidden>还没有题目，点击“添加题目”开始编辑。</div>
+  <div id="qbank-editor-missing" class="qf-editor-state" hidden></div>
+  <main id="extension-editor"></main>
+  <section id="qbank-editor-sources" class="qf-editor-sources">
+    <h3>引用来源</h3>
+    <div id="qbank-source-list"></div>
+    <div class="qf-source-input">
+      <input id="qbank-source-link" type="text" placeholder="粘贴 Source Anchor 链接…" aria-label="来源链接">
+      <button id="qbank-use-source-link" type="button">＋ 使用链接</button>
+    </div>
+  </section>
+</section>

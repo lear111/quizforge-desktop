@@ -17,7 +17,7 @@ import io.quizforge.core.question.model.Question;
 import io.quizforge.core.question.model.QuestionBank;
 import io.quizforge.core.question.model.ScoreSpec;
 import io.quizforge.core.question.service.QuestionBankEditorModel;
-import io.quizforge.core.question.type.subjective.essay.EssayPayload;
+import io.quizforge.core.question.compat.essay.EssayPayload;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;

@@ -7,7 +7,6 @@ import io.quizforge.core.practice.MatchingPracticeAnswer;
 import io.quizforge.core.practice.TranslationPracticeAnswer;
 import io.quizforge.core.question.content.QuestionContentData;
 import io.quizforge.core.question.type.QuestionTypes;
-import io.quizforge.desktop.ui.question.objective.choice.ChoicePresentationMapper;
 import io.quizforge.desktop.ui.question.shared.QuestionTypeCatalog;
 import io.quizforge.desktop.ui.shared.UiTheme;
 import java.util.ArrayList;
@@ -61,11 +60,15 @@ final class HistoryQuestionOutlineView extends VBox {
                 var stored = snapshot.get(key + "Presentation");
                 if (!(stored instanceof java.util.Map<?,?>)) stored = snapshot.get(key);
                 var data = stored instanceof java.util.Map<?,?> ? QuestionContentData.map(stored) : java.util.Map.<String,Object>of();
+                boolean extension = snapshot.get("extensionPresentation") instanceof java.util.Map<?,?>;
+                if (extension) data = QuestionContentData.map(snapshot.get("extensionPresentation"));
                 var parts = data.get(reading || translation ? "items" : "blanks");
-                var items = (reading || cloze || matching || translation) && parts instanceof List<?> entries && !entries.isEmpty() ? entries : List.of(java.util.Map.of());
+                if (extension) parts = data.get("targets");
+                var items = (extension || reading || cloze || matching || translation) && parts instanceof List<?> entries && !entries.isEmpty() ? entries : List.of(java.util.Map.of());
                 for (var value : items) {
                     var item = QuestionContentData.map(value);
                     if (matching && Boolean.TRUE.equals(item.get("locked"))) continue;
+                    if (extension && (Boolean.TRUE.equals(item.get("locked")) || Boolean.FALSE.equals(item.get("gradable")))) continue;
                     int itemNumber = item.get("number") instanceof Number n ? n.intValue() : 0;
                     Set<String> options = item.get("options") instanceof List<?> entries
                             ? entries.stream().map(QuestionContentData::map).map(o -> (String)o.get("id")).collect(java.util.stream.Collectors.toSet()) : Set.of();
@@ -101,28 +104,38 @@ final class HistoryQuestionOutlineView extends VBox {
     }
 
     void refresh(PracticeHistoryDetail detail, int currentIndex) {
+        var row=detail.questions().isEmpty()?null:detail.questions().get(currentIndex);
+        refresh(detail,currentIndex,row!=null && row.finalState()==PracticeSessionQuestion.State.SUBMITTED?row.attempts().size()-1:-1);
+    }
+
+    void refresh(PracticeHistoryDetail detail, int currentIndex,int selectedAttempt) {
         cells.forEach(entry -> {
             int index=entry.questionIndex();
             Button cell=entry.button();
             var question = detail.questions().get(index);
             String state = "unsubmitted";
-            boolean submitted=question.finalState() == PracticeSessionQuestion.State.SUBMITTED && !question.attempts().isEmpty();
+            int attemptIndex=index==currentIndex?selectedAttempt:question.finalState()==PracticeSessionQuestion.State.SUBMITTED?question.attempts().size()-1:-1;
+            var attempt=attemptIndex>=0 && attemptIndex<question.attempts().size()?question.attempts().get(attemptIndex):null;
+            boolean submitted=attempt!=null;
             if(entry.locked())state="hint";
             else if(entry.itemNumber()>0){
-                PracticePayload answer=submitted?question.attempts().getLast().answer():question.draftAnswer();
-                if(QuestionTypes.isTranslation(question.questionType())){
+                PracticePayload answer=submitted?attempt.answer():question.draftAnswer();
+                if(question.contentSnapshot()!=null && QuestionContentData.map(question.contentSnapshot().value()).containsKey("extensionPresentation")) {
+                    state = submitted ? attempt.result().name().toLowerCase(java.util.Locale.ROOT)
+                            : answer == null ? "unsubmitted" : "draft";
+                }else if(QuestionTypes.isTranslation(question.questionType())){
                     var chosen=TranslationPracticeAnswer.from(answer).answers().get(entry.blankId());
                     if(chosen!=null && !chosen.empty())state=submitted?"unscored":"draft";
                 }else if(QuestionTypes.isMatching(question.questionType())){
                     var chosen=MatchingPracticeAnswer.from(answer).assignments().get(entry.blankId());
                     if(chosen!=null)state=submitted?chosen.equals(entry.matchingCorrectOptionId())?"correct":"incorrect":"draft";
                 }else{
-                    var selected=answer==null?Set.<String>of():ChoicePresentationMapper.answerIds(answer);
+                    var selected=answer==null?Set.<String>of():LegacyChoiceAnswerDecoder.answerIds(answer);
                     var chosen=entry.optionIds().stream().filter(selected::contains).findFirst();
                     if(chosen.isPresent())state=submitted?entry.correctOptionIds().contains(chosen.get())?"correct":"incorrect":"draft";
                 }
             }else if (submitted) {
-                state = switch (question.attempts().getLast().result()) {
+                state = switch (attempt.result()) {
                     case CORRECT -> "correct";
                     case INCORRECT -> "incorrect";
                     case UNSCORED -> "unscored";

@@ -1,0 +1,52 @@
+{
+  "packageFormatVersion": 2,
+  "sdkApiMajor": 2,
+  "id": "quizforge.types.multiple-choice",
+  "name": "多选题",
+  "version": "2.1.2",
+  "types": [
+    {
+      "id": "MULTIPLE_CHOICE",
+      "label": "多选题",
+      "dataVersion": 1,
+      "family": "OBJECTIVE",
+      "capabilities": [
+        "editor",
+        "practice",
+        "preview",
+        "history"
+      ],
+      "questionSchema": "question.schema.json",
+      "answerSchema": "answer.schema.json",
+      "rules": "type.js",
+      "editor": "editor.html",
+      "renderer": "practice.html",
+      "defaultQuestion": "default.json",
+      "editorScript": "editor.js",
+      "rendererScript": "practice.js",
+      "styles": [
+        "style.css"
+      ],
+      "permissions": [
+        "question.edit",
+        "bank.save",
+        "bank.add",
+        "bank.duplicate",
+        "bank.delete",
+        "answer.write",
+        "practice.submit",
+        "practice.retry",
+        "navigation",
+        "sources.open",
+        "sources.manage",
+        "learning.mode",
+        "whiteboard.tools",
+        "whiteboard.history",
+        "whiteboard.clear",
+        "whiteboard.appearance",
+        "whiteboard.zoom"
+      ]
+    }
+  ],
+  "minSdkApiMinor": 1
+}

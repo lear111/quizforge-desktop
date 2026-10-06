@@ -36,6 +36,8 @@ public final class FilePane extends BorderPane implements DevelopmentRefreshable
     private final io.quizforge.core.port.PracticeRuntimeProvider practice;
     private final FilePageHost host;
     private FileView pageView;
+    private FileView closingView;
+    private java.util.concurrent.CompletableFuture<Boolean> closePreparation;
     private FilePresentation fallback;
     private WorkspaceId workspace;
     private Runnable onEditStart=()->{};
@@ -65,7 +67,7 @@ public final class FilePane extends BorderPane implements DevelopmentRefreshable
         clear();
     }
     public void open(WorkspaceId workspace,String path){
-        if(!prepareClose())return;
+        if(!prepareClose(()->open(workspace,path)))return;
         Node previous=pageView!=null && java.util.Objects.equals(this.workspace,workspace)
                 && pageView.currentFile().file().entry().relativePath().equals(path)?getCenter():null;
         clear();this.workspace=workspace;
@@ -83,8 +85,22 @@ public final class FilePane extends BorderPane implements DevelopmentRefreshable
             setCenter(UiTheme.quietState("无法打开文件",error.getMessage()==null?"文件可能已移动或无法读取，请刷新工作区。":error.getMessage()));
         }
     }
-    public void clear(){if(pageView!=null)pageView.dispose();pageView=null;fallback=null;workspace=null;setTop(null);setCenter(router.welcome());}
-    public boolean prepareClose(){return pageView==null || pageView.prepareClose();}
+    public void clear(){if(pageView!=null)pageView.dispose();pageView=null;closingView=null;closePreparation=null;fallback=null;workspace=null;setTop(null);setCenter(router.welcome());}
+    public java.util.concurrent.CompletionStage<Boolean> prepareCloseAsync(){
+        if(pageView==null)return java.util.concurrent.CompletableFuture.completedFuture(true);
+        if(!pageView.usesAsyncClose())return java.util.concurrent.CompletableFuture.completedFuture(pageView.prepareClose());
+        if(closingView==pageView&&closePreparation!=null)return closePreparation.minimalCompletionStage();
+        closingView=pageView;closePreparation=pageView.prepareCloseAsync().toCompletableFuture();
+        var pending=closePreparation;pending.whenComplete((ok,failure)->{if(failure!=null||!Boolean.TRUE.equals(ok))javafx.application.Platform.runLater(()->{if(closePreparation==pending){closePreparation=null;closingView=null;}});});
+        return pending.minimalCompletionStage();
+    }
+    public boolean prepareClose(){return prepareClose(()->{});}
+    public boolean prepareClose(Runnable retry){
+        var current=pageView;var pending=prepareCloseAsync().toCompletableFuture();
+        if(pending.isDone()){try{return Boolean.TRUE.equals(pending.join());}catch(RuntimeException failure){return false;}}
+        pending.whenComplete((ok,failure)->javafx.application.Platform.runLater(()->{if(pageView==current&&failure==null&&Boolean.TRUE.equals(ok))retry.run();}));return false;
+    }
+    public void cancelClosePreparation(){if(pageView!=null)pageView.cancelClose();closePreparation=null;closingView=null;}
     public FilePresentation currentFile(){return pageView==null?fallback:pageView.currentFile();}
     public FileMode mode(){return pageView==null?FileMode.BROWSE:pageView.mode();}
     public boolean hasUnsavedChanges(){return pageView!=null && pageView.hasUnsavedChanges();}

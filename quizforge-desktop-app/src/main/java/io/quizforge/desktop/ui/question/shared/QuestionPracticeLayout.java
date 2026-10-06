@@ -11,8 +11,10 @@ public final class QuestionPracticeLayout extends SplitPane {
     private final QuestionOutlineView outline;
     private boolean initialDividerSet;
     private io.quizforge.desktop.ui.question.practice.PracticeSurfaceHost surface;
+    private double outlineDivider=.75;
     public void setSurface(io.quizforge.desktop.ui.question.practice.PracticeSurfaceHost surface,Node normal) {
         this.surface=surface;surface.setNormalContent(normal);readerColumn.setCenter(surface);
+        surface.onUiChange(preferences->{if(readerColumn.getCenter()==surface)setOutlineVisible(preferences.getOrDefault("outline",true));});
     }
     public io.quizforge.desktop.ui.question.practice.PracticeSurfaceHost surface() { return surface; }
 
@@ -34,6 +36,10 @@ public final class QuestionPracticeLayout extends SplitPane {
 
     public void setHeader(Node header) { readerColumn.setTop(header); }
     public void setContent(Node content) { readerColumn.setCenter(content); }
+    public void setOutlineVisible(boolean visible) {
+        if(visible && !getItems().contains(outline)){getItems().add(outline);setDividerPositions(outlineDivider);}
+        else if(!visible && getItems().contains(outline)){if(getDividerPositions().length>0)outlineDivider=getDividerPositions()[0];getItems().remove(outline);}
+    }
     public void keepDividerPosition(QuestionPracticeLayout previous) {
         initialDividerSet = true;
         setDividerPositions(previous.getDividerPositions());

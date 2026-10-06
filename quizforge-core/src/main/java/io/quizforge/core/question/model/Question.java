@@ -2,10 +2,10 @@ package io.quizforge.core.question.model;
 
 import io.quizforge.core.question.content.QuestionContent;
 import io.quizforge.core.question.source.SourceRef;
-import io.quizforge.core.question.type.objective.choice.ChoiceAnswerSpec;
-import io.quizforge.core.question.type.objective.choice.ChoicePayload;
-import io.quizforge.core.question.type.subjective.essay.EssayAnswerSpec;
-import io.quizforge.core.question.type.subjective.essay.EssayPayload;
+import io.quizforge.core.question.model.choice.ChoiceAnswerSpec;
+import io.quizforge.core.question.model.choice.ChoicePayload;
+import io.quizforge.core.question.compat.essay.EssayAnswerSpec;
+import io.quizforge.core.question.compat.essay.EssayPayload;
 import java.util.List;
 
 public record Question(String id, String type, List<String> stimulusRefs, QuestionContent prompt,

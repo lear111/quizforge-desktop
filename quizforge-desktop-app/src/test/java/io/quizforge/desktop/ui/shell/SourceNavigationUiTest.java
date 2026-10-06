@@ -7,14 +7,11 @@ import io.quizforge.core.document.registered.QuizForgeReferenceCodec;
 import io.quizforge.core.port.WorkspaceAssetScanner;
 import io.quizforge.core.question.source.QuestionBankReferenceResolver;
 import io.quizforge.core.question.source.QuestionSourceLinkService;
-import io.quizforge.core.question.type.objective.choice.QuestionText;
+import io.quizforge.core.question.content.QuestionText;
 import io.quizforge.core.workspace.model.WorkspaceFileKind;
 import io.quizforge.desktop.ui.file.FileMode;
 import io.quizforge.desktop.ui.markdown.MarkdownOutline;
 import io.quizforge.desktop.ui.markdown.SafeMarkdownPreview;
-import io.quizforge.desktop.ui.question.objective.choice.ChoiceCardView;
-import io.quizforge.desktop.ui.question.objective.choice.ChoiceResultPresentation;
-import io.quizforge.desktop.ui.question.objective.choice.ChoiceTestFixtures;
 import io.quizforge.desktop.ui.question.source.QuestionSourceNavigationAdapter;
 import io.quizforge.desktop.ui.shared.UiTheme;
 import io.quizforge.desktop.ui.workspace.WorkspaceNavigationService;
@@ -418,61 +415,6 @@ class SourceNavigationUiTest extends WorkspaceUiTestSupport {
             open("我的笔记/学习计划.md");
             assertTrue(shell.lookupAll(".preview-prose").stream().anyMatch(node ->
                     node.getProperties().containsKey("quizforge.sourceContextMenu")));
-        });
-    }
-
-    @Test void sharedResultRendererHonorsVisibilityFlagsAndDoesNotShowEmptySourceHeading() throws Exception {
-        fx(() -> {
-            Label source = new Label("测试来源");
-            var hidden = new ChoiceResultPresentation(ChoiceTestFixtures.content("SINGLE_CHOICE"),
-                    java.util.Set.of("opt_a"), ChoiceResultPresentation.Result.CORRECT, false, false, false);
-            var card = ChoiceCardView.result(hidden, 0, 1, "", source);
-            assertFalse(text(card).contains("正确答案："));
-            assertFalse(text(card).contains("题目解析"));
-            assertFalse(text(card).contains("测试来源"));
-            assertFalse(card.lookup("#option-0").getStyleClass().contains("correct-option"));
-            var emptySources = new javafx.scene.layout.VBox();
-            emptySources.setVisible(false); emptySources.setManaged(false);
-            var shown = new ChoiceResultPresentation(hidden.question(), hidden.userAnswer(), hidden.result(), true, true, true);
-            var visibleCard = ChoiceCardView.result(shown, 0, 1, "history-", emptySources);
-            Label heading = visibleCard.lookupAll(".editor-caption").stream().map(Label.class::cast)
-                    .filter(label -> label.getText().equals("来源")).findFirst().orElseThrow();
-            assertFalse(heading.isVisible());
-            assertFalse(heading.isManaged());
-        });
-    }
-
-    @Test void practiceAndHistoryUseSameResultRendererWhileHistoryShellKeepsItsOwnNavigation() throws Exception {
-        fx(() -> {
-            open("题库/Java集合.qbank");
-            assertInstanceOf(ChoiceCardView.class, shell.lookup("#practice-question-card"));
-            ((RadioButton) shell.lookup("#option-1")).fire(); submitAnswer();
-            shell.applyCss(); shell.layout();
-            var practice = (ChoiceCardView) shell.lookup("#practice-question-card");
-            var presentation = practice.resultPresentation().orElseThrow();
-            String archived = practiceDbSession().id();
-            new io.quizforge.infrastructure.persistence.practice.SqlitePracticeSessionRepository(practiceDb())
-                    .archive(archived, java.time.Instant.parse("2026-09-28T05:00:00Z"));
-            shell.tabs().closeAll(); shell.tabs().openPreview(fixture.alpha.id(), "题库/Java集合.qbank");
-            button("qbank-history-entry").fire(); shell.applyCss(); shell.layout();
-            click(shell.lookup("#history-card-" + archived), 1); shell.applyCss(); shell.layout();
-            var before = practiceRows();
-            forbidPracticeWrites();
-            var history = (ChoiceCardView) shell.lookup("#history-question-card");
-            assertEquals(presentation, history.resultPresentation().orElseThrow());
-            assertEquals(practice.getPadding(), history.getPadding());
-            assertEquals(practice.getSpacing(), history.getSpacing());
-            assertEquals(1, shell.lookupAll(".shared-question-card").size());
-            assertNotNull(shell.lookup("#history-final-state"));
-            assertNotNull(shell.lookup("#history-attempt-position"));
-            assertNotNull(shell.lookup("#history-detail-back"));
-            assertNull(shell.lookup("#submit-answer"));
-            button("history-next-question").fire();
-            history = (ChoiceCardView) shell.lookup("#history-question-card");
-            assertTrue(history.resultPresentation().isEmpty());
-            assertNotNull(shell.lookup("#history-no-attempt"));
-            button("history-previous-question").fire();
-            assertEquals(before, practiceRows());
         });
     }
 

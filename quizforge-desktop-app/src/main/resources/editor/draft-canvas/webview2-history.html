@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-eval' 'nonce-qf-isolated-page-v1'; frame-src 'self'; worker-src blob:; child-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>QuizForge · 练习</title>
+</head>
+<body>
+<main id="draft-canvas-root" data-mode="INTERACT">
+  <header class="toolbar">
+    <strong>草稿工具</strong>
+    <nav aria-label="白板工具">
+      <button type="button" data-mode="INTERACT" aria-pressed="true">交互</button>
+      <button type="button" data-mode="PEN" aria-pressed="false">画笔</button>
+      <button type="button" data-mode="ERASER" aria-pressed="false">橡皮</button>
+      <button type="button" data-mode="PAN" aria-pressed="false">平移</button>
+    </nav>
+    <div class="actions">
+      <button type="button" id="undo" disabled>撤销</button>
+      <button type="button" id="redo" disabled>重做</button>
+      <button type="button" id="clear" disabled>清空笔迹</button>
+      <button type="button" id="export">导出 JSON</button>
+      <button type="button" id="import">载入 JSON</button>
+    </div>
+  </header>
+  <div id="viewport" aria-label="草稿白板">
+    <div id="world">
+      <article id="question-card" aria-label="练习题卡"><p class="practice-loading">正在载入题目…</p></article>
+      <svg id="annotation" xmlns="http://www.w3.org/2000/svg" width="1" height="1" aria-hidden="true"><g id="strokes"></g><g id="active-stroke"></g></svg>
+    </div>
+  </div>
+  <footer><span id="mode-help">交互：选择答案、提交或重试。</span><div class="zoom-actions" aria-label="视口缩放"><button id="zoom-out" type="button" aria-label="缩小视口">−</button><button id="zoom-in" type="button" aria-label="放大视口">+</button><button id="zoom-fit" type="button">适应窗口</button></div><span id="status" role="status"></span></footer>
+  <section id="draft-panel" hidden aria-label="Draft JSON">
+    <div class="panel-heading"><strong>Draft JSON</strong><button type="button" id="close-panel">关闭</button></div>
+    <p>只保存白板几何与笔迹；练习答案和结果由 Java/Core 管理。</p>
+    <textarea id="draft-json" spellcheck="false" aria-label="Draft JSON 内容"></textarea>
+    <div class="panel-actions"><span id="json-error" role="alert"></span><button type="button" id="load-json">载入此 JSON</button></div>
+  </section>
+</main>
+<link rel="stylesheet" href="webview2-practice.css"><script defer src="webview2-practice.js"></script>
+</body>
+</html>

@@ -3,11 +3,8 @@ package io.quizforge.desktop.ui.shell;
 import io.quizforge.core.question.content.TextContent;
 import io.quizforge.core.question.model.Question;
 import io.quizforge.core.question.model.QuestionBank;
-import io.quizforge.core.question.type.objective.choice.QuestionText;
+import io.quizforge.core.question.content.QuestionText;
 import io.quizforge.desktop.ui.file.FileMode;
-import io.quizforge.desktop.ui.question.objective.choice.ChoiceCardView;
-import io.quizforge.desktop.ui.question.objective.choice.ChoiceResultPresentation;
-import io.quizforge.desktop.ui.question.objective.choice.ChoiceTestFixtures;
 import io.quizforge.desktop.ui.question.practice.QuestionBankPracticeView;
 import io.quizforge.desktop.ui.question.shared.QuestionPracticeLayout;
 import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
@@ -244,74 +241,6 @@ class PracticeWorkflowUiTest extends WorkspaceUiTestSupport {
             assertEquals("Updated option", QuestionText.option(saved.questions().getFirst().choicePayload().options().getFirst()));
             assertEquals("Updated analysis", QuestionText.analysis(saved.questions().getFirst()));
             assertNotEquals(codec.contentId(oldBank), codec.contentId(saved));
-        });
-    }
-
-    @Test void sharedAnsweringRendererPreservesChoiceControlsAndOnlyCallsSelectionAction() throws Exception {
-        fx(() -> {
-            var chosen = new ArrayList<String>();
-            var single = ChoiceCardView.answering(ChoiceTestFixtures.content("SINGLE_CHOICE"),
-                    0, 2, java.util.Set.of("opt_b"), chosen::add);
-            assertEquals("第 1 / 2 题", single.position().getText());
-            assertTrue(((RadioButton) single.lookup("#option-1")).isSelected());
-            ((RadioButton) single.lookup("#option-0")).fire();
-            assertEquals(List.of("opt_a"), chosen);
-            assertTrue(single.resultPresentation().isEmpty());
-            assertNull(single.lookup("#answer-feedback"));
-            var multiple = ChoiceCardView.answering(ChoiceTestFixtures.content("MULTIPLE_CHOICE"),
-                    1, 2, java.util.Set.of("opt_a", "opt_b"), chosen::add);
-            assertTrue(((CheckBox) multiple.lookup("#option-0")).isSelected());
-            ((CheckBox) multiple.lookup("#option-2")).fire();
-            assertEquals(List.of("opt_a", "opt_c"), chosen);
-            assertEquals("第 2 / 2 题", multiple.position().getText());
-        });
-    }
-
-    @Test void sharedResultRendererDistinguishesSelectedCorrectMissedWrongAndNeutralOptions() throws Exception {
-        fx(() -> {
-            var result = new ChoiceResultPresentation(ChoiceTestFixtures.content("MULTIPLE_CHOICE"),
-                    java.util.Set.of("opt_a", "opt_c"), ChoiceResultPresentation.Result.INCORRECT, true, true, true);
-            var card = ChoiceCardView.result(result, 0, 1, "history-", null);
-            assertEquals("回答错误", card.resultLabel().getText());
-            assertTrue(text(card).contains("你的答案：A、C"));
-            assertTrue(text(card).contains("正确答案：A、B"));
-            assertTrue(text(card).contains("题目解析"));
-            var correctSelected = (CheckBox) card.lookup("#history-option-0");
-            var correctMissed = (CheckBox) card.lookup("#history-option-1");
-            var wrongSelected = (CheckBox) card.lookup("#history-option-2");
-            var neutral = (CheckBox) card.lookup("#history-option-3");
-            assertTrue(correctSelected.isSelected());
-            assertTrue(correctSelected.getStyleClass().contains("correct-option"));
-            assertFalse(correctMissed.isSelected());
-            assertTrue(correctMissed.getStyleClass().contains("correct-option"));
-            assertTrue(wrongSelected.isSelected());
-            assertTrue(wrongSelected.getStyleClass().contains("incorrect-option"));
-            assertFalse(neutral.isSelected());
-            assertFalse(neutral.getStyleClass().contains("correct-option"));
-            assertFalse(neutral.getStyleClass().contains("incorrect-option"));
-            for (var option : List.of(correctSelected, correctMissed, wrongSelected, neutral)) {
-                assertTrue(option.isDisabled());
-                assertNull(option.getOnAction());
-            }
-            wrongSelected.fire();
-            assertEquals(java.util.Set.of("opt_a", "opt_c"), result.userAnswer());
-        });
-    }
-
-    @Test void sharedReadOnlyPreviewShowsDraftWithoutResultOrFictitiousAttempt() throws Exception {
-        fx(() -> {
-            var card = ChoiceCardView.readOnly(ChoiceTestFixtures.content("SINGLE_CHOICE"),
-                    0, 1, "history-", java.util.Set.of("opt_b"), null);
-            assertTrue(card.resultPresentation().isEmpty());
-            assertNull(card.resultLabel());
-            assertNull(card.lookup("#history-question-result"));
-            assertFalse(text(card).contains("你的答案："));
-            assertFalse(text(card).contains("回答正确"));
-            RadioButton draft = (RadioButton) card.lookup("#history-option-1");
-            assertTrue(draft.isSelected());
-            assertTrue(draft.isDisabled());
-            assertNull(draft.getOnAction());
-            assertFalse(draft.getStyleClass().contains("incorrect-option"));
         });
     }
 

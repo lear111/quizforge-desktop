@@ -16,7 +16,10 @@ public final class DraftCanvasJsonCodec {
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     public String encode(DraftCanvasDocument document) {
-        try { return JSON.writeValueAsString(document); }
+        ObjectNode root = JSON.valueToTree(document);
+        if (document.texts().isEmpty()) root.remove("texts");
+        if (document.paper() == null) root.remove("paper");
+        try { return JSON.writeValueAsString(root); }
         catch (JsonProcessingException error) { throw new IllegalStateException("Could not serialize DraftCanvasDocument", error); }
     }
 
@@ -47,7 +50,7 @@ public final class DraftCanvasJsonCodec {
 
     private static DraftCanvasDocument parseNode(JsonNode value) {
         ObjectNode root = object(value, "draft");
-        fields(root, "schemaVersion", "layoutVersion", "viewport", "questionCard", "strokes");
+        fields(root, "schemaVersion", "layoutVersion", "viewport", "questionCard", "strokes", "texts", "paper");
         String schema = text(root, "schemaVersion");
         String layout = text(root, "layoutVersion");
         if (!SCHEMA_VERSION.equals(schema)) throw invalid("Unsupported draft schemaVersion");
@@ -68,9 +71,24 @@ public final class DraftCanvasJsonCodec {
             }
             strokes.add(new Stroke(text(stroke, "id"), text(stroke, "tool"), text(stroke, "color"), number(stroke, "width"), points));
         }
+        var texts = new java.util.ArrayList<TextAnnotation>();
+        if (root.has("texts")) {
+            for (JsonNode valueText : array(root.get("texts"), "texts")) {
+                ObjectNode annotation = object(valueText, "text");
+                fields(annotation, "id", "x", "y", "width", "size", "color", "text");
+                texts.add(new TextAnnotation(text(annotation, "id"), number(annotation, "x"), number(annotation, "y"),
+                        number(annotation, "width"), number(annotation, "size"), text(annotation, "color"), text(annotation, "text")));
+            }
+        }
+        Paper paper = null;
+        if (root.has("paper") && !root.get("paper").isNull()) {
+            ObjectNode valuePaper = object(root.get("paper"), "paper");
+            fields(valuePaper, "color", "pattern");
+            paper = new Paper(text(valuePaper, "color"), PaperPattern.valueOf(text(valuePaper, "pattern")));
+        }
         return new DraftCanvasDocument(schema, layout,
                 new Viewport(number(view, "x"), number(view, "y"), number(view, "zoom")),
-                new QuestionCard(number(card, "x"), number(card, "y"), number(card, "width")), strokes);
+                new QuestionCard(number(card, "x"), number(card, "y"), number(card, "width")), strokes, texts, paper);
     }
 
     private static JsonNode read(String json) {

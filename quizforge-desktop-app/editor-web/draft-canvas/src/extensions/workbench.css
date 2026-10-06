@@ -1,0 +1,14 @@
+body {margin:0;background:#f5f4f7;color:#252933;font:15px Arial,"Microsoft YaHei",sans-serif;}
+.extension-workbench-shell {padding:18px;}
+.workbench-tabs {display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.workbench-tabs button {padding:9px 18px;border:1px solid #ddd6e9;border-radius:8px;background:white;color:#6c5a84;cursor:pointer;}
+.workbench-tabs button[aria-pressed=true] {background:#7b63ad;color:white;border-color:#7b63ad;}
+.workbench-message {font-size:13px;color:#81758e;min-height:18px;}
+.workbench-message[data-error=true] {color:#b33b4b;}
+.workbench-card {background:white;border-radius:14px;padding:26px;max-width:760px;margin:auto;box-shadow:0 3px 12px #29203d0b;}
+.workbench-card button,.workbench-card select {padding:7px 12px;border:1px solid #dcd6e5;border-radius:6px;cursor:pointer;}
+.extension-editor-field {display:block;margin:18px 0;}
+.extension-editor-field strong {display:block;margin-bottom:8px;}
+.extension-editor-field textarea,.configured-text-answer textarea {box-sizing:border-box;width:100%;min-height:90px;padding:10px;border:1px solid #ded9e8;border-radius:8px;font:inherit;}
+.configured-reference-option {display:flex;gap:10px;padding:8px 0;}
+.configured-display-field {margin:14px 0;white-space:pre-wrap;}
