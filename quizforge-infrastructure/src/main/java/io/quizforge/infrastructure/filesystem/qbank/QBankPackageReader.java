@@ -18,8 +18,12 @@ import static io.quizforge.infrastructure.filesystem.qbank.PackageJson.*;
 /** ZIP-only reader. Inspection never opens resource streams; opening verifies every resource. */
 public final class QBankPackageReader {
     private final PackageLimits limits;
+    private final QuestionBankV2Codec codec;
     public QBankPackageReader() { this(PackageLimits.DEFAULT); }
-    public QBankPackageReader(PackageLimits limits) { this.limits = Objects.requireNonNull(limits); }
+    public QBankPackageReader(PackageLimits limits) {this(limits,CODEC);}
+    private QBankPackageReader(PackageLimits limits,QuestionBankV2Codec codec){this.limits=Objects.requireNonNull(limits);this.codec=codec;}
+    /** Keep ZIP/resource/reference validation, deferring type validation to the candidate package. */
+    public static QBankPackageReader forExtensionExamples(){return new QBankPackageReader(PackageLimits.DEFAULT,QuestionBankV2Codec.forExtensionExamples());}
 
     public QuestionBank read(Path path) {
         try (LoadedPackage loaded = open(path)) { return loaded.bank(); }
@@ -98,7 +102,7 @@ public final class QBankPackageReader {
             try {
                 String source = JSON.writeValueAsString(logical);
                 bank = body.path("questions").isArray() && body.path("questions").isEmpty()
-                        ? CODEC.parseEmptyDraft(source) : CODEC.parse(source);
+                        ? codec.parseEmptyDraft(source) : codec.parse(source);
             } catch (QuizForgeException e) { throw new QuizForgeException(ErrorCode.INVALID_BANK, "INVALID_BANK: " + e.getMessage(), e); }
             if (verifyBytes) for (QBankResource resource : bank.resources()) {
                 MessageDigest hash = sha256();

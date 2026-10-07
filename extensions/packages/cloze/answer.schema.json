@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "maxProperties": 200,
+  "additionalProperties": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 128
+  }
+}

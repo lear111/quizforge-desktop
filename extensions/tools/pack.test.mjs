@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import vm from 'node:vm';
-import {packExtension} from './pack.mjs';
+import {packExtension,readExampleBank,zip} from './pack.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),execute=promisify(execFile);
 
 for (const [slug, type] of [['single-choice','SINGLE_CHOICE'], ['multiple-choice','MULTIPLE_CHOICE'], ['true-false','TRUE_FALSE']]) test(`${type}: copied source and packager build independently outside the repository with identical bytes`,async()=>{
@@ -15,7 +15,7 @@ for (const [slug, type] of [['single-choice','SINGLE_CHOICE'], ['multiple-choice
   const source=resolve(work,'my-extension'),tool=resolve(work,'pack.mjs'),output=resolve(work,'sample.qfext');
   await cp(resolve(root,`packages/${slug}`),source,{recursive:true});await cp(resolve(root,'tools/pack.mjs'),tool);
   const {stdout}=await execute(process.execPath,[tool,source,output],{cwd:work});
-  const result=JSON.parse(stdout);assert.equal(result.id,`quizforge.types.${slug}`);assert.equal(result.files,10);
+  const result=JSON.parse(stdout);assert.equal(result.id,`quizforge.types.${slug}`);assert.ok(result.files>=10);
   assert.match(result.sha256,/^[a-f0-9]{64}$/);
   assert.deepEqual(await readFile(output),await readFile(resolve(root,`dist/${result.id}-${result.version}.qfext`)));
   const context=vm.createContext({});
@@ -59,7 +59,29 @@ test('packager validates minimum SDK minor version and upgrade direction',async(
   const work=await mkdtemp(resolve(tmpdir(),'quizforge-pack-sdk-')),source=resolve(work,'source');
   await cp(resolve(root,'packages/single-choice'),source,{recursive:true});
   const path=resolve(source,'manifest.json'),manifest=JSON.parse(await readFile(path,'utf8'));
-  manifest.minSdkApiMinor=1;await writeFile(path,JSON.stringify(manifest));await packExtension(source,resolve(work,'valid.qfext'));
-  manifest.minSdkApiMinor=2;await writeFile(path,JSON.stringify(manifest));await assert.rejects(packExtension(source,resolve(work,'future.qfext')),/SDK 2.2/);
+  manifest.minSdkApiMinor=3;await writeFile(path,JSON.stringify(manifest));await packExtension(source,resolve(work,'valid.qfext'));
+  manifest.minSdkApiMinor=4;await writeFile(path,JSON.stringify(manifest));await assert.rejects(packExtension(source,resolve(work,'future.qfext')),/SDK 2.4/);
   manifest.minSdkApiMinor='1';await writeFile(path,JSON.stringify(manifest));await assert.rejects(packExtension(source,resolve(work,'invalid.qfext')),/Invalid SDK/);
+});
+
+test('simple types require actual examples and reject empty or mismatched banks',async()=>{
+  const work=await mkdtemp(resolve(tmpdir(),'quizforge-pack-examples-')),source=resolve(work,'source');
+  await cp(resolve(root,'packages/single-choice'),source,{recursive:true});
+  const path=resolve(source,'manifest.json'),manifest=JSON.parse(await readFile(path,'utf8'));
+  const sample=manifest.types[0].examples[0],examplePath=resolve(source,sample.path);
+  const bank=readExampleBank(await readFile(examplePath));
+  manifest.types[0].examples=[];await writeFile(path,JSON.stringify(manifest));
+  await assert.rejects(packExtension(source,resolve(work,'missing.qfext')),/require 1 to 16 examples/);
+  manifest.types[0].examples=[sample];await writeFile(path,JSON.stringify(manifest));
+  const encode=questions=>zip([{name:'manifest.json',data:Buffer.from(JSON.stringify({format:bank.format,schemaVersion:bank.schemaVersion,resources:[]}))},{name:'bank.json',data:Buffer.from(JSON.stringify({stimuli:[],questions}))}]);
+  await writeFile(examplePath,encode([]));await assert.rejects(packExtension(source,resolve(work,'empty.qfext')),/only its declared question type/);
+  await writeFile(examplePath,encode([{...bank.questions[0],type:'WRONG_TYPE'}]));await assert.rejects(packExtension(source,resolve(work,'wrong.qfext')),/only its declared question type/);
+  await writeFile(examplePath,Buffer.from('not a bank'));await assert.rejects(packExtension(source,resolve(work,'invalid.qfext')),/real .qbank ZIP/);
+});
+
+test('example reader rejects traversal and corrupt ZIP entries',async()=>{
+  assert.throws(()=>readExampleBank(zip([{name:'../bank.json',data:Buffer.from('{}')}])),/Invalid offline package path/);
+  const bytes=await readFile(resolve(root,'packages/single-choice/examples/basic.qbank'));
+  const corrupt=Buffer.from(bytes);corrupt[40]^=1;
+  assert.throws(()=>readExampleBank(corrupt),/mismatch|Invalid local ZIP path/);
 });

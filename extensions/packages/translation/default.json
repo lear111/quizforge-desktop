@@ -1,0 +1,92 @@
+{
+  "id": "q_template",
+  "type": "TRANSLATION",
+  "stimulusRefs": [],
+  "prompt": {
+    "kind": "TEXT",
+    "text": "Translate the marked sentences into Chinese.\n\n{{Reading helps us understand the world.}}\n\n{{A good question can lead to a new discovery.}}\n\n{{Learning requires patience and practice.}}\n\n{{Different opinions can broaden our perspective.}}\n\n{{Small efforts can make a lasting difference.}}"
+  },
+  "payload": {
+    "kind": "EXTENSION",
+    "data": {
+      "items": [
+        {
+          "id": "item_translation_1",
+          "number": 1,
+          "text": "Reading helps us understand the world."
+        },
+        {
+          "id": "item_translation_2",
+          "number": 2,
+          "text": "A good question can lead to a new discovery."
+        },
+        {
+          "id": "item_translation_3",
+          "number": 3,
+          "text": "Learning requires patience and practice."
+        },
+        {
+          "id": "item_translation_4",
+          "number": 4,
+          "text": "Different opinions can broaden our perspective."
+        },
+        {
+          "id": "item_translation_5",
+          "number": 5,
+          "text": "Small efforts can make a lasting difference."
+        }
+      ]
+    }
+  },
+  "answerSpec": {
+    "kind": "EXTENSION",
+    "data": {
+      "answers": [
+        {
+          "itemId": "item_translation_1",
+          "referenceAnswer": {
+            "kind": "TEXT",
+            "text": "阅读帮助我们了解世界。"
+          }
+        },
+        {
+          "itemId": "item_translation_2",
+          "referenceAnswer": {
+            "kind": "TEXT",
+            "text": "一个好问题可以带来新的发现。"
+          }
+        },
+        {
+          "itemId": "item_translation_3",
+          "referenceAnswer": {
+            "kind": "TEXT",
+            "text": "学习需要耐心和练习。"
+          }
+        },
+        {
+          "itemId": "item_translation_4",
+          "referenceAnswer": {
+            "kind": "TEXT",
+            "text": "不同的意见可以拓宽我们的视野。"
+          }
+        },
+        {
+          "itemId": "item_translation_5",
+          "referenceAnswer": {
+            "kind": "TEXT",
+            "text": "微小的努力可以产生持久的影响。"
+          }
+        }
+      ]
+    }
+  },
+  "scoreSpec": {
+    "defaultMaxScore": 2
+  },
+  "evaluationSpec": null,
+  "analysis": {
+    "kind": "TEXT",
+    "text": "作者可在这里填写答案与解析。"
+  },
+  "sourceRefs": []
+}

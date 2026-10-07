@@ -78,8 +78,7 @@ public final class WebView2Browser implements AutoCloseable {
                 Files.copy(input, assets.resolve(file), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
         }
-        var dll = Path.of(System.getProperty("quizforge.webview2.library", "target/webview2-native/quizforge_webview2.dll")).toAbsolutePath();
-        if (!Files.isRegularFile(dll)) throw new IOException("Run tools/Build-WebView2.ps1 first");
+        var dll = WebView2LibraryPath.resolve();
         api = Native.load(dll.toString(), Api.class);
         id = api.qf_create(parent, new WString(assets.toString()), new WString(profile.toString()));
         if (id == 0) throw new IOException("Native WebView2 could not attach");

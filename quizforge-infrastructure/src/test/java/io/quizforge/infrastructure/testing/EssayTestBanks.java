@@ -10,8 +10,10 @@ import io.quizforge.core.question.content.TextContent;
 import io.quizforge.core.question.model.Question;
 import io.quizforge.core.question.model.QuestionBank;
 import io.quizforge.core.question.model.ScoreSpec;
-import io.quizforge.core.question.compat.essay.EssayAnswerSpec;
-import io.quizforge.core.question.compat.essay.EssayPayload;
+import io.quizforge.core.question.model.extension.ExtensionAnswerSpec;
+import io.quizforge.core.question.content.QuestionContentData;
+import java.util.Map;
+import io.quizforge.core.question.model.extension.ExtensionPayload;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
@@ -21,14 +23,15 @@ import javax.imageio.ImageIO;
 /** Small synthetic essay fixtures, used only in isolated test directories. */
 public final class EssayTestBanks {
     private EssayTestBanks() { }
-    public static Question essay(String id, QuestionContent prompt, EssayPayload payload, QuestionContent reference) {
-        return new Question(id,"ESSAY",List.of(),prompt,payload,new EssayAnswerSpec(reference),
+    public static Question essay(String id, QuestionContent prompt, String placeholder, QuestionContent reference) {
+        return new Question(id,"ESSAY",List.of(),prompt,new ExtensionPayload(placeholder==null?Map.of():Map.of("placeholder",placeholder)),
+                new ExtensionAnswerSpec(reference==null?Map.of():Map.of("referenceAnswer",QuestionContentData.encode(reference))),
                 new ScoreSpec(new BigDecimal("20.25")),null,null,List.of());
     }
     public static QuestionBank bank() {
         return new QuestionBank("qb_essay","Essay",List.of(),List.of(
-                essay("q_essay",new TextContent("Write an essay."),new EssayPayload("Write here"),new TextContent("Sample essay.")),
-                essay("q_optional",new TextContent("Write freely."),new EssayPayload(null),null)),List.of());
+                essay("q_essay",new TextContent("Write an essay."),"Write here",new TextContent("Sample essay.")),
+                essay("q_optional",new TextContent("Write freely."),null,null)),List.of());
     }
     public static RichContent prompt(String id) {
         return new RichContent(new RichDocument(List.of(

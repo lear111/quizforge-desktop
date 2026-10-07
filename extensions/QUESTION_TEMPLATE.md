@@ -1,5 +1,7 @@
 # 通用题型模板 v1：判断题
 
+> 当前模板版本 2.3.2 使用 [精简页面接口](SIMPLE_PAGE_API.md)，共 11 个文件。直接修改 `editor.js` / `practice.js`，通过 `QF.page.register` 加载、`QF.save` 保存、`QF.requestAction` 请求操作；没有重复源码、编译脚本或包内客户端库。`examples/basic.qbank` 是独立样例题库。
+
 判断题源码：`packages/true-false/`，题型 ID：`TRUE_FALSE`，扩展 ID：`quizforge.types.true-false`。这是完整的 HTML SDK 2 扩展，需要手动导入、确认权限并重启，之后才能在新增题目菜单中选择“判断题”。
 
 此版作为后续题型的视觉起点，先在判断题上调整并确认效果，再沿用到其他题型。白板继续使用宿主默认样式。
@@ -10,8 +12,8 @@
 
 1. `manifest.json`：确认身份、入口和申请权限，再看 `default.json`。
 2. 两份 Schema：对照下表区分完整题目、标准答案和用户作答。
-3. `editor.html` → `editor.js`：先看控件，再看读取、更新、正式保存、来源和富文本。
-4. `practice.html` → `practice.js`：看如何写入选项 ID、订阅宿主、提交、重试及恢复只读记录。
+3. `editor.html` → `editor.js`：先看控件，再看加载、保存、题库操作和富文本。
+4. `practice.html` → `practice.js`：看如何写入选项 ID、接收上下文、提交、重试及恢复只读记录。
 5. `type.js`：独立规则运行时如何校验固定选项并上报分数。
 6. `style.css`：视觉变量、选中与反馈、禁用圆点、窄屏和减少动态效果。
 
@@ -80,12 +82,15 @@
 | `style.css` | 页面外观、响应式布局、交互状态 |
 | `question.schema.json` / `answer.schema.json` | 数据结构校验 |
 | `type.js` | 固定选项与正确答案校验、同步评分 |
+| `examples/basic.qbank` | 真实样例题库，用于预览、下载和开发验证 |
+
+两份页面 JS 均为直接维护的源码，打包不会生成或覆盖它们。无需使用 esbuild，也无需先编译页面。界面文件可以在连接开发目录后热更新；发布修改仍需增加版本号。
 
 判断题复用 `CHOICE` 数据结构，两项按“正确、错误”的顺序保存；正确答案和作答均引用选项 ID。不要在页面或规则中写死默认 JSON 的 ID，新建和复制时宿主会重新分配。空作答允许暂存，提交前由宿主检查。
 
-题目、作答、评分与历史保存均由宿主管理。页面仅通过 SDK 更新数据，评分逻辑使用 `reportResult` 上报得分。结果区应渲染接口返回的结果和参考解析，不能在未提交阶段直接展示正确答案。历史可写能力由宿主拒绝，页面同时按 `context.capabilities` 与 `context.mode` 调整控件。
+题目、作答、评分与历史保存均由宿主管理。页面仅通过 SDK 更新数据，评分逻辑使用 `reportResult` 上报得分。结果区应渲染接口返回的结果和参考解析，不能在未提交阶段直接展示正确答案。历史可写能力由宿主拒绝，页面同时按 `context.permissions` 与 `context.mode` 调整控件。
 
-操作按钮是否显示由模式、`context.permissions.granted` 和提交结果决定。`context.capabilities` 用于控制是否可操作：切题、保存或使用画笔时，能力可能暂时关闭，应只禁用按钮，保留其布局位置，避免按钮消失造成题卡抖动。三个模板的 2.1.2 版本已按此处理。
+操作按钮是否显示由模式、`context.grantedPermissions` 和提交结果决定。`context.permissions` 控制是否可操作：切题、保存或使用画笔时，能力可能暂时关闭，应只禁用按钮，保留其布局位置，避免按钮消失造成题卡抖动。
 
 ## 开发与打包
 
@@ -94,14 +99,16 @@
 在仓库根目录打包：
 
 ```powershell
-node extensions/tools/pack.mjs extensions/packages/true-false extensions/dist/quizforge.types.true-false-2.1.1.qfext
+node extensions/tools/pack.mjs extensions/packages/true-false extensions/dist/quizforge.types.true-false-2.3.2.qfext
 ```
 
 开发其他题型时复制整个源码目录，修改扩展 ID、题型 ID、名称、默认 JSON、Schema 和规则。保留公共页面结构和接口流程，替换题干及作答区域。安装版本不能用同一 ID、同一版本覆盖不同内容；发布修改时增加版本号。
 
-完整接口和权限约定见 [SDK_README.md](SDK_README.md) 与 [PUBLIC_UI_API.md](PUBLIC_UI_API.md)。
+完整现行接口和权限约定见 [SDK 2.3 接口参考](SIMPLE_PAGE_API.md)。新页面不使用旧业务命名空间；文档入口见 [SDK_README.md](SDK_README.md)。
 
-## 本版验证（2026-10-06）
+## 原模板阶段验证记录（2026-10-06）
+
+以下是原模板阶段的定向验收，不是当前 2.3.2 全量回归结论，也不代表本次文档更新重新运行了这些检查。2026-10-07 已为三个 JS 文件补充中文语法和数据流注释，规范化编译后确认执行逻辑未变。
 
 - 前端定向测试 22 项通过，覆盖模板新建／复制／判分、数据约束及现有 SDK 生命周期。
 - Core 定向测试 1 项通过，确认不同扩展题型名能复用 `CHOICE` 数据契约，完成新建、复制和编码往返。

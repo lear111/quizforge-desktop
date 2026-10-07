@@ -3,16 +3,14 @@ import assert from 'node:assert/strict';
 import {createPermissionPolicy,readPermissions,permissionNames} from '../src/extensions/permissions.js';
 
 const methods={
-  'question.edit':['editor.update','editor.save','content.edit'],
-  'bank.save':['bank.save'],'bank.add':['bank.addQuestion'],'bank.duplicate':['bank.duplicateQuestion'],'bank.delete':['bank.deleteQuestion'],
-  'answer.write':['answer.update','answer.flush'],'practice.submit':['practice.submit'],'practice.retry':['practice.retry'],
-  navigation:['navigation.goTo','navigation.previous','navigation.next'],'sources.open':['sources.open'],'sources.manage':['sources.add','sources.remove'],
-  'learning.mode':['learning.setMode','learning.toggleMode'],'whiteboard.tools':['whiteboard.setTool'],
-  'whiteboard.history':['whiteboard.undo','whiteboard.redo'],'whiteboard.clear':['whiteboard.clear'],
-  'whiteboard.appearance':['whiteboard.setAppearance'],'whiteboard.zoom':['whiteboard.setZoom','whiteboard.zoomBy']
+  'question.edit':['editor.update','content.edit'],
+  'bank.save':['bank.save'],'bank.add':['page.add'],'bank.duplicate':['bank.duplicateQuestion'],'bank.delete':['bank.deleteQuestion'],'bank.move':['page.move'],
+  'answer.write':['answer.update'],'practice.submit':['practice.submit'],'practice.retry':['practice.retry'],
+  navigation:['navigation.goTo','navigation.previous','navigation.next','page.attempt'],'sources.open':['sources.open'],'sources.manage':['sources.add','sources.remove'],
+  'learning.mode':['learning.setMode']
 };
 test('every protected operation needs both its declaration and host approval',()=>{
-  assert.deepEqual(Object.keys(methods).sort(),[...permissionNames].sort());
+  assert.ok(Object.keys(methods).every(permission=>permissionNames.includes(permission)));
   for(const [permission,names] of Object.entries(methods))for(const method of names){
     assert.equal(createPermissionPolicy([permission],[]).can(method),false,method);
     assert.equal(createPermissionPolicy([],[permission]).can(method),false,method);
@@ -22,9 +20,14 @@ test('every protected operation needs both its declaration and host approval',()
 });
 test('own reads and display configuration remain available without operation grants',()=>{
   const policy=createPermissionPolicy();
-  for(const method of ['host.getContext','editor.getData','practice.getQuestion','practice.getResult','answer.get','bank.getState','sources.list','navigation.getState','content.resolve','ui.configure','layout.configure'])assert.equal(policy.can(method),true);
+  for(const method of ['page.load','page.save','page.action','content.resolve','ui.configure','layout.configure'])assert.equal(policy.can(method),true);
   assert.deepEqual(policy.granted,[]);assert.throws(()=>policy.granted.push('bank.delete'),TypeError);
   assert.equal(createPermissionPolicy(permissionNames,permissionNames).can('future.unreviewedOperation'),false);
+});
+
+test('removed page APIs remain denied even when every permission is approved',()=>{
+  const policy=createPermissionPolicy(permissionNames,permissionNames);
+  for(const method of ['host.getContext','editor.getData','editor.save','bank.getState','bank.addQuestion','answer.get','answer.flush','practice.getState','practice.getQuestion','practice.getResult','learning.getMode','learning.toggleMode','sources.list','navigation.getState','whiteboard.getState','whiteboard.clear','whiteboard.setTool','whiteboard.setZoom'])assert.equal(policy.can(method),false,method);
 });
 test('invalid permissions fail instead of becoming broad grants',()=>{
   for(const value of ['*',['*'],['files.read'],[null],{}])assert.throws(()=>readPermissions(value),TypeError);

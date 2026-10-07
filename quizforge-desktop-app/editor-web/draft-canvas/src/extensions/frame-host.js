@@ -4,6 +4,7 @@ import {isolatedLayoutSource,configureLayout} from '../shared/ui/layout.js';
 import {startFrameClient} from './frame-client.js';
 import {validateArguments} from './protocol.js';
 import {nativePage} from './native-page.js';
+import {createSimplePageClient} from './simple-client.js';
 
 const nonce='qf-isolated-page-v1';
 const escapeScript=source=>source.replace(/<\/script/gi,'<\\/script');
@@ -11,7 +12,7 @@ export function frameDocument(html,styles,source,boot){
   const policy=`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
   // Intersect with inline-only script policy: a valid nonce alone also authorizes external scripts.
   const helpers=isolatedContentSource()+'\n'+isolatedUiSource()+'\n'+isolatedLayoutSource()+'\n'+validateArguments.toString();
-  const init=helpers+'\n('+startFrameClient.toString()+')('+JSON.stringify(boot).replace(/</g,'\\u003c')+','+renderContent.name+','+configureLayout.name+','+configureUi.name+','+validateArguments.name+');';
+  const init=helpers+'\n('+startFrameClient.toString()+')('+JSON.stringify(boot).replace(/</g,'\\u003c')+','+renderContent.name+','+configureLayout.name+','+configureUi.name+','+validateArguments.name+',('+createSimplePageClient.toString()+'));';
   return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}"><meta http-equiv="Content-Security-Policy" content="script-src 'unsafe-inline'"><style>html,body{margin:0;padding:0;overflow:hidden}body,.qf-extension-page{display:flow-root}*{box-sizing:border-box}[hidden]{display:none!important}.shared-content{white-space:pre-wrap;overflow-wrap:anywhere}.document-content{white-space:normal}.document-content img{max-width:100%;height:auto}.document-content table{border-collapse:collapse}.document-content td{border:1px solid #ded8e8;padding:6px}${styles.replace(/<\/style/gi,'<\\/style')}</style><body><section class="qf-extension-page">${html}</section><script nonce="${nonce}">${escapeScript(init)}</script><script nonce="${nonce}">window.__qfStart((async(QF)=>{\n${escapeScript(source)}\n})(window.QF));</script></body></html>`;
 }
 
@@ -53,7 +54,7 @@ export function connectFrame(page,source,{html,styles,boot,invoke,onReady,onFail
       const execute=()=>retiring||closed?failure('PAGE_CLOSED','题型页面已关闭'):invoke(m.method,args);
       let reply;
       try{
-        if(['editor.update','answer.update'].includes(m.method)){const operation=writeQueue.then(execute);writeQueue=operation.catch(()=>{});reply=await operation;}
+        if(m.method==='page.save'&&['draft','editDraft'].includes(args[0]?.purpose)){const operation=writeQueue.then(execute);writeQueue=operation.catch(()=>{});reply=await operation;}
         else reply=await execute();
       }catch(error){reply=failure('SDK_FAILED',error.message);}
       inFlight.set(m.id,true);send({kind:'reply',id:m.id,reply,layoutState:getState().layoutState});return;

@@ -105,12 +105,25 @@ public final class PracticeHistoryDetailView extends BorderPane implements Devel
     public HistoryQuestionOutlineView outline(){return outline;}
     private java.util.Map<String,Object> pageState(){
         var questions=java.util.stream.IntStream.range(0,detail.questions().size()).mapToObj(i->{var q=detail.questions().get(i);return java.util.Map.<String,Object>of("index",i,"id",q.questionId(),"type",q.questionType(),"state",q.finalState().name());}).toList();
-        return java.util.Map.of("index",questionIndex,"count",questions.size(),"questions",questions,"sources",sourceList==null?java.util.List.of():sourceList.pageSources(),"learningMode",surface.mode()==HistorySurfaceMode.DRAFT?"DRAFT":"PRACTICE");
+        var attempts=questionIndex<detail.questions().size()?detail.questions().get(questionIndex).attempts():java.util.List.<PracticeHistoryDetail.Attempt>of();
+        boolean pending=questionIndex<detail.questions().size()&&detail.questions().get(questionIndex).finalState()!=io.quizforge.core.practice.PracticeSessionQuestion.State.SUBMITTED;
+        return java.util.Map.of("index",questionIndex,"count",questions.size(),"questions",questions,"sources",sourceList==null?java.util.List.of():sourceList.pageSources(),"learningMode",surface.mode()==HistorySurfaceMode.DRAFT?"DRAFT":"PRACTICE",
+                "targets",io.quizforge.desktop.ui.question.shared.QuestionTargetNumbers.current(detail.questions().stream().map(io.quizforge.desktop.ui.question.shared.QuestionTargetNumbers::archived).toList(),questionIndex),
+                "attemptNavigation",java.util.Map.of("canPrevious",attemptIndex>0||attemptIndex<0&&!attempts.isEmpty(),"canNext",attemptIndex>=0&&(attemptIndex<attempts.size()-1||pending),"isCurrent",false));
     }
     private java.util.concurrent.CompletionStage<Void> pageCommand(String action,Object argument){
         if(surface.busy())throw new IllegalStateException("历史题卡暂不可操作");
         switch(action){
-            case "navigate" -> showQuestion(io.quizforge.desktop.ui.question.shared.QuestionPageActions.index(argument,detail.questions().size()));
+            case "navigate" -> showQuestion(io.quizforge.desktop.ui.question.shared.QuestionPageActions.index(argument,detail.questions().size()+1));
+            case "attempt.previous", "attempt.next" -> {
+                if(questionIndex>=detail.questions().size())throw new IllegalArgumentException("总结页没有尝试记录");
+                var row=detail.questions().get(questionIndex);
+                boolean hasPending=row.finalState()!=io.quizforge.core.practice.PracticeSessionQuestion.State.SUBMITTED;
+                if("attempt.previous".equals(action))showAttempt(attemptIndex<0?row.attempts().size()-1:attemptIndex-1);
+                else if(attemptIndex==row.attempts().size()-1&&hasPending){attemptIndex=-1;render();}
+                else showAttempt(attemptIndex+1);
+            }
+            case "attempt.current" -> throw new IllegalArgumentException("历史记录没有当前作答");
             case "learning.mode" -> {
                 if(!"DRAFT".equals(argument)&&!"PRACTICE".equals(argument))throw new IllegalArgumentException("模式无效");
                 surface.setMode("DRAFT".equals(argument)?HistorySurfaceMode.DRAFT:HistorySurfaceMode.RESULT);

@@ -123,5 +123,8 @@ public final class MixedQuestionPracticeView extends SplitPane implements Develo
         if(target==index&&targetId!=null){surface.focusTarget(targetId);return;}
         surface.navigate(()->showNow(target),targetId);
     }
-    private void refreshOutline(){outline.showEditor(bank,practice!=null&&practice.session().finished()&&editorJump==null?-1:index,this::show);}
+    private void refreshOutline(){
+        if(practice!=null&&editorJump==null)outline.showPractice(this::show);
+        else outline.showEditor(bank,index,this::show);
+    }
 }

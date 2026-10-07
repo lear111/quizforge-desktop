@@ -1,7 +1,7 @@
 /** Runs entirely inside the sandbox. This function must not capture any host objects. */
-export function startFrameClient(boot,renderContent,configureLayout,configureUi,validateArguments) {
+export function startFrameClient(boot,renderContent,configureLayout,configureUi,validateArguments,createSimplePageClient) {
   const root=document.querySelector('.qf-extension-page');
-  const pending=new Set(),writes=new Set(),requests=new Map(),singleFlights=new Map(),subscriptions=new Set(),controls=new Set(),disposers=new Set();
+  const pending=new Set(),requests=new Map(),subscriptions=new Set(),controls=new Set(),disposers=new Set();
   let sequence=0,lastError=null,closed=false,ready,layout=boot.layout,ui=boot.ui,layoutState=boot.layoutState,interaction='INTERACT';
   const clone=value=>value==null?value:JSON.parse(JSON.stringify(value));
   const ok=data=>({ok:true,data:clone(data)});
@@ -37,19 +37,6 @@ export function startFrameClient(boot,renderContent,configureLayout,configureUi,
       try{send({kind:'request',id,method,args});}catch(error){clearTimeout(timeout);requests.delete(id);resolve(fail('INVALID_ARGUMENT',error.message));}
     });
   }
-  const barriers=new Set(['editor.save','bank.save','bank.addQuestion','bank.duplicateQuestion','bank.deleteQuestion','navigation.goTo','navigation.previous','navigation.next','practice.submit','practice.retry','answer.flush']);
-  const reads=new Set(['editor.getData','answer.get','practice.getState','practice.getResult']);
-  const remote=(method,tracked=false)=>(...args)=>{
-    let key;
-    try{args=validateArguments(args);key=method+JSON.stringify(args);}catch(error){return Promise.resolve(fail('INVALID_ARGUMENT',error.message));}
-    if(barriers.has(method)&&singleFlights.has(key))return singleFlights.get(key);
-    // Reads must observe preceding writes, including after a rejected update. A save still stops on failure.
-    const value=barriers.has(method)||(reads.has(method)&&writes.size)?Promise.all([...writes]).then(replies=>
-      (barriers.has(method)&&replies.find(reply=>!reply.ok))||request(method,args)):request(method,args);
-    if(tracked){writes.add(value);value.finally(()=>writes.delete(value));track(value);}
-    if(barriers.has(method)){singleFlights.set(key,value);value.finally(()=>singleFlights.delete(key));}
-    return value;
-  };
   function own(node){if(!root.contains(node))throw new TypeError('节点必须属于当前题型页面');return node;}
   function on(node,event,listener){own(node).addEventListener(event,listener);return()=>node.removeEventListener(event,listener);}
   async function flush(){await ready;while(pending.size)await Promise.all([...pending]);if(lastError)throw lastError;}
@@ -62,20 +49,20 @@ export function startFrameClient(boot,renderContent,configureLayout,configureUi,
       return ok(next);
     }catch(error){return fail(kind==='layout'?'INVALID_LAYOUT':'INVALID_UI',error.message);}
   }
-  const QF=Object.freeze({
+  function renderAsync(node,content){
+    own(node);const revision=String(++sequence);node.dataset.qfContentRevision=revision;
+    return track(request('content.resolve',[content]).then(reply=>{
+      if(!reply.ok)throw new Error(reply.error.message);
+      if(!closed&&node.dataset.qfContentRevision===revision){node.replaceChildren();renderContent(node,reply.data);}
+      return node;
+    }));
+  }
+  const components=Object.freeze({
     dom:Object.freeze({root,$:selector=>root.querySelector(selector),on}),
-    host:Object.freeze({getContext:remote('host.getContext'),subscribe(listener){subscriptions.add(listener);return()=>subscriptions.delete(listener);}}),
     ids:Object.freeze({create(prefix='opt_'){const bytes=new Uint32Array(4);crypto.getRandomValues(bytes);return prefix+Array.from(bytes,n=>n.toString(16).padStart(8,'0')).join('');}}),
-    editor:Object.freeze({getData:remote('editor.getData'),update:remote('editor.update',true),save:remote('editor.save')}),
-    bank:Object.freeze({getState:remote('bank.getState'),save:remote('bank.save'),addQuestion:remote('bank.addQuestion'),duplicateQuestion:remote('bank.duplicateQuestion'),deleteQuestion:remote('bank.deleteQuestion')}),
-    navigation:Object.freeze({getState:remote('navigation.getState'),goTo:remote('navigation.goTo'),previous:remote('navigation.previous'),next:remote('navigation.next')}),
-    sources:Object.freeze({list:remote('sources.list'),add:remote('sources.add'),remove:remote('sources.remove'),open:remote('sources.open')}),
-    learning:Object.freeze({getMode:remote('learning.getMode'),setMode:remote('learning.setMode'),toggleMode:remote('learning.toggleMode')}),
-    whiteboard:Object.freeze({getState:remote('whiteboard.getState'),setTool:remote('whiteboard.setTool'),undo:remote('whiteboard.undo'),redo:remote('whiteboard.redo'),clear:remote('whiteboard.clear'),setAppearance:remote('whiteboard.setAppearance'),setZoom:remote('whiteboard.setZoom'),zoomBy:remote('whiteboard.zoomBy')}),
-    practice:Object.freeze({getState:remote('practice.getState'),getQuestion:remote('practice.getQuestion'),getResult:remote('practice.getResult'),submit:remote('practice.submit'),retry:remote('practice.retry')}),
-    answer:Object.freeze({get:remote('answer.get'),update:remote('answer.update',true),flush:remote('answer.flush')}),
     content:Object.freeze({
-      render(node,content){own(node);const revision=String(++sequence);node.dataset.qfContentRevision=revision;track(request('content.resolve',[content]).then(reply=>{if(!reply.ok)throw new Error(reply.error.message);if(node.dataset.qfContentRevision===revision){node.replaceChildren();renderContent(node,reply.data);}}));return node;},
+      render(node,content){renderAsync(node,content);return node;},
+      renderAsync,
       mountEditor(node,{value,onChange,formatting=true}){
         own(node);if(boot.mode!=='EDITOR')throw new TypeError('富文本编辑器只能用于编辑模式');
         let content=clone(value||{kind:'TEXT',text:''}),disposed=false,canEdit=false,permissionRevision=0,removeInput,button,removeButton;
@@ -88,9 +75,9 @@ export function startFrameClient(boot,renderContent,configureLayout,configureUi,
           }else QF.content.render(body,content);
         }
         async function refreshPermission(){
-          const revision=++permissionRevision,reply=await QF.host.getContext();
+          const revision=++permissionRevision,reply=await request('page.load');
           if(disposed||closed||revision!==permissionRevision)return;
-          canEdit=reply.ok&&reply.data.capabilities.editQuestion;
+          canEdit=reply.ok&&reply.data.permissions.editQuestion;
           const input=body.querySelector('textarea');if(input)input.disabled=!canEdit;if(button)button.disabled=!canEdit;
         }
         if(formatting){
@@ -104,7 +91,8 @@ export function startFrameClient(boot,renderContent,configureLayout,configureUi,
             }).finally(()=>{if(!disposed&&!closed)button.disabled=!canEdit;}));
           });
         }
-        const unsubscribe=QF.host.subscribe(refreshPermission);
+        subscriptions.add(refreshPermission);
+        const unsubscribe=()=>subscriptions.delete(refreshPermission);
         function destroy(){if(disposed)return;disposed=true;unsubscribe();removeInput?.();removeButton?.();body.dataset.qfContentRevision='disposed';body.remove();button?.remove();disposers.delete(destroy);}
         disposers.add(destroy);repaint();track(refreshPermission());return {getValue:()=>clone(content),destroy};
       }
@@ -116,9 +104,13 @@ export function startFrameClient(boot,renderContent,configureLayout,configureUi,
   document.addEventListener('submit',event=>event.preventDefault());
   document.addEventListener('keydown',event=>{
     if(boot.mode==='EDITOR'&&(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){
-      event.preventDefault();QF.bank.save();
+      event.preventDefault();QF.requestAction({action:'saveBank'});
     }
   });
+  const simple=createSimplePageClient({request,track,configure,boot,notify,validate:input=>validateArguments([input])[0]});
+  const QF=Object.freeze({dom:components.dom,ids:components.ids,content:components.content,
+    page:Object.freeze({register:simple.register,configure:simple.configure}),save:simple.save,requestAction:simple.requestAction,
+    ui:components.ui,layout:components.layout});
   let measuredHeight=-1,lastControls='';
   function measure(){
     if(closed)return;const height=Math.ceil(root.getBoundingClientRect().height);
@@ -144,21 +136,26 @@ export function startFrameClient(boot,renderContent,configureLayout,configureUi,
       closed=true;for(const entry of requests.values()){clearTimeout(entry.timeout);entry.resolve(fail('PAGE_CLOSED','题型页面已关闭'));}requests.clear();
       setTimeout(()=>send({kind:'close-ack'}),0);return;
     }
-    if(message.kind==='state'){layoutState=message.layoutState||layoutState;interaction=message.interaction;if(interaction!=='INTERACT')document.activeElement?.blur();for(const listener of subscriptions)track(Promise.resolve().then(listener));return;}
+    if(message.kind==='state'){layoutState=message.layoutState||layoutState;interaction=message.interaction;if(interaction!=='INTERACT')document.activeElement?.blur();track(simple.reload());for(const listener of subscriptions)track(Promise.resolve().then(listener));return;}
     if(message.kind==='blur'){document.activeElement?.blur();return;}
-    if(message.kind==='flush'){flush().then(()=>{measure();send({kind:'flushed',id:message.id});},error=>send({kind:'flushed',id:message.id,error:error.message}));return;}
+    if(message.kind==='flush'){simple.prepare().then(flush).then(()=>{measure();send({kind:'flushed',id:message.id});},error=>send({kind:'flushed',id:message.id,error:error.message}));return;}
     if(message.kind==='control-click'&&interaction!=='INTERACT'){
       const target=document.elementFromPoint(message.x,message.y);
       if(target&&Array.from(controls).some(node=>node.contains(target)))target.closest('button,input,select')?.click();return;
     }
     if(message.kind==='focus'){const target=message.id===boot.questionId?root:root.querySelector('[data-target-id="'+CSS.escape(message.id)+'"]');target?.scrollIntoView({block:'nearest'});return;}
   });
-  window.addEventListener('pagehide',()=>{closed=true;resize.disconnect();mutations.disconnect();for(const dispose of disposers)dispose();subscriptions.clear();for(const entry of requests.values()){clearTimeout(entry.timeout);entry.resolve(fail('PAGE_CLOSED','题型页面已关闭'));}requests.clear();});
+  window.addEventListener('pagehide',()=>{closed=true;simple?.dispose().catch(()=>{});resize.disconnect();mutations.disconnect();for(const dispose of disposers)dispose();subscriptions.clear();for(const entry of requests.values()){clearTimeout(entry.timeout);entry.resolve(fail('PAGE_CLOSED','题型页面已关闭'));}requests.clear();});
   // The package script is executed by a nonce-authorized script in this document only.
   Object.defineProperty(window,'QF',{value:QF,writable:false,configurable:false});
   let reportedFailure=false;
   const reportFailure=error=>{if(closed||reportedFailure)return;reportedFailure=true;send({kind:'failed',error:String(error?.message||error||'题型页面执行失败').slice(0,1024)});};
-  window.addEventListener('error',event=>reportFailure(event.error||event.message));
+  window.addEventListener('error',event=>{
+    // ResizeObserver delivery limits are browser layout notifications, not script
+    // exceptions. Keep the card alive; actual exceptions still fail visibly.
+    if(!event.error&&['ResizeObserver loop completed with undelivered notifications.','ResizeObserver loop limit exceeded'].includes(event.message))return;
+    reportFailure(event.error||event.message);
+  });
   window.addEventListener('unhandledrejection',event=>{event.preventDefault();reportFailure(event.reason);});
   window.__qfStart=promise=>{ready=track(promise);ready.then(async()=>{try{await flush();measure();root.dataset.qfReady='true';send({kind:'ready'});}catch(error){send({kind:'failed',error:error.message});}},error=>send({kind:'failed',error:error.message}));};
   measure();

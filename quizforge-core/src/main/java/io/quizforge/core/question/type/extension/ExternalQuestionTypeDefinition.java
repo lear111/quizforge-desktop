@@ -89,6 +89,8 @@ public final class ExternalQuestionTypeDefinition implements QuestionTypeDefinit
                     catch (IllegalArgumentException failure) { throw ExtensionDataValidationException.at("/rules/snapshot/maxScore",failure.getMessage()); }
                 }
                 if (output.containsKey("targets")) targetsFrom(output,"/rules/snapshot");
+                if (output.containsKey("publicPayload") && !(output.get("publicPayload") instanceof Map<?,?>))
+                    throw ExtensionDataValidationException.at("/rules/snapshot/publicPayload","must be a JSON object");
             }
             case "grade" -> validateGradeOutput(output, positiveScore(frozen.get("maxScore")));
             default -> throw new IllegalArgumentException("Unsupported rules operation: " + operation);
@@ -102,19 +104,21 @@ public final class ExternalQuestionTypeDefinition implements QuestionTypeDefinit
         if (!errors.isEmpty()) throw new IllegalArgumentException(String.join("; ", errors.stream().map(String::valueOf).toList()));
     }
     @Override public void validate(Question question, QuestionValidationContext context) {
-        if (!id.equals(question.type()) || !payloadClass().isInstance(question.payload())
-                || !answerClass().isInstance(question.answerSpec())) throw new IllegalArgumentException("Extension data does not match its registered type");
+        // Legacy storage records are checked against the installed package's Schema and rules.
+        // New and edited private data use EXTENSION; no built-in renderer or grader is restored.
+        if (!id.equals(question.type()) || (nativeChoice && (!payloadClass().isInstance(question.payload())
+                || !answerClass().isInstance(question.answerSpec())))) throw new IllegalArgumentException("Extension data does not match its registered type");
         new MissingExtensionQuestionType(question).validate(question,context);
         checkErrors(invoke("validate", Map.of("question", encodeQuestion(question))));
     }
     @Override public Question createDraft(Function<String, String> newId, List<SourceRef> sources) {
         var ids = ids(newId);
-        if (template != null) return decodeQuestion(reidentify(template,newId),(String)ids.get("question"),sources);
+        if (nativeChoice) return decodeQuestion(reidentify(template,newId),(String)ids.get("question"),sources);
         return decodeQuestion(invoke("createDraft", Map.of("ids", ids)), (String) ids.get("question"), sources);
     }
     @Override public Question duplicate(Question question, Function<String, String> newId) {
         var ids = ids(newId);
-        if (template != null) {
+        if (nativeChoice) {
             var copied = decodeQuestion(reidentify(encodeQuestion(question),newId),(String)ids.get("question"),question.sourceRefs());
             return new Question(copied.id(),id,question.stimulusRefs(),copied.prompt(),copied.payload(),copied.answerSpec(),copied.scoreSpec(),question.evaluationSpec(),copied.analysis(),question.sourceRefs());
         }
@@ -145,7 +149,9 @@ public final class ExternalQuestionTypeDefinition implements QuestionTypeDefinit
         }
         var payload = object(data.get("payload")); var answer = object(data.get("answerSpec"));
         if ("EXTENSION".equals(payload.get("kind"))) payload = object(payload.get("data"));
+        else { payload = new LinkedHashMap<>(payload); payload.remove("kind"); }
         if ("EXTENSION".equals(answer.get("kind"))) answer = object(answer.get("data"));
+        else { answer = new LinkedHashMap<>(answer); answer.remove("kind"); }
         return new Question(questionId, id, List.of(), QuestionContentData.decode(prompt),
                 new ExtensionPayload(payload), new ExtensionAnswerSpec(answer),
                 new ScoreSpec(positiveScore(maximum)), QuestionDataCodec.decodeEvaluation(data.get("evaluationSpec")),
@@ -223,6 +229,7 @@ public final class ExternalQuestionTypeDefinition implements QuestionTypeDefinit
         var targets = output.containsKey("targets") ? targetsFrom(output) : targets(question);
         var publicQuestion = new LinkedHashMap<>(encoded);
         publicQuestion.remove("answerSpec"); publicQuestion.remove("analysis");
+        if(output.containsKey("publicPayload"))publicQuestion.put("payload",object(output.get("publicPayload")));
         publicQuestion.put("maxScore", maximum);
         var presentation = new LinkedHashMap<String, Object>();
         presentation.put("question", publicQuestion); presentation.put("targets", targets);

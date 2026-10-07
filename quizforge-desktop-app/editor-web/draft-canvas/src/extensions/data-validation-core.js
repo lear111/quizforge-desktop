@@ -92,7 +92,7 @@ const outputSchemas={
   validate:{type:'object',required:['errors'],properties:{errors}},
   validateAnswer:{type:'object',required:['errors','empty'],properties:{errors,empty:{type:'boolean'}}},
   targets:{type:'object',required:['targets'],properties:{targets}},
-  snapshot:{type:'object',properties:{targets,maxScore:maximum}},
+  snapshot:{type:'object',properties:{targets,maxScore:maximum,publicPayload:{type:'object'}}},
   grade:{type:'object',required:['status','score'],properties:{status:{enum:['CORRECT','INCORRECT','UNSCORED']},score:{type:['number','null']},maxScore:maximum}}
 };
 const ajv=new Ajv({allErrors:true,strict:false,validateFormats:false,coerceTypes:false,useDefaults:false,removeAdditional:false,ownProperties:true});

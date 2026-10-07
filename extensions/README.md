@@ -1,12 +1,14 @@
 # 题型扩展：真实开发与安装流程（HTML SDK 2）
 
-应用不含任何内置题型。单选、多选、判断题均为普通外部包：没有启动自动安装、自动授权或指定源码目录监听。主程序只提供 SDK、浏览器、数据保存及权限边界。空数据目录启动时没有可新建的题型，已有题目缺少对应扩展时保留数据并提示安装。
+应用不含任何内置题型。单选、多选、判断、完形、阅读、排序、翻译、作文均为普通外部包：没有启动自动安装、自动授权或指定源码目录监听。主程序只提供 SDK、浏览器、数据保存及权限边界。空数据目录启动时没有可新建的题型，已有题目缺少对应扩展时保留数据并提示安装。
 
 ## 开发文档入口
 
+- **当前 SDK 2.3 首先阅读：** [精简页面接口与样例题库](SIMPLE_PAGE_API.md)。推荐判断题 2.3.2 的 11 文件模板，直接编辑页面脚本；其余七型为 2.3.2，所有包均带独立样例题库。
+
 - **从头开发或在新对话继续：** [拓展开发指南](DEVELOPMENT_GUIDE.md)，包含文件职责、数据与保存流程、复制判断题的修改清单、打包与热更新，以及可复制的新对话提示词。
 - **看现成带注释模板：** [判断题设计与源码导读](QUESTION_TEMPLATE.md)，源码在 `packages/true-false/`。
-- **查已实现 API：** [SDK 参考](SDK_README.md)、[公共 UI 与权限](PUBLIC_UI_API.md)、[数据校验](DATA_VALIDATION.md)。
+- **查已实现 API：** [SDK 2.3 接口参考](SIMPLE_PAGE_API.md)、[SDK 文档索引](SDK_README.md)、[数据校验](DATA_VALIDATION.md)。
 - **安装与测试配置：** 继续阅读本文。目标接口草案不能作为已实现 API 的依据。
 
 ## 目录
@@ -17,10 +19,10 @@
 | `packages/multiple-choice/` | 多选完整源码，扩展 ID `quizforge.types.multiple-choice` |
 | `packages/true-false/` | 判断题完整源码及通用视觉模板，扩展 ID `quizforge.types.true-false` |
 | `tools/pack.mjs` | 独立离线打包工具；可以与源码一起复制到仓库外，只需 Node |
-| `dist/*-2.1.1.qfext` | 当前三个安装包；2.1.0 包原样保留供版本回放 |
+| `dist/*-2.3.2.qfext` | 八个题型的精简接口安装包；旧版本包保留存档，旧页面 API 已停止支持 |
 | `dist/*.bundle.json` / `preview.html` | 网页只读预览产物，不是桌面安装包 |
 
-题型 ID 仍为 `SINGLE_CHOICE`、`MULTIPLE_CHOICE`、`TRUE_FALSE`，题目数据格式和 SDK 不变。页面、默认 JSON、Schema 与评分规则全部在扩展目录。主程序资源及 JAR 排除题型包；构建主程序不会生成或安装扩展。
+八种题型 ID 保持原命名，最新包要求 SDK 2.3；宿主只读取 CHOICE/EXTENSION 封装，旧专项 kind 题库需手动迁移。历史迁移记录见 [迁移说明](READING_TYPES_MIGRATION.md)，最新源码构建见 [精简接口说明](SIMPLE_PAGE_API.md)。页面、默认 JSON、Schema、样例题库与评分规则全部在扩展目录。主程序资源及 JAR 排除题型包；构建主程序不会安装扩展。
 
 ## 用正式应用测试全流程
 
@@ -44,6 +46,8 @@ powershell -ExecutionPolicy Bypass -File tools/Start-Extension-Lab.ps1 -SkipBuil
 6. “停止实时预览”恢复安装包页面。评分规则、默认 JSON、Schema 或清单变化需增加版本号，重新打包、导入和重启；也可以先用“独立开发预览…”测试。
 
 默认 `.quizforge` 配置里以前已安装的包仍保留，普通启动会加载这些外部安装包。旧包 ID 为 `quizforge.builtin.*`，新包 ID 为 `quizforge.types.*`；同一题型 ID 不能由不同扩展同时占用。请用以上空白配置测试新包，不要在保留旧包的配置里混装。旧历史可能引用旧包版本，此次不删除其存档或正式工作区。
+
+当前运行时已删除旧页面接口的兼容代码，只接受 `pageApi: "simple"`。旧包会提示升级；与旧页面接口绑定的历史不能直接回放，冻结版本和用户数据不会自动迁移或覆盖。原题库数据可由新版扩展按其数据兼容规则继续读取。
 
 ## 独立开发、打包
 

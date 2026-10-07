@@ -59,10 +59,6 @@ public final class QuestionTypes {
         return "SINGLE_CHOICE".equals(id) || "MULTIPLE_CHOICE".equals(id) || find(id).map(type -> type.payloadClass() ==
                 io.quizforge.core.question.model.choice.ChoicePayload.class).orElse(false);
     }
-    public static boolean isEssay(String id) {
-        return "ESSAY".equals(id) || find(id).map(type -> type.payloadClass() ==
-                io.quizforge.core.question.compat.essay.EssayPayload.class).orElse(false);
-    }
     public static boolean isSingleChoice(String id) {
         return "SINGLE_CHOICE".equals(id) || isChoice(id) && find(id).map(type -> !type.multipleSelection()).orElse(false);
     }

@@ -17,6 +17,7 @@ final class WindowsExtensionSandbox {
     private static final String CAPTURED_MODULEPATH = System.getProperty("jdk.module.path", "");
     private static boolean recovered;
     private static boolean securedRoot;
+    private static RuntimeFiles preparedRuntime;
     private record RuntimeFiles(Path root, Path java, String classpath, String modulepath) {}
     private WindowsExtensionSandbox() {}
     static Process start(Class<?> entry, String... arguments) throws IOException {
@@ -91,6 +92,9 @@ final class WindowsExtensionSandbox {
     }
     private static RuntimeFiles prepareRuntime() throws IOException {
         synchronized (LOCK) {
+            // One immutable runtime snapshot per host lifetime. Packages still get
+            // separate restricted processes/jobs; restarting the app picks up new binaries.
+            if(preparedRuntime!=null){rejectLink(preparedRuntime.root);return preparedRuntime;}
             if (!securedRoot) {
                 Path cacheRoot = root(); safeDirectories(cacheRoot);
                 WindowsSandboxNative.protectDirectory(cacheRoot, null, false); securedRoot = true;
@@ -120,7 +124,8 @@ final class WindowsExtensionSandbox {
             }
             rejectLink(snapshot);
             String cp = remap(snapshot, "cp", classpath), mp = remap(snapshot, "mp", modulepath);
-            return new RuntimeFiles(snapshot, snapshot.resolve("jre/bin/javaw.exe"), cp, mp);
+            preparedRuntime=new RuntimeFiles(snapshot, snapshot.resolve("jre/bin/javaw.exe"), cp, mp);
+            return preparedRuntime;
         }
     }
     private static void nativeLibraries(Path jar, Path directory) throws IOException {

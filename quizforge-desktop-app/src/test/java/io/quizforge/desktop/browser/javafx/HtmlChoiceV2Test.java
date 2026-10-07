@@ -70,7 +70,7 @@ class HtmlChoiceV2Test {
   var first=bank(type).questions().getFirst();
   var second=bank(type.equals("SINGLE_CHOICE")?"MULTIPLE_CHOICE":"SINGLE_CHOICE").questions().getFirst();
   var missing=new Question("q_shell_missing","ESSAY",List.of(),new TextContent("Preserved article"),
-    new io.quizforge.core.question.compat.essay.EssayPayload(null),new io.quizforge.core.question.compat.essay.EssayAnswerSpec(null),
+    new io.quizforge.core.question.model.extension.ExtensionPayload(Map.of()),new io.quizforge.core.question.model.extension.ExtensionAnswerSpec(Map.of()),
     new ScoreSpec(java.math.BigDecimal.TEN),null,new TextContent("Preserved analysis"),List.of());
   var bank=new QuestionBank("qb_shell","Shell",List.of(),List.of(first,second,missing),List.of());
   var ref=io.quizforge.core.question.source.SourceRef.anchor("doc_shell","qfd:v2:"+"a".repeat(64),"<img>",1,"Source","<img>");
@@ -481,7 +481,7 @@ class HtmlChoiceV2Test {
  }
  @Test void missingTypePreservesDataAndNavigatesInMixedBank() throws Exception {
   var available=bank("SINGLE_CHOICE");
-  var missing=new Question("q_missing","ESSAY",List.of(),new TextContent("Preserved question"),new io.quizforge.core.question.compat.essay.EssayPayload(null),new io.quizforge.core.question.compat.essay.EssayAnswerSpec(null),new ScoreSpec(java.math.BigDecimal.TEN),null,new TextContent("Preserved analysis"),List.of());
+  var missing=new Question("q_missing","ESSAY",List.of(),new TextContent("Preserved question"),new io.quizforge.core.question.model.extension.ExtensionPayload(Map.of()),new io.quizforge.core.question.model.extension.ExtensionAnswerSpec(Map.of()),new ScoreSpec(java.math.BigDecimal.TEN),null,new TextContent("Preserved analysis"),List.of());
   var bank=new QuestionBank("qb_missing","Missing",List.of(),List.of(missing,available.questions().getFirst()),List.of());
   var codec=new QuestionBankV2Codec();assertEquals(bank,fx(()->codec.parse(codec.write(bank))));assertFalse(SharedPracticeViewModel.supportsType("ESSAY"));
   var db=new SqliteDatabase(directory.resolve("missing.db"));var service=new PracticeSessionService(new SqlitePracticeTransaction(db),Clock.systemUTC());

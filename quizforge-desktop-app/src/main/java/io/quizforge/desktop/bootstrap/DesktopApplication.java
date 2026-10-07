@@ -24,11 +24,14 @@ public final class DesktopApplication extends Application {
     public void start(Stage stage) {
         stage.initStyle(StageStyle.TRANSPARENT);
         stage.setTitle("QuizForge Desktop");
+        var loading=new javafx.scene.Scene(io.quizforge.desktop.ui.shared.UiTheme.quietState("QuizForge", "正在加载工作区…"),1180,780);
+        io.quizforge.desktop.ui.shared.UiTheme.apply(loading);
+        stage.setScene(loading);stage.show();
         var root = context.getBean(io.quizforge.infrastructure.filesystem.QuizForgeDataDirectory.class).root();
-        io.quizforge.desktop.extension.ExtensionManager.getDefault().initialize(root.resolve("extensions")).whenComplete((nothing,failure) -> {
+        io.quizforge.desktop.extension.ExtensionManager.getDefault().initialize(root.resolve("extensions")).whenCompleteAsync((nothing,failure) -> {
+            if(!stage.isShowing())return;
             stage.setScene(context.getBean(DesktopView.class).createScene(stage));
-            stage.show();
-        });
+        },javafx.application.Platform::runLater);
     }
 
     @Override

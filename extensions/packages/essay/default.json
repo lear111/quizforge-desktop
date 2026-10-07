@@ -1,0 +1,33 @@
+{
+  "id": "q_template",
+  "type": "ESSAY",
+  "stimulusRefs": [],
+  "prompt": {
+    "kind": "TEXT",
+    "text": "Write an email to your friend about a book you recently read.\nYou should write about 100 words. Do not use your own name; use “Li Ming” instead."
+  },
+  "payload": {
+    "kind": "EXTENSION",
+    "data": {
+      "placeholder": "请在这里写作；默认直接输入，点击“编辑格式”调整格式。"
+    }
+  },
+  "answerSpec": {
+    "kind": "EXTENSION",
+    "data": {
+      "referenceAnswer": {
+        "kind": "TEXT",
+        "text": "参考答案可由作者填写范文与写作要点。"
+      }
+    }
+  },
+  "scoreSpec": {
+    "defaultMaxScore": 10
+  },
+  "evaluationSpec": null,
+  "analysis": {
+    "kind": "TEXT",
+    "text": "作者可在这里填写答案与解析。"
+  },
+  "sourceRefs": []
+}

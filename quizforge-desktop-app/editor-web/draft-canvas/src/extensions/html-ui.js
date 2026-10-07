@@ -4,8 +4,8 @@ import {defaultUi,configureUi} from '../shared/ui/preferences.js';
 import {defaultLayout,configureLayout,createDomLayout} from '../shared/ui/layout.js';
 import {validateMethodArguments} from './protocol.js';
 import {createPermissionPolicy} from './permissions.js';
-import {hostSdk} from './compatibility.js';
 import {compileDataValidation,validationFailure} from './data-validation.js';
+import {createSimpleApi} from './simple-api.js';
 
 const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
 const ok = data => ({ ok: true, data: clone(data) });
@@ -51,14 +51,15 @@ export function parseHtmlPresentation(q) {
 }
 
 /** Lifecycle stays inside the adapter, so extension authors write ordinary page event handlers. */
-function pageRuntime(page, source, { editor, initial, caps, root, policy, validation, initialValidation }) {
+function pageRuntime(page, source, { editor, initial, caps, root, policy, validation, initialValidation, type }) {
   let current = clone(initial), draft = editor ? clone(initial) : null, destroyed = false;
   let readOnly = !editor && caps.mode === RendererMode.READ_ONLY_HISTORY, interaction = 'INTERACT';
   let presentationSuspended=false, presentationWritable=false;
-  const listeners = [], subscriptions = new Set(), pending = new Set(), disposers=[];
+  const listeners = [], pending = new Set(), disposers=[];
   let lastError = null, initializationFailed = false, frameHost=null;
   validation.retain?.();
   let preferences = defaultUi(editor ? 'EDITOR' : 'PRACTICE');
+  if(!editor)preferences=configureUi(preferences,{card:false},'PRACTICE');
   let layout=defaultLayout(editor?'EDITOR':'PRACTICE'),pageReady=false;
   const layoutHost=caps.layoutHost || createDomLayout(caps.layoutRoot || (editor?root.closest('#qf-editor-shell'):null) || root,
     {mode:editor?'EDITOR':'PRACTICE',getHeight:caps.layoutHeight});
@@ -115,28 +116,16 @@ function pageRuntime(page, source, { editor, initial, caps, root, policy, valida
     if(!caps.pageCommand)return failure('CAPABILITY_UNAVAILABLE','此宿主未提供页面操作');
     const reply=await caps.pageCommand(action,argument);if(!destroyed)notify();return reply;
   }
-  async function boardCommand(action,argument) {
-    if(destroyed)return failure('PAGE_CLOSED','题型页面已关闭');
-    if(editor||!caps.boardCommand)return failure('CAPABILITY_UNAVAILABLE','此页没有白板');
-    try {return ok(await caps.boardCommand(action,argument));}
-    catch(error){return failure(error.code||'WHITEBOARD_FAILED',error.message);}
-  }
-  const QF = Object.freeze({
-    dom,
-    host: Object.freeze({
-      async getContext() { const available=(await pageState()).ok;
+  // Private host capabilities are invoked only by the structured page API.
+  async function getCapabilities() { const available=(await pageState()).ok;
         const presentedWritable=presentationSuspended?presentationWritable&&!destroyed&&!readOnly&&current.state!=='SUBMITTED':writable();
         return ok({ mode: mode(), state: current.state || null,
-        sdk:hostSdk,
         permissions:{declared:policy.declared,granted:policy.granted},
         capabilities: { editQuestion: editor&&policy.can('editor.update'), editAnswer: !editor&&presentedWritable&&policy.can('answer.update'), submit: !editor&&presentedWritable&&Boolean(caps.requestSubmit)&&policy.can('practice.submit'), retry: !editor&&!readOnly&&current.state==='SUBMITTED'&&Boolean(caps.requestRetry)&&policy.can('practice.retry'), ai: false,
           saveBank:editor&&available&&policy.can('bank.save'), navigate:available&&policy.can('navigation.goTo'), manageSources:editor&&available&&policy.can('sources.add'),
-          viewSources:available&&policy.can('sources.open'),whiteboard:!editor&&Boolean(caps.boardState)&&policy.granted.some(name=>name.startsWith('whiteboard.')),changeLearningMode:!editor&&available&&policy.can('learning.setMode'),layout:true } }); },
-      subscribe(listener) { subscriptions.add(listener); return () => subscriptions.delete(listener); }
-    }),
-    ids: Object.freeze({ create(prefix = 'opt_') { return caps.newId?.(prefix) || prefix + (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)).replace(/-/g, '_'); } }),
+          viewSources:available&&policy.can('sources.open'),whiteboard:!editor&&Boolean(caps.boardState)&&policy.granted.some(name=>name.startsWith('whiteboard.')),changeLearningMode:!editor&&available&&policy.can('learning.setMode'),layout:true } }); }
+  const capabilities = Object.freeze({
     editor: Object.freeze({
-      async getData() { return editor ? ok(draft) : failure('CAPABILITY_DENIED', '此页不能编辑题目'); },
       async update(patch) {
         if (!editor || destroyed) return failure('CAPABILITY_DENIED', '此页不能编辑题目');
         if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return failure('INVALID_DATA', '题目更新必须是对象');
@@ -148,40 +137,26 @@ function pageRuntime(page, source, { editor, initial, caps, root, policy, valida
           await caps.changed?.(clone(candidate));
           draft = candidate;return ok(draft);
         } catch(error) {return operationFailure(error,'EDITOR_UPDATE_FAILED');}
-      },
-      async save() { if (!editor) return failure('CAPABILITY_DENIED', '此页不能保存题目'); await flush(); await caps.changed?.(clone(draft)); return ok({ savedToDraft: true }); }
+      }
     }),
     bank: Object.freeze({
-      getState:()=>editor?pageState():Promise.resolve(failure('CAPABILITY_DENIED','此页不能编辑题库')),
-      save:()=>shellCommand('save'),addQuestion:type=>shellCommand('add',type),
+      save:()=>shellCommand('save'),
       duplicateQuestion:()=>shellCommand('duplicate'),deleteQuestion:()=>shellCommand('delete')
     }),
     navigation: Object.freeze({
-      getState:pageState,
       goTo:index=>pageCommand('navigate',index),
       async previous(){const state=await pageState();return state.ok?pageCommand('navigate',state.data.index-1):state;},
       async next(){const state=await pageState();return state.ok?pageCommand('navigate',state.data.index+1):state;}
     }),
     sources: Object.freeze({
-      async list() { const state=await pageState();return state.ok?ok(state.data.sources):state; },
       add:link=>shellCommand('source.add',link),
       remove:index=>shellCommand('source.remove',index),
       open:index=>pageCommand('source.open',index)
     }),
     learning: Object.freeze({
-      async getMode(){const state=await pageState();return state.ok?ok(state.data.learningMode||'EDITOR'):state;},
-      setMode:mode=>pageCommand('learning.mode',mode),
-      async toggleMode(){const state=await pageState();return state.ok?pageCommand('learning.mode',state.data.learningMode==='DRAFT'?'PRACTICE':'DRAFT'):state;}
-    }),
-    whiteboard: Object.freeze({
-      async getState(){if(destroyed)return failure('PAGE_CLOSED','题型页面已关闭');return !editor&&caps.boardState?ok(caps.boardState()):failure('CAPABILITY_UNAVAILABLE','此页没有白板');},
-      setTool:tool=>boardCommand('tool',tool),undo:()=>boardCommand('undo'),redo:()=>boardCommand('redo'),clear:()=>boardCommand('clear'),
-      setAppearance:patch=>boardCommand('paper',patch),setZoom:value=>boardCommand('zoom',value),zoomBy:factor=>boardCommand('zoomBy',factor)
+      setMode:mode=>pageCommand('learning.mode',mode)
     }),
     practice: Object.freeze({
-      async getState(){return editor?failure('CAPABILITY_DENIED','编辑页没有练习状态'):ok({index:current.index,total:current.total,type:current.type,state:current.state,maxScore:current.maxScore,result:resultData()});},
-      async getQuestion() { return editor ? failure('CAPABILITY_DENIED', '编辑页请读取题目草稿') : ok(questionData()); },
-      async getResult() { return editor ? failure('CAPABILITY_DENIED', '编辑页没有练习结果') : ok(resultData()); },
       async submit() {
         if (editor || !writable()) return failure('READ_ONLY', '当前状态不可提交');
         if (!caps.requestSubmit) return failure('CAPABILITY_UNAVAILABLE', '此宿主提供独立的提交按钮');
@@ -196,7 +171,6 @@ function pageRuntime(page, source, { editor, initial, caps, root, policy, valida
       }
     }),
     answer: Object.freeze({
-      async get() { return editor ? failure('CAPABILITY_DENIED', '编辑页没有用户作答') : ok(current.presentation.answer); },
       async update(answer) {
         if (editor || !writable()) return failure('READ_ONLY', '此页或当前状态不可作答');
         try {await validation.answer(answer);}catch(error){return validationFailure(error);}
@@ -206,8 +180,7 @@ function pageRuntime(page, source, { editor, initial, caps, root, policy, valida
           lastError=null;showError('');
           return ok(current.presentation.answer);
         } catch (error) { return operationFailure(error,'ANSWER_SAVE_FAILED'); }
-      },
-      async flush() { await flush(); return ok(null); }
+      }
     }),
     content: Object.freeze({
       async resolve(content){if(destroyed)return failure('PAGE_CLOSED','题型页面已关闭');if(!content||!['TEXT','RICH','DOCUMENT'].includes(content.kind))return failure('INVALID_DATA','无效富文本内容');return ok(await caps.resolveContent?.(content)||content);},
@@ -218,41 +191,62 @@ function pageRuntime(page, source, { editor, initial, caps, root, policy, valida
         if(destroyed)return failure('PAGE_CLOSED','题型页面已关闭');
         try {const next=configureLayout(layout,patch);layoutHost.configure(next,{ready:pageReady});layout=next;return ok(layout);}
         catch(error){return failure('INVALID_LAYOUT',error.message);}
-      },
-      getConfiguration(){return destroyed?failure('PAGE_CLOSED','题型页面已关闭'):ok(layout);},
-      getState(){return destroyed?failure('PAGE_CLOSED','题型页面已关闭'):ok(layoutHost.getState());}
+      }
     }),
     ui: Object.freeze({
       configure(patch) {
         if (destroyed) return failure('PAGE_CLOSED','题型页面已关闭');
-        try { preferences=configureUi(preferences,patch,editor?'EDITOR':'PRACTICE');publishUi();return ok(preferences); }
+        try { if(type.pageOptions?.useDraft===false&&!editor)patch={...patch,draftToggle:false,draftToolbar:false,draftZoom:false};preferences=configureUi(preferences,patch,editor?'EDITOR':'PRACTICE');publishUi();return ok(preferences); }
         catch(error){return failure('INVALID_UI',error.message);}
-      },
-      getConfiguration() { return ok(preferences); },
-      mountControls(node) {if(!page.contains(node))throw new TypeError('Controls must belong to this type page');node.dataset.qfHostControls='';},
-      mountActions(node) { node.dataset.qfActions = ''; },
-      notify(message) { showError(message); }
+      }
     })
   });
   let resolveReady,rejectReady;
   const ready=new Promise((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;});ready.catch(()=>{});
-  const names=['host.getContext','editor.getData','editor.update','editor.save','bank.getState','bank.save','bank.addQuestion','bank.duplicateQuestion','bank.deleteQuestion','navigation.getState','navigation.goTo','navigation.previous','navigation.next','sources.list','sources.add','sources.remove','sources.open','learning.getMode','learning.setMode','learning.toggleMode','whiteboard.getState','whiteboard.setTool','whiteboard.undo','whiteboard.redo','whiteboard.clear','whiteboard.setAppearance','whiteboard.setZoom','whiteboard.zoomBy','practice.getState','practice.getQuestion','practice.getResult','practice.submit','practice.retry','answer.get','answer.update','answer.flush','content.resolve','content.edit','ui.configure','layout.configure'];
-  const methods=new Map(names.map(name=>{const [group,method]=name.split('.');return [name,QF[group][method]];}));
+  const names=['editor.update','bank.save','bank.duplicateQuestion','bank.deleteQuestion','navigation.goTo','navigation.previous','navigation.next','sources.add','sources.remove','sources.open','learning.setMode','practice.submit','practice.retry','answer.update','content.resolve','content.edit','ui.configure','layout.configure'];
+  const methods=new Map(names.map(name=>{const [group,method]=name.split('.');return [name,capabilities[group][method]];}));
   const bytes=new Uint32Array(4);crypto.getRandomValues(bytes);
+  const session=Array.from(bytes,n=>n.toString(16)).join('-');
+  function invokeCapability(name,args){
+    if(destroyed||caps.isCurrent&&!caps.isCurrent())return failure('CONTEXT_EXPIRED','题目已切换或页面已关闭');
+    if(caps.isReady&&!caps.isReady()&&['page.save','page.action','answer.update','practice.submit','practice.retry','editor.update','bank.save','page.add','page.move','page.attempt','bank.duplicateQuestion','bank.deleteQuestion','navigation.goTo','navigation.previous','navigation.next','sources.add','sources.remove','sources.open','learning.setMode','content.edit'].includes(name))return failure('CAPABILITY_UNAVAILABLE','题卡正在准备');
+    const method=methods.get(name);if(!method)return failure('UNKNOWN_METHOD','未开放的题型接口');
+    try{validateMethodArguments(name,args);}catch(error){return failure('INVALID_ARGUMENT',error.message);}
+    if(!policy.can(name))return failure('PERMISSION_DENIED','拓展未声明或未获授权使用该接口：'+name);
+    return method(...args);
+  }
+  const simple=createSimpleApi({contextId:session,invoke:invokeCapability,isCurrent:()=>!destroyed&&(!caps.isCurrent||caps.isCurrent()),async getContext(){
+    const host=(await getCapabilities()).data,stateReply=await pageState(),state=stateReply.ok?stateReply.data:{};
+    const question=clone(questionData()),navigation={...state,total:state.count??current.total??1,index:state.index??current.index??0};
+    const targets=current.presentation?.targets||[];
+    navigation.targets=state.targets||targets.filter(t=>!t.locked&&t.gradable!==false).map(t=>({id:t.id,number:t.number,label:t.label||''}));
+    return {mode:host.mode.toLowerCase(),learningMode:(state.learningMode||'PRACTICE').toLowerCase(),reason:'stateChanged',
+      question:{id:question.id||initial.questionId,type:question.type||initial.type,dataVersion:type.dataVersion,data:question,maxScore:current.maxScore??question.scoreSpec?.defaultMaxScore},
+      attempt:editor?null:{id:current.attemptId||current.sessionQuestionId||null,status:(current.state||'UNANSWERED').toLowerCase(),answer:clone(current.presentation.answer),result:resultData()},
+      reference:editor?{answerSpec:question.answerSpec,analysis:question.analysis}:clone(current.presentation?.reference||null),
+      permissions:{...host.capabilities,writeAnswer:host.capabilities.editAnswer,manageQuestions:editor&&state.editable===true,submitScore:false},
+      navigation,sources:state.sources||[],types:state.types||[],grantedPermissions:host.permissions.granted,resources:[]};
+  }});
+  methods.set('page.load',simple.load);methods.set('page.save',simple.save);methods.set('page.action',simple.action);
+  methods.set('page.attempt',direction=>pageCommand('attempt.'+direction));
+  methods.set('page.add',params=>shellCommand('add',params));
+  methods.set('page.move',params=>editor?shellCommand('move',params):failure('CAPABILITY_UNAVAILABLE','当前宿主仅开放编辑会话中的整题移动'));
+  // The frame cannot bypass save revisions, barriers, or the action whitelist
+  // by forging a request for a private host capability.
+  const pageMethods=new Set(['page.load','page.save','page.action','content.resolve','content.edit','ui.configure','layout.configure']);
+  const invoke=(name,args)=>pageMethods.has(name)?invokeCapability(name,args):failure('UNKNOWN_METHOD','旧接口或未开放的题型接口');
+  if(type.pageOptions){
+    const options=type.pageOptions;
+    if(!editor&&options.useDraft===false){preferences=configureUi(preferences,{draftToggle:false,draftToolbar:false,draftZoom:false},'PRACTICE');}
+    if(options.card===false&&!editor)preferences=configureUi(preferences,{card:false},'PRACTICE');
+    if(options.initialLayout)layout=configureLayout(layout,options.initialLayout);
+    publishLayout();publishUi();
+  }
   const pageAssets=page.__qfAssets;
   const startFrame=()=>connectFrame(page,source,{
     ...pageAssets,
-    boot:{session:Array.from(bytes,n=>n.toString(16)).join('-'),mode:editor?'EDITOR':'PRACTICE',questionId:initial.id||initial.questionId,ui:preferences,layout,layoutState:layoutHost.getState(),relayWheel:Boolean(caps.boardState)},
-    invoke(name,args){
-      if(destroyed)return failure('PAGE_CLOSED','题型页面已关闭');
-      if(caps.isCurrent && !caps.isCurrent())return failure('PAGE_CLOSED','题目已切换');
-      if(caps.isReady&&!caps.isReady()&&['answer.update','practice.submit','practice.retry','editor.update','editor.save','bank.save','bank.addQuestion','bank.duplicateQuestion','bank.deleteQuestion','navigation.goTo','navigation.previous','navigation.next','sources.add','sources.remove','sources.open','content.edit'].includes(name))
-        return failure('CAPABILITY_UNAVAILABLE','题卡正在准备');
-      const method=methods.get(name);if(!method)return failure('UNKNOWN_METHOD','未开放的题型接口');
-      try{validateMethodArguments(name,args);}catch(error){return failure('INVALID_ARGUMENT',error.message);}
-      if(!policy.can(name))return failure('PERMISSION_DENIED','拓展未声明或未获授权使用该接口：'+name);
-      return method(...args);
-    },
+    boot:{session,mode:editor?'EDITOR':'PRACTICE',questionId:initial.id||initial.questionId,ui:preferences,layout,layoutState:layoutHost.getState(),relayWheel:Boolean(caps.boardState)},
+    invoke,
     getState:()=>({layoutState:layoutHost.getState(),interaction}),interaction:()=>interaction,
     onReady(){if(destroyed)return;pageReady=true;page.dataset.qfReady='true';publishLayout();publishUi();resolveReady();notify();},
     onFailure(error){
@@ -273,7 +267,7 @@ function pageRuntime(page, source, { editor, initial, caps, root, policy, valida
   return {
     ready,
     getDraft:()=>clone(draft),getUiPreferences:()=>preferences,hasInitializationError:()=>initializationFailed,flush,
-    update(next){current=clone(next);notify();},
+    update(next){current=clone(next);simple.invalidate();notify();},
     setReadOnly(value){if(readOnly&&!value)throw new TypeError('Read-only capability cannot be upgraded');if(readOnly!==value){readOnly=value;notify();}},
     setInteractionMode(value){if(interaction!==value){interaction=value;notify();}},
     suspendPresentation(){if(!presentationSuspended){presentationWritable=writable();presentationSuspended=true;}},
@@ -285,19 +279,26 @@ function pageRuntime(page, source, { editor, initial, caps, root, policy, valida
     focusTarget(id){return frameHost?.focus(id)||page;},
     destroy(){
       if(destroyed)return;destroyed=true;
-      const completion=frameHost?.destroy()||Promise.resolve();rejectReady(new Error('题型页面已关闭'));subscriptions.clear();
+      const completion=frameHost?.destroy()||Promise.resolve();rejectReady(new Error('题型页面已关闭'));
       disposers.forEach(dispose=>dispose());listeners.forEach(([node,event,fn])=>node.removeEventListener(event,fn));
       return completion.then(()=>{validation.release?.();const retired=page.closest('[data-qf-retired-root]');page.remove();if(retired&&!retired.querySelector('.qf-type-frame'))retired.remove();});
     }
   };
 }
-export function createHtmlRenderer(type,asset,granted=[],policy=createPermissionPolicy(type.permissions,granted),validation=compileDataValidation(type,asset)){
+export function requireSimplePage(type){
+  if(type.pageApi!=='simple')throw new TypeError('旧页面接口已移除，请安装使用 SDK 2.3 精简接口的题型扩展');
+}
+export function createHtmlRenderer(type,asset,granted=[],policy=createPermissionPolicy(type.permissions,granted),validation){
+  requireSimplePage(type);
   validatePageHtml(asset.rendererHtml);
+  validation??=compileDataValidation(type,asset);
   return {id:`html.${type.id}.v2`,questionType:type.id,label:type.label,selectionMode:'EXTENSION',parse:parseHtmlPresentation,
     validateQuestion:validation.question,
-    mount(root,question,caps){const initialValidation=validation.answer(question.presentation.answer);return pageRuntime(mountPage(root,asset.rendererHtml,asset.stylesSource),asset.rendererSource,{editor:false,initial:question,caps,root,policy,validation,initialValidation});}};
+    mount(root,question,caps){const initialValidation=validation.answer(question.presentation.answer);return pageRuntime(mountPage(root,asset.rendererHtml,asset.stylesSource),asset.rendererSource,{editor:false,initial:question,caps,root,policy,validation,initialValidation,type});}};
 }
-export function createHtmlEditor(type,asset,granted=[],policy=createPermissionPolicy(type.permissions,granted),validation=compileDataValidation(type,asset)){
+export function createHtmlEditor(type,asset,granted=[],policy=createPermissionPolicy(type.permissions,granted),validation){
+  requireSimplePage(type);
   validatePageHtml(asset.editorHtml);
-  return {questionType:type.id,mount(root,question,caps){const initialValidation=validation.question(question);return pageRuntime(mountPage(root,asset.editorHtml,asset.stylesSource),asset.editorSource,{editor:true,initial:question,caps,root,policy,validation,initialValidation});}};
+  validation??=compileDataValidation(type,asset);
+  return {questionType:type.id,mount(root,question,caps){const initialValidation=validation.question(question);return pageRuntime(mountPage(root,asset.editorHtml,asset.stylesSource),asset.editorSource,{editor:true,initial:question,caps,root,policy,validation,initialValidation,type});}};
 }

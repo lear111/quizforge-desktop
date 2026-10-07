@@ -4,8 +4,6 @@ import io.quizforge.core.question.content.QuestionContent;
 import io.quizforge.core.question.source.SourceRef;
 import io.quizforge.core.question.model.choice.ChoiceAnswerSpec;
 import io.quizforge.core.question.model.choice.ChoicePayload;
-import io.quizforge.core.question.compat.essay.EssayAnswerSpec;
-import io.quizforge.core.question.compat.essay.EssayPayload;
 import java.util.List;
 
 public record Question(String id, String type, List<String> stimulusRefs, QuestionContent prompt,
@@ -23,14 +21,6 @@ public record Question(String id, String type, List<String> stimulusRefs, Questi
     public ChoicePayload choicePayload() {
         if (payload instanceof ChoicePayload choice) return choice;
         throw new UnsupportedOperationException("Unsupported question payload");
-    }
-    public EssayPayload essayPayload() {
-        if (payload instanceof EssayPayload essay) return essay;
-        throw new UnsupportedOperationException("Not an essay payload");
-    }
-    public EssayAnswerSpec essayAnswerSpec() {
-        if (answerSpec instanceof EssayAnswerSpec essay) return essay;
-        throw new UnsupportedOperationException("Not an essay answer specification");
     }
     public ChoiceAnswerSpec choiceAnswerSpec() {
         if (answerSpec instanceof ChoiceAnswerSpec choice) return choice;

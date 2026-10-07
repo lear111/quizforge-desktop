@@ -100,3 +100,7 @@
 @media (prefers-reduced-motion: reduce) {
 .qf-choice-option, .qf-judgment-editor button, .qf-judgment-practice button { transition: none; }
 }
+
+/* Sample-owned card. Extensions may replace this layout entirely. */
+.qf-choice-practice, .qf-judgment-practice { padding: 28px; background: #fff; border-radius: 14px; box-shadow: 0 2px 8px #302c3b0a; }
+@media(max-width:480px) { .qf-choice-practice, .qf-judgment-practice { padding:18px; } }

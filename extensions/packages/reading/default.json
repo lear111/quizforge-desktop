@@ -1,0 +1,242 @@
+{
+  "id": "q_template",
+  "type": "READING",
+  "stimulusRefs": [],
+  "prompt": {
+    "kind": "TEXT",
+    "text": "Read the following passage and answer the questions.\nLearning is a process of discovery. Practice helps us build confidence, while reflection helps us understand our mistakes. Sharing ideas with others can also broaden our understanding."
+  },
+  "payload": {
+    "kind": "EXTENSION",
+    "data": {
+      "items": [
+        {
+          "id": "item_reading_1",
+          "number": 1,
+          "prompt": {
+            "kind": "TEXT",
+            "text": "请选择符合文章内容的选项。"
+          },
+          "options": [
+            {
+              "id": "opt_reading_1_1",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 A"
+              }
+            },
+            {
+              "id": "opt_reading_1_2",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 B"
+              }
+            },
+            {
+              "id": "opt_reading_1_3",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 C"
+              }
+            },
+            {
+              "id": "opt_reading_1_4",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 D"
+              }
+            }
+          ]
+        },
+        {
+          "id": "item_reading_2",
+          "number": 2,
+          "prompt": {
+            "kind": "TEXT",
+            "text": "请选择符合文章内容的选项。"
+          },
+          "options": [
+            {
+              "id": "opt_reading_2_1",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 A"
+              }
+            },
+            {
+              "id": "opt_reading_2_2",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 B"
+              }
+            },
+            {
+              "id": "opt_reading_2_3",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 C"
+              }
+            },
+            {
+              "id": "opt_reading_2_4",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 D"
+              }
+            }
+          ]
+        },
+        {
+          "id": "item_reading_3",
+          "number": 3,
+          "prompt": {
+            "kind": "TEXT",
+            "text": "请选择符合文章内容的选项。"
+          },
+          "options": [
+            {
+              "id": "opt_reading_3_1",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 A"
+              }
+            },
+            {
+              "id": "opt_reading_3_2",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 B"
+              }
+            },
+            {
+              "id": "opt_reading_3_3",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 C"
+              }
+            },
+            {
+              "id": "opt_reading_3_4",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 D"
+              }
+            }
+          ]
+        },
+        {
+          "id": "item_reading_4",
+          "number": 4,
+          "prompt": {
+            "kind": "TEXT",
+            "text": "请选择符合文章内容的选项。"
+          },
+          "options": [
+            {
+              "id": "opt_reading_4_1",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 A"
+              }
+            },
+            {
+              "id": "opt_reading_4_2",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 B"
+              }
+            },
+            {
+              "id": "opt_reading_4_3",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 C"
+              }
+            },
+            {
+              "id": "opt_reading_4_4",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 D"
+              }
+            }
+          ]
+        },
+        {
+          "id": "item_reading_5",
+          "number": 5,
+          "prompt": {
+            "kind": "TEXT",
+            "text": "请选择符合文章内容的选项。"
+          },
+          "options": [
+            {
+              "id": "opt_reading_5_1",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 A"
+              }
+            },
+            {
+              "id": "opt_reading_5_2",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 B"
+              }
+            },
+            {
+              "id": "opt_reading_5_3",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 C"
+              }
+            },
+            {
+              "id": "opt_reading_5_4",
+              "content": {
+                "kind": "TEXT",
+                "text": "选项 D"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "answerSpec": {
+    "kind": "EXTENSION",
+    "data": {
+      "answers": [
+        {
+          "itemId": "item_reading_1",
+          "correctOptionId": "opt_reading_1_1"
+        },
+        {
+          "itemId": "item_reading_2",
+          "correctOptionId": "opt_reading_2_1"
+        },
+        {
+          "itemId": "item_reading_3",
+          "correctOptionId": "opt_reading_3_1"
+        },
+        {
+          "itemId": "item_reading_4",
+          "correctOptionId": "opt_reading_4_1"
+        },
+        {
+          "itemId": "item_reading_5",
+          "correctOptionId": "opt_reading_5_1"
+        }
+      ]
+    }
+  },
+  "scoreSpec": {
+    "defaultMaxScore": 2
+  },
+  "evaluationSpec": null,
+  "analysis": {
+    "kind": "TEXT",
+    "text": "作者可在这里填写答案与解析。"
+  },
+  "sourceRefs": []
+}

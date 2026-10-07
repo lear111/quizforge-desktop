@@ -1,5 +1,5 @@
 export const permissionNames=Object.freeze([
-  'question.edit','bank.save','bank.add','bank.duplicate','bank.delete','answer.write',
+  'question.edit','bank.save','bank.add','bank.duplicate','bank.delete','bank.move','answer.write',
   'practice.submit','practice.retry','navigation','sources.open','sources.manage','learning.mode',
   'whiteboard.tools','whiteboard.history','whiteboard.clear','whiteboard.appearance','whiteboard.zoom'
 ]);
@@ -9,18 +9,15 @@ export function readPermissions(value){
   return [...new Set(value)];
 }
 const requirements=Object.freeze({
-  'editor.update':'question.edit','editor.save':'question.edit','content.edit':'question.edit',
-  'bank.save':'bank.save','bank.addQuestion':'bank.add','bank.duplicateQuestion':'bank.duplicate','bank.deleteQuestion':'bank.delete',
-  'answer.update':'answer.write','answer.flush':'answer.write','practice.submit':'practice.submit','practice.retry':'practice.retry',
-  'navigation.goTo':'navigation','navigation.previous':'navigation','navigation.next':'navigation',
+  'editor.update':'question.edit','content.edit':'question.edit',
+  'bank.save':'bank.save','bank.duplicateQuestion':'bank.duplicate','bank.deleteQuestion':'bank.delete',
+  'page.add':'bank.add','page.move':'bank.move',
+  'answer.update':'answer.write','practice.submit':'practice.submit','practice.retry':'practice.retry',
+  'navigation.goTo':'navigation','navigation.previous':'navigation','navigation.next':'navigation','page.attempt':'navigation',
   'sources.open':'sources.open','sources.add':'sources.manage','sources.remove':'sources.manage',
-  'learning.setMode':'learning.mode','learning.toggleMode':'learning.mode',
-  'whiteboard.setTool':'whiteboard.tools','whiteboard.undo':'whiteboard.history','whiteboard.redo':'whiteboard.history',
-  'whiteboard.clear':'whiteboard.clear','whiteboard.setAppearance':'whiteboard.appearance','whiteboard.setZoom':'whiteboard.zoom','whiteboard.zoomBy':'whiteboard.zoom'
+  'learning.setMode':'learning.mode'
 });
-const publicMethods=new Set(['host.getContext','editor.getData','bank.getState','navigation.getState','sources.list',
-  'learning.getMode','whiteboard.getState','practice.getState','practice.getQuestion','practice.getResult','answer.get',
-  'content.resolve','ui.configure','ui.getConfiguration','layout.configure','layout.getConfiguration','layout.getState']);
+const publicMethods=new Set(['page.load','page.save','page.action','content.resolve','ui.configure','layout.configure']);
 export function createPermissionPolicy(declared,approved){
   const requested=Object.freeze(readPermissions(declared)),listeners=new Set();
   let granted=Object.freeze(readPermissions(approved).filter(name=>requested.includes(name))),allowed=new Set(granted);

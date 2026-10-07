@@ -1,6 +1,6 @@
 # QBank v2 题库文件格式与内容资源
 
-> 2026-10-06 执行状态：当前单选、多选、判断由新版 HTML SDK 2 扩展提供。本文其他题型章节保留的是已有文件结构和原交互设计，当前不再提供原题型的编辑、练习、判分回退；缺少对应扩展时显示提示并保留题库数据。新版 default.json 使用单条 Question 的相同结构。
+> 2026-10-07 执行状态：八种外部题型包均已提供，当前页面接口为 SDK 2.3。已删除旧专项存储封装；新版复合/主观题使用 EXTENSION.data，具体约束以对应包 Schema 为准。宿主不提供旧题型执行回退；缺少扩展时保留数据并提示安装。default.json 与单条完整 Question 同构，样例使用相同 .qbank ZIP 格式。
 
 2026-10-02。本文维护当前题库文件协议、资源与兼容边界；项目结构和新增题型流程见 [新人技术指南](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/new-developer-guide.md)，具体文件职责见 [代码导读](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/code-guide.md)。
 
@@ -13,7 +13,7 @@ Example.qbank (ZIP)
   resources/           图片与原生富文本文档字节
 ```
 
-读取器把 manifest.json 和 bank.json 合并为逻辑 QuestionBank；QuestionBank 保存稳定 assetId、标题、版本、stimuli、questions、resources。Question 通用结构包含 id/type/prompt/payload/answerSpec/scoreSpec/evaluationSpec/analysis/sourceRefs/stimulusRefs。当前选择类扩展共用 `question/model/choice` 下的 ChoicePayload 与 ChoiceAnswerSpec；旧作文等结构的值类型位于 `question/compat`，用于兼容已有文件。标准答案、用户作答和作答历史分别表示。
+读取器把 manifest.json 和 bank.json 合并为逻辑 QuestionBank；QuestionBank 保存稳定 assetId、标题、版本、stimuli、questions、resources。Question 通用结构包含 id/type/prompt/payload/answerSpec/scoreSpec/evaluationSpec/analysis/sourceRefs/stimulusRefs。当前选择类扩展共用 `question/model/choice` 下的 ChoicePayload 与 ChoiceAnswerSpec；复合和主观题的数据放在 `question/model/extension` 的不可变 JSON 中。`question/compat` 和旧专项 kind 已删除，旧文件需手动迁移。标准答案、用户作答和作答历史分别表示。
 
 资源不是直接散落在题干字符串中的文件路径。QBankResource 的 id 映射包内 locator、kind、mediaType 和 sha256，内容引用 resourceId；读取器通过资源表校验并打开包内字节，目录移动不改变引用。
 
@@ -61,11 +61,11 @@ RICH 的内容模型仍保留段落、标题、图片、公式、列表、链接
 | QuestionBankValidator 与题型规则 | 身份唯一性、题型/答案对应关系、内容、分值、来源、共享材料和资源引用 |
 | QBankPackageReader | ZIP 条目、包格式、路径、大小限制与实际资源哈希 |
 
-当前可执行题型由已安装扩展决定；仓库提供单选、多选和判断扩展包。下述其他题型规则描述旧文件格式与原交互设计，不表示宿主仍提供原生执行器。单选要求恰好一个正确选项；多选保留至少两个正确选项、至少一个错误选项的既有规则。题目 ID 采用 `q_` 前缀，选项 ID 采用 `opt_` 前缀且在整个题库中唯一。题目可以没有来源引用。
+当前可执行题型由已安装扩展决定；仓库提供八种外部包。专项数据由各包 Schema/规则定义，迁移见 [说明](../extensions/READING_TYPES_MIGRATION.md)。单选要求一个正确选项；多选保留至少两个正确选项和一个错误选项。题目 ID 使用 q_ 前缀，选项 ID 使用 opt_ 前缀且全库唯一；来源引用可为空。
 
 `scoreSpec.defaultMaxScore` 必填、为正的 BigDecimal，普通新题默认 1 分；阅读理解、段落匹配和翻译默认单题 2 分。CLOZE/READING/MATCHING/TRANSLATION 的字段表示单题分值，其余题型表示整题分值。评分细则中的权重为正；存在细则时权重之和必须精确等于 1，空细则允许。题型、标准答案、用户作答和历史快照分别表示。
 
-单选和多选的数据 kind 均为 `CHOICE`，作文为 `ESSAY`；其余题型的 payload/answer kind 分别为 `CLOZE`、`READING`、`MATCHING`、`TRANSLATION`。标识是明确的协议字符串，不使用 Java 类名或枚举序号。新增题型通过扩展包声明类型、Schema、页面和规则，不修改宿主的核心/桌面登记表；步骤见 [新人指南](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/new-developer-guide.md) 与 [题型模板](C:/Users/wangg/OneDrive/Desktop/QuizForge/quizforge_V2/docs/templates/new-question-type.md)。
+存储封装只支持 CHOICE 和 EXTENSION，payload 与 answerSpec 必须使用相同 kind；宿主不根据 type 硬编码专项数据结构。当前单选、多选和判断样例使用 CHOICE，其余五型使用 EXTENSION.data。新增类型通过扩展声明 Schema、页面与规则，不增加宿主专项解码器。
 
 ## 可选字段与规范化
 
@@ -123,40 +123,12 @@ python quizforge-infrastructure/src/test/python/check_qbank_v2_schema.py
 
 统计总分包含全部计分题目，而非仅已提交题目；得分累计 SUBMITTED 状态的最新已评分 attempt。草稿、重试中和修订中不重复累计旧尝试。旧 ACTIVE 缺少顶层分值时由当前题库补齐元数据，逻辑比较忽略这项新增元数据，不清除提交或草稿；已有归档不重新同步当前题库。旧归档先读取已有逻辑/展示分值或 attempt.maxScore，确实缺少分值则显示“—”，不会用题数当作分数。此变更没有新增数据库列或迁移。
 
-## 完形填空 CLOZE
+## 专项题型的数据归属
 
-`type`、`payload.kind`、`answerSpec.kind` 均为 `CLOZE`。`prompt` 支持 TEXT、现有可编辑的 RICH 子集和 DOCUMENT；正文标记 `{{n}}` 对应 `payload.blanks[].number`。重复编号对应同一个稳定 blank ID，小题数组按编号从 1 连续递增排列。小题可以提前新增，正文可暂时没有对应标签；正文标记按编号引用，顺序不限。用 `\{{1}}` 输出字面标签。
+完形、阅读、排序、翻译、作文的字段、标记和交互由对应扩展的 Schema、默认题目和规则脚本定义，参见 [源码目录](../extensions/packages/README.md) 与 [精简接口](../extensions/SIMPLE_PAGE_API.md)。旧的 CLOZE/READING/MATCHING/TRANSLATION/ESSAY 存储 kind 不再由宿主读取；需手动迁移为 EXTENSION.data。普通 TEXT/RICH/DOCUMENT 内容和资源校验继续保留。
 
-每个 blank 包含 `id`（`blank_` 前缀）、`number`、`options`；option 复用稳定 `opt_` ID 和内容结构，限制为 TEXT、固定四个选项。`answerSpec.answers` 每项含 `blankId` 和 `correctOptionId`，每个空必须有且只有一个有效正确选项。
+安装扩展样例时，题库读取器只执行通用封装、身份、资源路径和哈希校验，然后使用候选包自己的 Schema 检查题目；不调用已安装旧版本的规则。正常题库读取仍执行当前已安装扩展的校验。
 
-新增小题或标记自动生成四个内容为 `test` 的选项并预选第一个正确答案；作者可通过正文空位或下方横排选项设置标准答案。修改正文保留已有小题 ID、选项 ID 和答案，删除标签不会删除小题。复制题目会重建空位及选项身份。练习作答存为已选选项 ID 列表，每空最多一项，允许未提交的部分草稿。CLOZE 的 `scoreSpec.defaultMaxScore` 表示单题分值；得分为单题分值乘答对的小题数，总分为单题分值乘小题数量。全对为 CORRECT，其余提交为 INCORRECT；部分分保存在 attempt 的 score/maxScore。冻结快照保存 unitScore 和总 maxScore；旧快照缺少 unitScore 时仍按旧总分恢复。原始题干资源不写入用户选择或预览点击层数据。
-
-## 阅读理解 READING
-
-`type`、`payload.kind`、`answerSpec.kind` 均为 `READING`。`prompt` 为一篇文章，支持 TEXT、RICH、DOCUMENT；`payload.items` 是按 `number` 从 1 连续递增的小题数组，至少一道。每项含稳定 `item_` 前缀 `id`、`number`、独立 `prompt` 和四个 TEXT 选项；小题题干也支持三种内容。选项 ID 采用 `opt_` 前缀，在整个题库中唯一。`answerSpec.answers` 每项含 `itemId` 与 `correctOptionId`，每个小题必须有一个属于自己的正确答案。
-
-新建阅读题默认五道小题、四个内容为 `test` 的选项、正确答案 A，单题分值 2。`scoreSpec.defaultMaxScore` 表示单题分值；总分为单题分值乘小题数，得分为单题分值乘答对数。文章编辑不会生成或删除小题；新增、删除小题是独立操作，至少保留一题。删除后只重排显示编号，保留剩余身份与答案；复制会重建题目、小题和选项 ID。`analysis` 是统一的可选答案与解析内容。
-
-练习使用文章在上、小题在下的布局；作答选项变化进入 active 草稿，整道阅读统一确认提交、锁定和重试。每个小题最多选择一个选项，允许保存部分草稿；冻结历史保留文章、小题题干、选项、答案与资源。大纲展示每道小题并进入所属大题，定位对应小题。示例包为 `examples/qbank-v2/reading-first-version.qbank`。
-
-## 段落匹配 MATCHING
-
-`type`、`payload.kind`、`answerSpec.kind` 均为 `MATCHING`。`prompt` 是普通 TEXT/RICH/DOCUMENT 题干，统一存放完整文章和 A–H 选项；不解析 `{{n}}`，也不从正文生成答案槽。`payload.blanks` 恰好八项，每项包含稳定 `blank_` 前缀 `id`、从 1 连续递增的 `number` 和必填布尔 `locked`。`payload.options` 恰好八项，仅保存稳定 `opt_` 前缀 `id` 和唯一 A–H `label`，不存单独选项正文或 fixed 状态。默认锁定第 1、4、6 槽作为三个提示、正确字母顺序 A–H、每个可作答槽 2 分。
-
-`answerSpec.answers` 用 `blankId`、`correctOptionId` 为八个槽设置完整的正确排列，包括已锁定的提示槽；同一字母只能出现一次。编辑时给某个未锁定槽选择其他字母，会与原先持有该字母的未锁定槽交换；已锁定提示不能修改或被交换。每槽可独立锁定、解锁，字母保持不变，保存时必须恰好锁定三个提示槽。锁定三个槽即成为五个待作答位置。
-
-用户作答保存未锁定槽 ID 到选项 ID 的映射，允许空、部分草稿和多个位置选择同一字母；重复选择也按每个位置独立判分。锁定提示不写入草稿，其字母也不能再使用。练习槽位仅显示题号、字母和下拉箭头，没有锁图标或清空按钮，提交前可直接改选。题目大纲只为未锁定位置分配连续题号，跳过三个提示位置；点击仍定位原始槽位。历史大纲使用冻结的锁定状态执行同样规则。得分为正确位置数量乘单槽分，总分为未锁定槽数量乘单槽分；提示不计分。题干和 `analysis` 继续使用共享富文本编辑与资源入口，历史冻结正文、解析、槽位、锁定状态、标准排列与作答映射。复制重新生成题目、槽位和选项身份，保留锁定状态。示例包为 `examples/qbank-v2/matching-first-version.qbank`。
-
-
-## 翻译 TRANSLATION
-
-旧 `TRANSLATION` 数据模型位于 `core/question/compat/translation`，原生题型界面与专项编辑入口已删除。下面保留原交互设计供理解旧数据使用。在共享富文本题干中用 `{{需要翻译的句子}}` 标记，按正文出现顺序生成小题，无需输入序号；预览隐藏标记、给句子加下划线并显示自动编号。`\{{literal}}` 为字面文本；空、嵌套、缺失结束符的标记会被拒绝。默认五句，每句 2 分；标记数量可以变化，保存至少保留一句。
-
-`TranslationPayload.items` 保存 `TranslationItem(id, number, text)`，`TranslationAnswerSpec.answers` 为每个 `itemId` 保存可空的 `referenceAnswer`（共享 TEXT/RICH/DOCUMENT）。正文编辑保留相同句子出现次数对应的 ID 与参考译文；新增或改写的句子生成新 ID、清空其参考译文，避免译文挂到其他句子。旧编辑入口曾按小题编辑参考译文，复制时重新生成小题 ID；这些专项入口已删除，新扩展自行维护其数据。
-
-练习按句独立保存 `TranslationPracticeAnswer` 中的 `EssayPracticeAnswer`，可直接输入文本或打开富文本编辑器。整道大题二次确认后提交；缺少译文时提示未完成小题数。提交结果为 `UNSCORED`，分数为空，总分为单句分值乘句数；参考译文与解析在提交后显示。重试清空当前译文并保留已提交记录。
-
-旧翻译快照曾冻结文章、每句参考译文、解析及资源字节；专项快照类已删除，已有记录仍按旧数据结构读取。旧记录中，`translationPresentation` 优先用于历史，`translation` 提供逻辑回退。ACTIVE 草稿与历史均使用原始小题 ID；大纲按句展开、连续编号、按句区分未作答/草稿/待评分并跳转所属大题。没有新增数据库表或迁移。示例包：`examples/qbank-v2/translation-first-version.qbank`。
 ## 外部题型扩展通道（2026-10-04）
 
 现行 v2 Schema 增加 `EXTENSION` payload/answer：`{"kind":"EXTENSION","data":{...}}`。题目 `type` 为扩展声明的稳定 ID，其他公共字段沿用现行题目结构。此通道不持久化 Java 类名；扩展缺失时仍保留 JSON 与资源。旧版应用不保证能够读取含外部题型的题库；独立 v3 升级向导尚未实现。

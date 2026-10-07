@@ -2,6 +2,7 @@ package io.quizforge.infrastructure.extension;
 
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
 
 /** Portable .qfext metadata. Asset paths are always relative to the package root. */
 public record ExtensionManifest(int packageFormatVersion, String id, String name, String version,
@@ -11,9 +12,13 @@ public record ExtensionManifest(int packageFormatVersion, String id, String name
             Set<String> capabilities, Set<String> permissions, String questionSchema, String answerSchema,
             String rules, String editor, String renderer, String defaultQuestion,
             String editorScript, String rendererScript,
-            @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) List<String> styles) {
+            @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) List<String> styles,
+            String pageApi, Map<String,Object> pageOptions, List<Example> examples) {
         public Type { capabilities = capabilities == null ? Set.of() : Set.copyOf(capabilities);
             permissions = ExtensionPermissions.validate(permissions);
-            styles = styles == null ? List.of() : List.copyOf(styles); }
+            styles = styles == null ? List.of() : List.copyOf(styles);
+            pageOptions=pageOptions==null?Map.of():Map.copyOf(pageOptions);
+            examples=examples==null?List.of():List.copyOf(examples); }
     }
+    public record Example(String id,String title,String description,String path) { }
 }

@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -184,6 +185,7 @@ public final class ExtensionPackageStore {
             declared.add(type.questionSchema()); declared.add(type.answerSchema()); declared.add(type.rules());
             declared.add(type.editor()); declared.add(type.renderer()); declared.addAll(type.styles());
             declared.add(type.defaultQuestion()); declared.add(type.editorScript()); declared.add(type.rendererScript());
+            for(var example:type.examples())declared.add(example.path());
         }
         if (declared.size() > MAX_ENTRIES) throw new IOException("Extension source has too many declared assets");
         long total = 0;
@@ -224,6 +226,17 @@ public final class ExtensionPackageStore {
                     || reservedTypeIds.contains(type.id())) throw new IOException("Duplicate, reserved or invalid type ID: " + type.id());
             if (type.label() == null || type.label().isBlank() || type.dataVersion() < 1
                     || !("OBJECTIVE".equals(type.family()) || "SUBJECTIVE".equals(type.family()))) throw new IOException("Invalid type metadata: " + type.id());
+            if(type.pageApi()!=null&&!"simple".equals(type.pageApi()))throw new IOException("Unknown page API");
+            if("simple".equals(type.pageApi())&&manifest.minSdkApiMinor()<3)throw new IOException("Simple page API requires SDK 2.3");
+            if(!java.util.Set.of("useDraft","card","initialLayout").containsAll(type.pageOptions().keySet()))throw new IOException("Unknown page options");
+            for(var key:List.of("useDraft","card"))if(type.pageOptions().containsKey(key)&&!(type.pageOptions().get(key) instanceof Boolean))throw new IOException("Page option must be boolean: "+key);
+            if(type.pageOptions().containsKey("initialLayout")&&!(type.pageOptions().get("initialLayout") instanceof Map))throw new IOException("initialLayout must be an object");
+            if(type.examples().size()>16||"simple".equals(type.pageApi())&&type.examples().isEmpty())throw new IOException("Simple page types require 1 to 16 examples");
+            var exampleIds=new HashSet<String>();
+            for(var example:type.examples()){
+                if(example.id()==null||!example.id().matches("[A-Za-z0-9_-]{1,80}")||!exampleIds.add(example.id())||example.title()==null||example.title().isBlank())throw new IOException("Invalid example metadata");
+                if(example.path()==null||!example.path().endsWith(".qbank"))throw new IOException("Example must be a .qbank file");
+            }
         }
         return manifest;
     }
@@ -245,6 +258,13 @@ public final class ExtensionPackageStore {
                     throw new IOException("defaultQuestion must be a complete persisted question matching its type");
                 var validator = new ExtensionSchemaValidator(type.id(), text(directory,type.questionSchema()), text(directory,type.answerSchema()));
                 validator.question(json.convertValue(template, new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,Object>>() { }));
+                for(var example:type.examples()){
+                    Path file=safePath(directory,example.path());
+                    if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)||Files.size(file)>MAX_ENTRY_BYTES||!file.toRealPath().startsWith(directory.toRealPath()))throw new IOException("Missing or oversized example");
+                    var bank=io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader.forExtensionExamples().read(file);
+                    if(bank.questions().isEmpty()||bank.questions().stream().anyMatch(q->!type.id().equals(q.type())))throw new IOException("Example must contain only its declared question type");
+                    for(var question:bank.questions())validator.question(io.quizforge.core.question.codec.QuestionDataCodec.encodePersisted(question));
+                }
             } catch (Exception ex) { throw new IOException("Invalid extension JSON schema or default question: " + ex.getMessage(), ex); }
         }
     }

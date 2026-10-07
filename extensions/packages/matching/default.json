@@ -1,0 +1,141 @@
+{
+  "id": "q_template",
+  "type": "MATCHING",
+  "stimulusRefs": [],
+  "prompt": {
+    "kind": "TEXT",
+    "text": "Arrange the paragraphs in the correct order. Three paragraphs have already been placed.\n\nA. A final observation brings the discussion to a close.\n\nB. A useful example explains the earlier point.\n\nC. The next paragraph introduces a contrast.\n\nD. A concluding paragraph summarizes the argument.\n\nE. An opening explanation defines the central idea.\n\nF. The introduction presents the topic.\n\nG. A further example develops the contrast.\n\nH. The discussion then turns to a new aspect."
+  },
+  "payload": {
+    "kind": "EXTENSION",
+    "data": {
+      "blanks": [
+        {
+          "id": "blank_matching_1",
+          "number": 1,
+          "locked": true,
+          "givenOptionId": "opt_matching_6"
+        },
+        {
+          "id": "blank_matching_2",
+          "number": 2,
+          "locked": false
+        },
+        {
+          "id": "blank_matching_3",
+          "number": 3,
+          "locked": false
+        },
+        {
+          "id": "blank_matching_4",
+          "number": 4,
+          "locked": true,
+          "givenOptionId": "opt_matching_8"
+        },
+        {
+          "id": "blank_matching_5",
+          "number": 5,
+          "locked": false
+        },
+        {
+          "id": "blank_matching_6",
+          "number": 6,
+          "locked": true,
+          "givenOptionId": "opt_matching_3"
+        },
+        {
+          "id": "blank_matching_7",
+          "number": 7,
+          "locked": false
+        },
+        {
+          "id": "blank_matching_8",
+          "number": 8,
+          "locked": false
+        }
+      ],
+      "options": [
+        {
+          "id": "opt_matching_1",
+          "label": "A"
+        },
+        {
+          "id": "opt_matching_2",
+          "label": "B"
+        },
+        {
+          "id": "opt_matching_3",
+          "label": "C"
+        },
+        {
+          "id": "opt_matching_4",
+          "label": "D"
+        },
+        {
+          "id": "opt_matching_5",
+          "label": "E"
+        },
+        {
+          "id": "opt_matching_6",
+          "label": "F"
+        },
+        {
+          "id": "opt_matching_7",
+          "label": "G"
+        },
+        {
+          "id": "opt_matching_8",
+          "label": "H"
+        }
+      ]
+    }
+  },
+  "answerSpec": {
+    "kind": "EXTENSION",
+    "data": {
+      "answers": [
+        {
+          "blankId": "blank_matching_1",
+          "correctOptionId": "opt_matching_6"
+        },
+        {
+          "blankId": "blank_matching_2",
+          "correctOptionId": "opt_matching_2"
+        },
+        {
+          "blankId": "blank_matching_3",
+          "correctOptionId": "opt_matching_5"
+        },
+        {
+          "blankId": "blank_matching_4",
+          "correctOptionId": "opt_matching_8"
+        },
+        {
+          "blankId": "blank_matching_5",
+          "correctOptionId": "opt_matching_1"
+        },
+        {
+          "blankId": "blank_matching_6",
+          "correctOptionId": "opt_matching_3"
+        },
+        {
+          "blankId": "blank_matching_7",
+          "correctOptionId": "opt_matching_7"
+        },
+        {
+          "blankId": "blank_matching_8",
+          "correctOptionId": "opt_matching_4"
+        }
+      ]
+    }
+  },
+  "scoreSpec": {
+    "defaultMaxScore": 2
+  },
+  "evaluationSpec": null,
+  "analysis": {
+    "kind": "TEXT",
+    "text": "作者可在这里填写答案与解析。"
+  },
+  "sourceRefs": []
+}

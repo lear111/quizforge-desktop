@@ -17,19 +17,15 @@ import io.quizforge.core.question.model.Question;
 import io.quizforge.core.question.model.QuestionBank;
 import io.quizforge.core.question.model.ScoreSpec;
 import io.quizforge.core.question.service.QuestionBankEditorModel;
-import io.quizforge.core.question.compat.essay.EssayPayload;
+import io.quizforge.core.question.model.extension.ExtensionPayload;
+import io.quizforge.core.question.model.extension.ExtensionAnswerSpec;
+import io.quizforge.core.question.content.TextContent;
+import java.util.Map;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class EssayDomainTest {
-    @Test void newEssayUsesCommonSkeletonAndDefaultScore() {
-        var model=new QuestionBankEditorModel(new QuestionBank("qb_draft","Draft",List.of(),List.of(),List.of()));
-        model.addQuestion("ESSAY");var question=model.bank().questions().getFirst();
-        assertEquals("ESSAY",question.type());assertEquals(ScoreSpec.defaultScore(),question.scoreSpec());
-        assertEquals(new EssayPayload(null),question.essayPayload());assertNull(question.essayAnswerSpec().referenceAnswer());
-        assertTrue(question.stimulusRefs().isEmpty());assertNull(question.evaluationSpec());
-    }
     @Test void richContentSnapshotAdapterPreservesEveryNodeAndOptionalField() {
         var content=new RichContent(new RichDocument(List.of(new ParagraphNode(List.of(new InlineTextNode("A"),
                 new InlineImageNode("res_inline",null),new LineBreakNode(),new LinkNode("https://example.org",List.of(new InlineTextNode("link"))),
@@ -38,8 +34,8 @@ class EssayDomainTest {
         assertEquals(java.util.Set.of("res_inline","res_block"),QuestionContentData.imageIds(content));
     }
     @Test void editingGuidancePreservesExistingCriteriaAndEmptyGuidanceIsOptional() {
-        var model=new QuestionBankEditorModel(new QuestionBank("qb_draft","Draft",List.of(),List.of(),List.of()));
-        model.addQuestion("ESSAY");model.setEvaluatorGuidance(0,"Describe the scoring rules.");
+        var model=new QuestionBankEditorModel(new QuestionBank("qb_draft","Draft",List.of(),List.of(new Question("q_essay","ESSAY",List.of(),new TextContent("Write"),new ExtensionPayload(Map.of()),new ExtensionAnswerSpec(Map.of()),ScoreSpec.defaultScore(),null,null,List.of())),List.of()));
+        model.setEvaluatorGuidance(0,"Describe the scoring rules.");
         assertEquals("Describe the scoring rules.",model.bank().questions().getFirst().evaluationSpec().evaluatorGuidance());
         model.setEvaluatorGuidance(0,"");assertNull(model.bank().questions().getFirst().evaluationSpec());
         var question=model.bank().questions().getFirst();

@@ -119,6 +119,7 @@ public final class QuestionBankEditorView extends VBox implements DevelopmentRef
         var question = model.bank().questions().isEmpty() ? null : model.bank().questions().get(index);
         state.put("question",question == null ? null : QuestionDataCodec.encodePersisted(question));
         state.put("editable",question != null && QuestionTypes.find(question.type()).isPresent());
+        state.put("targets",io.quizforge.desktop.ui.question.shared.QuestionTargetNumbers.current(model.bank().questions().stream().map(q->QuestionTypes.find(q.type()).map(t->t.outlineTargets(q)).orElse(List.of())).toList(),index));
         state.put("label",question == null ? "" : QuestionTypeCatalog.label(question.type()));
         state.put("sources",question == null || question.sourceRefs().isEmpty() ? List.of()
                 : sourceNavigation.inspect(workspace,question.sourceRefs()).stream().map(source -> Map.of(
@@ -132,9 +133,17 @@ public final class QuestionBankEditorView extends VBox implements DevelopmentRef
             case "save" -> { save.accept(model.bank()); return; }
             case "navigate" -> index = checkedIndex(argument,model.bank().questions().size());
             case "add" -> {
-                if (!(argument instanceof String type) || !QuestionTypeCatalog.editableTypes().contains(type))
+                String type=argument instanceof String value?value:argument instanceof Map<?,?> params&&params.get("type") instanceof String value?value:null;
+                if (type==null || !QuestionTypeCatalog.editableTypes().contains(type))
                     throw new IllegalArgumentException("缺少对应题型扩展");
-                index = model.addQuestion(type);
+                int insertion=argument instanceof Map<?,?>?Math.min(index+1,model.bank().questions().size()):model.bank().questions().size();
+                int added=model.addQuestion(type);model.moveQuestion(added,insertion);index=insertion;
+            }
+            case "move" -> {
+                requireQuestion();if(!(argument instanceof Map<?,?> params)||!params.containsKey("beforeQuestionId"))throw new IllegalArgumentException("缺少移动目标");
+                Object before=params.get("beforeQuestionId");int target=model.bank().questions().size();
+                if(before!=null){target=-1;for(int i=0;i<model.bank().questions().size();i++)if(model.bank().questions().get(i).id().equals(before)){target=i;break;}if(target<0)throw new IllegalArgumentException("目标题目不存在");}
+                if(target==index)return;if(target>index)target--;model.moveQuestion(index,target);index=target;
             }
             case "duplicate" -> { requireQuestion(); index = model.duplicateQuestion(index); }
             case "delete" -> {

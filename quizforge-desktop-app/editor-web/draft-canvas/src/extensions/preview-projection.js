@@ -20,13 +20,18 @@ export function projectQuestionPreview(question,options={}) {
 }
 function projectValidatedQuestion(question,options,definition) {
   if(definition.projectPreview)return {...definition.projectPreview(question,options),rendererVersion:definition.extensionVersion};
+  const snapshot=definition.snapshotQuestion?.(question)||{};
+  return snapshot?.then?snapshot.then(value=>projectSnapshot(question,options,definition,value)):projectSnapshot(question,options,definition,snapshot);
+}
+function projectSnapshot(question,options,definition,snapshot) {
   const source=JSON.parse(JSON.stringify(question));
   const {answerSpec,analysis,...publicQuestion}=source;
+  if(snapshot.publicPayload)publicQuestion.payload=snapshot.publicPayload;
   const manifest=QuestionRendererRegistry.extensions().find(m=>m.id===definition.extensionId&&m.version===definition.extensionVersion);
   const type=manifest.types.find(t=>t.id===source.type),show=options.showAnswers===true;
   const resolveContent=options.resolveContent||((value)=>value||{kind:'TEXT',text:''});
   const resolvedQuestion=resolvePreviewContentTree(publicQuestion,resolveContent);
-  const maximum=source.maxScore??source.scoreSpec?.defaultMaxScore??null;
+  const maximum=snapshot.maxScore??source.maxScore??source.scoreSpec?.defaultMaxScore??null;
   return {questionId:source.id,sessionQuestionId:source.id,type:source.type,index:0,total:1,prompt:resolvedQuestion.prompt||resolveContent({kind:'TEXT',text:''}),
     maxScore:maximum,state:show?'SUBMITTED':'UNANSWERED',selectedOptionIds:[],options:[],
     presentation:{extensionId:manifest.id,extensionVersion:manifest.version,dataVersion:type.dataVersion,question:resolvedQuestion,

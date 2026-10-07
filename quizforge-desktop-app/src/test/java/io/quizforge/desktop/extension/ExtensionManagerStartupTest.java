@@ -46,8 +46,14 @@ class ExtensionManagerStartupTest {
             }
             assertEquals(3, installed.size());
             assertTrue(fx(() -> manager.loaded().isEmpty()), "import requires a restart");
+            var oldPackage=Path.of("../extensions/dist/quizforge.types.true-false-2.3.0.qfext");
+            var oldReview=fx(()->manager.inspect(oldPackage));
+            fx(()->manager.install(oldPackage,oldReview.sha256(),Map.of("TRUE_FALSE",Set.of()))).toCompletableFuture().get(20,TimeUnit.SECONDS);
+            long initializationStarted=System.nanoTime();
             fx(() -> manager.initialize(root)).toCompletableFuture().get(120, TimeUnit.SECONDS);
+            System.out.println("EXTENSION_METADATA_STARTUP_MS="+TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-initializationStarted));
             assertEquals(3, fx(() -> manager.loaded().size()));
+            assertEquals(0,fx(manager::runningRuleRuntimeCount),"Registering current and historical versions must not start rule workers");
             assertEquals(List.of(), fx(manager::failures));
             for (var extension : installed) {
                 assertTrue(fx(() -> manager.grantedPermissions(extension).values().stream().allMatch(Set::isEmpty)));
@@ -70,6 +76,14 @@ class ExtensionManagerStartupTest {
                 }
                 return null;
             });
+            assertEquals(3,fx(manager::runningRuleRuntimeCount),"Only the three used current versions should run");
+            fx(()->{
+                var old=QuestionTypes.requireVersion("TRUE_FALSE","2.3.0");
+                var question=questions.stream().filter(q->q.type().equals("TRUE_FALSE")).findFirst().orElseThrow();
+                assertNotNull(old.invoke("grade",Map.of("question",old.encodeQuestion(question),"answer",Map.of("selectedOptionIds",question.choiceAnswerSpec().correctOptionIds()),"maxScore",question.scoreSpec().defaultMaxScore())));
+                return null;
+            });
+            assertEquals(4,fx(manager::runningRuleRuntimeCount),"A frozen historical version starts only when explicitly used");
             var codec = new QuestionBankV2Codec();
             var bank = new QuestionBank("qb_external", "External flow", List.of(), questions, List.of());
             var saved = codec.write(bank);
@@ -128,6 +142,7 @@ class ExtensionManagerStartupTest {
         assertTrue(started.await(20, TimeUnit.SECONDS));
     }
     private static <T> T fx(Callable<T> action) throws Exception {
-        var task = new FutureTask<>(action); Platform.runLater(task); return task.get(30, TimeUnit.SECONDS);
+        // A single test action invokes three independent workers; each retains its 45 s cold-start budget.
+        var task = new FutureTask<>(action); Platform.runLater(task); return task.get(160, TimeUnit.SECONDS);
     }
 }

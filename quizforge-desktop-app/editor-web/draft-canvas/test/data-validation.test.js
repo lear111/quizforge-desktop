@@ -30,7 +30,7 @@ test('local reference schemas work without changing input; unsafe or unsupported
 test('malicious rule outputs cannot grade beyond the frozen maximum or forge validation and target shapes',async()=>{
   const value=source(),validation=compileDataValidation(type(value),asset(value)),q=asset(value).defaultQuestion;
   const input={question:q,answer:{selectedOptionIds:[q.payload.options[0].id]},maxScore:2};
-  for(const [operation,output] of [['validate',{errors:[123]}],['validateAnswer',{errors:[],empty:'false'}],['grade',{status:'CORRECT',score:999,maxScore:2}],['grade',{status:'CORRECT',score:1}],['grade',{status:'INCORRECT',score:2}],['grade',{status:'UNSCORED',score:0}],['grade',{status:'CORRECT',score:2,maxScore:'2'}],['snapshot',{maxScore:-1}],['targets',{targets:[{id:'one',number:1},{id:'two',number:1}]}]]){
+  for(const [operation,output] of [['validate',{errors:[123]}],['validateAnswer',{errors:[],empty:'false'}],['grade',{status:'CORRECT',score:999,maxScore:2}],['grade',{status:'CORRECT',score:1}],['grade',{status:'INCORRECT',score:2}],['grade',{status:'UNSCORED',score:0}],['grade',{status:'CORRECT',score:2,maxScore:'2'}],['snapshot',{maxScore:-1}],['snapshot',{publicPayload:[]}],['snapshot',{publicPayload:null}],['targets',{targets:[{id:'one',number:1},{id:'two',number:1}]}]]){
     const rules=checkedRules({invoke:()=>Promise.resolve(JSON.stringify(output))},new Map([[type(value).id,validation]]));
     await assert.rejects(async()=>rules.invoke(type(value).id,operation,JSON.stringify(input)),DataValidationError);
   }

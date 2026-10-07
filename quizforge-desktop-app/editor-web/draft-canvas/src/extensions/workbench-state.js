@@ -37,6 +37,7 @@ export async function workbenchProjection(compiled,state,resolveContent,value=st
   const source=clone(value.question),{answerSpec,analysis,...publicQuestion}=source;
   function tree(node){if(Array.isArray(node))return node.map(tree);if(node&&typeof node==='object'){if(['TEXT','RICH','DOCUMENT'].includes(node.kind))return node.kind==='DOCUMENT'&&node.document?node:resolveContent(node);return Object.fromEntries(Object.entries(node).map(([k,v])=>[k,tree(v)]));}return node;}
   const type=compiled.manifest.types.find(t=>t.id===state.type),snapshot=await invokeWorkbenchRule(compiled,state.type,'snapshot',{question:source});
+  if(snapshot.publicPayload)publicQuestion.payload=snapshot.publicPayload;
   const submitted=Boolean(value.result),revealed=submitted||showReference;
   return {questionId:source.id,sessionQuestionId:source.id,type:state.type,index:0,total:1,prompt:tree(source.prompt||{kind:'TEXT',text:''}),
     options:[],selectedOptionIds:[],state:submitted?'SUBMITTED':Object.keys(value.answer||{}).length?'DRAFT':'UNANSWERED',

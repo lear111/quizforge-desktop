@@ -1,0 +1,61 @@
+{
+  "packageFormatVersion": 2,
+  "sdkApiMajor": 2,
+  "id": "quizforge.types.reading",
+  "name": "阅读理解",
+  "version": "2.3.2",
+  "types": [
+    {
+      "id": "READING",
+      "label": "阅读理解",
+      "dataVersion": 1,
+      "family": "OBJECTIVE",
+      "capabilities": [
+        "editor",
+        "practice",
+        "preview",
+        "history"
+      ],
+      "questionSchema": "question.schema.json",
+      "answerSchema": "answer.schema.json",
+      "rules": "type.js",
+      "editor": "editor.html",
+      "renderer": "practice.html",
+      "defaultQuestion": "default.json",
+      "editorScript": "editor.js",
+      "rendererScript": "practice.js",
+      "styles": [
+        "style.css"
+      ],
+      "permissions": [
+        "question.edit",
+        "bank.save",
+        "bank.add",
+        "bank.duplicate",
+        "bank.delete",
+        "answer.write",
+        "practice.submit",
+        "practice.retry",
+        "navigation",
+        "sources.open",
+        "sources.manage",
+        "learning.mode",
+        "whiteboard.tools",
+        "whiteboard.history",
+        "whiteboard.clear",
+        "whiteboard.appearance",
+        "whiteboard.zoom"
+      ],
+      "pageApi": "simple",
+      "examples": [
+        {
+          "id": "basic",
+          "title": "阅读理解基础示例",
+          "description": "可预览、可复制导入的完整题库；与默认新建模板独立。",
+          "path": "examples/basic.qbank"
+        }
+      ]
+    }
+  ],
+  "minSdkApiMinor": 3
+}

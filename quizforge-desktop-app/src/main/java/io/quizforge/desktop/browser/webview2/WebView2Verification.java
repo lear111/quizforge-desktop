@@ -20,6 +20,42 @@ final class WebView2Verification {
     private WebView2Verification(WebView2Browser browser,WebView2PracticeSession session){this.browser=browser;this.session=session;}
     private interface ModeCommand{void set(String mode)throws Exception;default boolean navigationReady()throws Exception{return true;}}
     private interface ExtraChecks{void run(WebView2Verification driver)throws Exception;}
+    /** Focused current-SDK check, including recovery after a host navigation failure. */
+    static void runNavigation(io.quizforge.desktop.ui.question.practice.PracticeSurfaceHost host,
+            io.quizforge.core.practice.PersistentPracticeRuntime runtime,Stage stage,Path directory){
+        CompletableFuture.runAsync(()->{
+            var surface=(WebView2LearningSurface)host.learningSurface();
+            var driver=new WebView2Verification(surface.browser(),surface.session());
+            try {
+                driver.waitFor(()->!fx(host::busy));
+                driver.child("document.querySelector('input[type=radio]').click();true");
+                driver.waitFor(()->driver.selected()==1);
+                for(int target:List.of(1,2,0,2,1,0)){
+                    long start=System.nanoTime();
+                    fx(()->host.navigate(()->{runtime.goTo(target);host.showQuestion();})).toCompletableFuture().get(25,TimeUnit.SECONDS);
+                    driver.waitFor(()->driver.questionLoaded(target)&&!fx(host::busy));
+                    driver.timings.put("switch"+driver.timings.size(),(System.nanoTime()-start)/1_000_000d);
+                }
+                driver.check(driver.selected()==1,"question switch retains persisted selection");
+                driver.child("QF.requestAction({action:'goToQuestion',params:{direction:'next'}}).then(r=>window.navReply=r);true");
+                driver.waitFor(()->driver.questionLoaded(1)&&!fx(host::busy));
+                driver.check(true,"extension-origin navigation completes without waiting for itself");
+                var failed=fx(()->host.navigate(()->{throw new IllegalStateException("Injected navigation failure");}));
+                try{failed.toCompletableFuture().get(25,TimeUnit.SECONDS);throw new AssertionError("Failure not injected");}
+                catch(ExecutionException expected){ }
+                fx(()->host.navigate(()->{runtime.goTo(0);host.showQuestion();})).toCompletableFuture().get(25,TimeUnit.SECONDS);
+                driver.waitFor(()->driver.questionLoaded(0)&&!fx(host::busy));
+                driver.check(driver.selected()==1,"failed navigation recovers without losing answer or blocking next switch");
+                Files.writeString(directory.resolve("navigation-verification.json"),DocumentJson.mapper().writerWithDefaultPrettyPrinter()
+                        .writeValueAsString(Map.of("checks",driver.checks,"timingsMs",driver.timings)));
+                passed=true;System.out.println("WEBVIEW2_NAVIGATION_VERIFY_PASS "+driver.timings);
+            }catch(Exception|AssertionError failure){
+                failure.printStackTrace();System.err.println("WEBVIEW2_NAVIGATION_VERIFY_FAILED "+failure);
+                try{Files.writeString(directory.resolve("navigation-failure.json"),DocumentJson.mapper().writerWithDefaultPrettyPrinter().writeValueAsString(Map.of(
+                        "checks",driver.checks,"timings",driver.timings,"error",failure.toString(),"page",driver.eval("({view:window.sharedPractice.getViewState(),error:document.querySelector('.practice-error:not([hidden])')?.textContent})"))));}catch(Exception ignored){ }
+            }finally{Platform.runLater(()->{surface.abortVerification();stage.hide();});}
+        });
+    }
     static void runHistory(io.quizforge.desktop.ui.question.history.PracticeHistoryDetailView view,io.quizforge.core.practice.PracticeHistoryDetail detail,Stage stage,Path directory,javafx.scene.layout.BorderPane root){
         CompletableFuture.runAsync(()->{
             var nativeSurface=(WebView2HistorySurface)view.surface().learningSurface();

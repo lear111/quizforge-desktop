@@ -5,7 +5,7 @@ import java.io.IOException;
 /** SDK minor versions add capabilities; incompatible major/package formats never execute. */
 public final class ExtensionCompatibility {
     private ExtensionCompatibility() { }
-    public static final int PACKAGE_FORMAT=2, SDK_MAJOR=2, SDK_MINOR=1;
+    public static final int PACKAGE_FORMAT=2, SDK_MAJOR=2, SDK_MINOR=3;
     public static void requireSupported(ExtensionManifest manifest) throws IOException {
         if(manifest.packageFormatVersion()!=PACKAGE_FORMAT)
             throw new IOException("扩展需要格式 "+manifest.packageFormatVersion()+"，当前支持格式 "+PACKAGE_FORMAT+

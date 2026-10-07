@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "required": [
+    "kind",
+    "text"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "enum": [
+        "TEXT",
+        "CANVAS_DOCUMENT"
+      ]
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 67108864
+    },
+    "document": {
+      "type": "string",
+      "maxLength": 67108864
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "CANVAS_DOCUMENT"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "document"
+        ]
+      }
+    }
+  ]
+}

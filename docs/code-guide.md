@@ -42,12 +42,6 @@ question/
 │  └─ extension/            扩展拥有的不可变 JSON 数据
 ├─ content/                 文本、富文本、文档内容与读取辅助
 ├─ codec/                   页面、模板和快照共用的 JSON 编解码
-├─ compat/                  旧文件的数据兼容，不能执行题型
-│  ├─ cloze/                完形数据
-│  ├─ reading/              阅读数据
-│  ├─ matching/             排序/匹配数据
-│  ├─ translation/          翻译数据
-│  └─ essay/                作文数据
 └─ type/                    题型契约、目标、校验上下文、登记表
    └─ extension/            扩展规则接口、执行适配与缺失扩展提示
 ```
@@ -56,13 +50,12 @@ question/
 | --- | --- |
 | `question/model/choice/ChoicePayload`、`ChoiceAnswerSpec`、`ChoiceOption` | 当前单选、多选、判断扩展使用持久化 `CHOICE` 结构；此处不实现题型页面或评分规则 |
 | `question/model/extension/ExtensionPayload`、`ExtensionAnswerSpec` | 新扩展的不可变 JSON 数据；不依赖题型专属 Java 类 |
-| `question/compat` 中的 `Payload/AnswerSpec` 等值类型 | 读写已有 `.qbank` 的完形、阅读、匹配、翻译和作文结构，保留内容与资源；没有旧编辑器或评分器 |
-| `question/codec/QuestionDataCodec` | 原 `BuiltinQuestionData`，名称与职责统一；共用 JSON 编码兼容已有文件，编辑解码仅保留当前 `CHOICE` 通道 |
+| `question/codec/QuestionDataCodec` | 原 `BuiltinQuestionData`，名称与职责统一；共用 JSON 编码只支持 `CHOICE` 与 `EXTENSION` 封装，选择类编辑使用 `CHOICE` 通道 |
 | `question/content/QuestionText` | 纯文本读取与可显示内容检测 |
 | `practice/MatchingPracticeAnswer`、`TranslationPracticeAnswer`、`EssayPracticeAnswer` | 旧历史记录的答案解码；作文记录还提供已有富文本文档的数据格式和大小限制 |
 | `ui/question/history/LegacyChoiceAnswerDecoder` | 读取旧历史的选项 ID 列表 |
 
-旧完形、阅读、匹配、翻译、作文的编辑解码分支及其失效测试已经删除。兼容模型只有文件保存和读取职责，不能用来恢复原生题型执行。新增题型按扩展 SDK 编写模板、页面、Schema 和规则，不在 `type` 或 `compat` 下增加题型专属实现。
+旧题型的 `question/compat` 数据类、文件解码分支及失效测试已删除。旧的专项 kind 文件需要手动迁移为 EXTENSION.data；应用不会删除或自动重写用户文件。新增题型按扩展 SDK 编写模板、页面、Schema 和规则，不在 Core 增加题型专属实现。
 
 `QuestionBankPracticeSession` 仅提供导航和大纲状态，由 `PracticeRuntimeMapper` 从成功的快照恢复；它不再保存选择、匹配、翻译等题型私有答案，也不自行评分。新增题型使用通用 `PracticePayload` 和扩展规则，不增加宿主专项入口。
 
@@ -118,7 +111,7 @@ Windows 正式页面默认选择 WebView2。JavaFX 兼容实现仍有调用：�
 
 ### 作答并提交
 
-扩展 `practice.js` → `QF.answer` / 公共提交操作 → 网页 runtime → 浏览器消息适配 → `SharedPracticeAdapter` → `PersistentPracticeRuntime` / `PracticeSessionService` → `SqlitePracticeTransaction`。
+扩展 practice 页面 → `QF.save draft/submit` → `simple-client.js / simple-api.js` → 网页 runtime 与浏览器消息适配 → `SharedPracticeAdapter` → `PersistentPracticeRuntime` / `PracticeSessionService` → `SqlitePracticeTransaction`。旧包的页面 API 已停止支持。
 
 题型规则由 `ExternalQuestionTypeDefinition` 调用 `ExtensionRuleRuntime` 执行；规则进程受沙箱约束，主程序校验返回结果。页面不直接操作数据库，也不拥有最终评分和提交状态。确认成功后，宿主以新的 `SharedPracticeViewModel` 刷新题卡。
 
@@ -132,6 +125,8 @@ Windows 正式页面默认选择 WebView2。JavaFX 兼容实现仍有调用：�
 
 `ExtensionManagementDialog` → `ExtensionManager` → `ExtensionPackageStore` → 用户确认权限 → 登记 `QuestionTypes` 与固定版本的规则、页面。
 
+`ExtensionManager.initialize` 在后台检查安装包，回到 JavaFX 线程登记版本和页面，完成时不会创建规则进程。`ExtensionRuleRuntime` 在首次规则调用时启动对应版本的隔离环境；历史冻结版本同样按需启动。同一宿主生命周期复用准备后的沙箱运行文件，宿主重启后重新检查运行依赖。
+
 应用不自动安装或授权示例题型。加载开发目录是显式操作，`ExtensionLiveDevelopment` / `ExtensionDevelopmentWatcher` 管理页面变更；正式评分继续使用安装版本。修改扩展接口还应检查 `ExtensionPageBridge`、规则协议和相应的沙箱实现。
 
 ## 4. 网页源码与生成文件
@@ -141,6 +136,8 @@ Windows 正式页面默认选择 WebView2。JavaFX 兼容实现仍有调用：�
 | 源码 | 职责 |
 | --- | --- |
 | `src/extensions/html-ui.js`、`sdk.js` | 扩展页面挂载、QF 接口和编辑 flush |
+| `src/extensions/simple-client.js`、`simple-api.js` | SDK 2.3 加载/保存/操作、请求身份、离开屏障和白名单 |
+| `src/extensions/frame-client.js` | 隔离页实际公开的 QF 对象及公共内容组件 |
 | `src/extensions/rules-runtime.js` | 规则包装、模板、ID 与评分结果验证 |
 | `src/extensions/schema-worker.js` | 页面数据校验 Worker |
 | `src/shared/renderer/registry.js` | 安装扩展的渲染登记 |
@@ -151,15 +148,15 @@ Windows 正式页面默认选择 WebView2。JavaFX 兼容实现仍有调用：�
 
 `scripts/build.mjs` 将源码构建到 `quizforge-desktop-app/src/main/resources/editor/draft-canvas/`。修改行为时编辑源码，再构建；直接修改生成的 JS/CSS 会在下次构建时被覆盖。
 
-题型源码位于 `extensions/packages/`，当前示例为单选、多选、判断题。每个题型维护自己的 HTML、页面 JS、`default.json`、`type.js`、Schema 和样式。`extensions/tools/pack.mjs` 是独立打包工具；`scripts/build-extensions.mjs` 扫描示例源码并生成安装包和预览。
+题型源码位于 `extensions/packages/`，当前有八种外部示例，均使用 SDK 2.3 并附真实 .qbank 样例。判断题 2.3.2 直接维护 JS，其余七型 2.3.2 修改 *-source.js/shared 后由 build-page-extensions.mjs 构建。pack.mjs 可独立打包；scripts/build-extensions.mjs 生成预览分发物。具体入口见 [源码目录](../extensions/packages/README.md)，接口见 [现行参考](../extensions/SIMPLE_PAGE_API.md)。
 
 ## 5. 按任务定位修改位置
 
 | 任务 | 从哪里开始 |
 | --- | --- |
 | 新增题型 | [五步模板](templates/new-question-type.md) → [完整开发指南](../extensions/DEVELOPMENT_GUIDE.md)；一般不修改 Java 主程序 |
-| 修改某题型的题干、选项或作答界面 | 对应 `extensions/packages/<题型>/editor.js` / `practice.js` |
-| 修改题型校验或评分 | 对应 `type.js` 和 Schema；发布时增加包版本 |
+| 修改某题型的题干、选项或作答界面 | 判断题改 editor.js/practice.js；其余型改 *-source.js/shared 后构建 |
+| 修改题型校验或评分 | 手写规则改 type.js，构建式规则改 type-source.js/shared；同步 Schema，发布增加包版本 |
 | 修改所有题型共用的富文本、白板或公共按钮 | 网页公共组件与对应宿主接口 |
 | 答案重启后丢失、提交失败 | 第 3 节作答链路：消息确认、Core 事务、SQLite |
 | 题库保存失败、资源丢失 | 第 3 节编辑链路：flush、资源输入、文件发布 |

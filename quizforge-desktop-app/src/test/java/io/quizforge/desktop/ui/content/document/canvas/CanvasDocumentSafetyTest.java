@@ -62,7 +62,7 @@ class CanvasDocumentSafetyTest {
             for(int i=0;i<8;i++){
                 final int number=i;
                 var current=fx(()->{
-                    var view=new CanvasDocumentView(new TextContent("Article "+number),List.of(),QuestionResourceInput.NONE,"navigation-",null,null);
+                    var view=new CanvasDocumentView(new TextContent("Article "+number),List.of(),QuestionResourceInput.NONE,"navigation-");
                     assertTrue(view.getChildren().isEmpty(),"Unattached previews must not allocate a WebView");
                     root.setCenter(view);
                     assertEquals(0,((WebView)view.getChildren().getFirst()).getOpacity(),"Uninitialized preview must hide the raw editor toolbar");
@@ -83,7 +83,7 @@ class CanvasDocumentSafetyTest {
             assertTrue(loads.get(0).get()>0,"The seventh detached renderer evicts the oldest of six cached previews");
             assertEquals(0,loads.get(1).get());
             var recent=fx(()->{
-                var view=new CanvasDocumentView(new TextContent("Article 1"),List.of(),QuestionResourceInput.NONE,"navigation-",null,null);
+                var view=new CanvasDocumentView(new TextContent("Article 1"),List.of(),QuestionResourceInput.NONE,"navigation-");
                 root.setCenter(view);return view;
             });
             fx(()->null);
@@ -91,7 +91,7 @@ class CanvasDocumentSafetyTest {
             assertEquals("article-1",fx(()->webs.get(1).getEngine().executeScript("window.previewToken")));
             assertEquals(0,loads.get(1).get());
             var evicted=fx(()->{
-                var view=new CanvasDocumentView(new TextContent("Article 0"),List.of(),QuestionResourceInput.NONE,"navigation-",null,null);
+                var view=new CanvasDocumentView(new TextContent("Article 0"),List.of(),QuestionResourceInput.NONE,"navigation-");
                 root.setCenter(view);return view;
             });
             assertNotSame(webs.get(0),fx(()->evicted.getChildren().getFirst()));
@@ -101,38 +101,8 @@ class CanvasDocumentSafetyTest {
             assertTrue(loads.get(3).get()>0,"Closing the window must release the detached preview cache");
         } finally {fx(()->{root.setCenter(null);stage.close();return null;});}
     }
-    @Test void cachedClozeRestoresCurrentAnswersAndDropsDetachedCallbacksAndPopup() throws Exception {
-        var configuration=java.util.Map.<String,Object>of("blanks",List.of(),"submitted",false);
-        var oldSelections=new java.util.concurrent.atomic.AtomicInteger();
-        var newSelections=new java.util.concurrent.atomic.AtomicInteger();
-        var view=fx(()->new CanvasDocumentView(new TextContent("Article"),List.of(),QuestionResourceInput.NONE,"cached-cloze-",configuration,(n,id)->oldSelections.incrementAndGet()));
-        var root=fx(()->new BorderPane(view));
-        var stage=fx(()->{var owned=new Stage();owned.setOpacity(0);owned.setScene(new Scene(root,850,500));owned.show();return owned;});
-        try {
-            awaitReady(view);
-            var web=fx(()->(WebView)view.getChildren().getFirst());
-            fx(()->{
-                web.getEngine().executeScript("window.previewToken='cached-cloze';let popup=document.createElement('div');popup.id='cloze-options-popup';document.body.append(popup)");
-                root.setCenter(new Label("another question"));return null;
-            });
-            fx(()->null);
-            fx(()->{web.getEngine().executeScript("window.quizforgeHost.clozeSelected(1,'detached')");return null;});
-            var replacement=fx(()->{
-                var current=new CanvasDocumentView(new TextContent("Article"),List.of(),QuestionResourceInput.NONE,"cached-cloze-",
-                        java.util.Map.of("blanks",List.of(),"submitted",true),(n,id)->newSelections.incrementAndGet());
-                root.setCenter(current);return current;
-            });
-            assertSame(web,fx(()->replacement.getChildren().getFirst()));
-            assertEquals("cached-cloze",fx(()->web.getEngine().executeScript("window.previewToken")));
-            assertEquals(false,fx(()->web.getEngine().executeScript("!!document.getElementById('cloze-options-popup')")));
-            assertEquals(0,oldSelections.get());
-            fx(()->{web.getEngine().executeScript("window.quizforgeHost.clozeSelected(1,'fresh')");return null;});fx(()->null);
-            assertEquals(1,newSelections.get());
-            assertEquals(true,fx(()->web.getEngine().executeScript("window.__quizforgeCanvasState.clozeConfig.submitted")));
-        } finally {fx(()->{root.setCenter(null);stage.close();return null;});}
-    }
     @Test void leavingBeforeLoadReleasesRendererAndReturningStillLoadsArticle() throws Exception {
-        var view=fx(()->new CanvasDocumentView(new TextContent("Article after early navigation"),List.of(),QuestionResourceInput.NONE,"early-",null,null));
+        var view=fx(()->new CanvasDocumentView(new TextContent("Article after early navigation"),List.of(),QuestionResourceInput.NONE,"early-"));
         var root=fx(()->new BorderPane(view));
         var stage=fx(()->{
             var owned=new Stage();owned.setOpacity(0);owned.setScene(new Scene(root,850,500));owned.show();
@@ -182,33 +152,6 @@ class CanvasDocumentSafetyTest {
             assertTrue(fx(()->(String)((WebView)updated.getChildren().getFirst()).getEngine().executeScript("window.canvasEditor.document()")).contains("updated article"));
         } finally {fx(()->{root.setCenter(null);stage.close();return null;});}
     }
-    @Test void reusedClozePreviewBindsNewCallbacksAndUpdatesOptionsWithoutPageReload() throws Exception {
-        var oldSelections=new java.util.concurrent.atomic.AtomicInteger();var newSelections=new java.util.concurrent.atomic.AtomicInteger();
-        var selected=new java.util.concurrent.atomic.AtomicReference<String>();
-        var configuration=java.util.Map.<String,Object>of("blanks",List.of(),"submitted",false);
-        var first=fx(()->new CanvasDocumentView(new TextContent("Article"),List.of(),QuestionResourceInput.NONE,"cloze-refresh-",
-                configuration,(number,option)->oldSelections.incrementAndGet()));
-        var root=fx(()->new BorderPane(first));
-        var stage=fx(()->{var owned=new Stage();owned.setOpacity(0);owned.setScene(new Scene(root,850,500));owned.show();return owned;});
-        try {
-            awaitReady(first);
-            var web=fx(()->(WebView)first.getChildren().getFirst());
-            var replacement=fx(()->{
-                web.getEngine().executeScript("window.previewToken='cloze-once';window.clozeCalls=0;window.originalCloze=window.canvasEditor.cloze;window.canvasEditor.cloze=function(value){clozeCalls++;window.latestConfiguration=JSON.parse(value);return originalCloze(value)};window.quizforgeHost.clozeSelected(1,'stale')");
-                var current=new CanvasDocumentView(new TextContent("Article"),List.of(),QuestionResourceInput.NONE,"cloze-refresh-",
-                        configuration,(number,option)->{newSelections.incrementAndGet();selected.set(option);});
-                root.setCenter(current);assertSame(web,current.getChildren().getFirst());
-                web.getEngine().executeScript("window.quizforgeHost.clozeSelected(1,'fresh')");return current;
-            });
-            fx(()->null);
-            assertEquals(0,oldSelections.get());assertEquals(1,newSelections.get());assertEquals("fresh",selected.get());
-            assertEquals(0,fx(()->((Number)web.getEngine().executeScript("window.clozeCalls")).intValue()),"Equal configurations do not repaint the article");
-            fx(()->{replacement.updateCloze(java.util.Map.of("blanks",List.of(),"submitted",true));return null;});
-            assertEquals(1,fx(()->((Number)web.getEngine().executeScript("window.clozeCalls")).intValue()));
-            assertEquals(true,fx(()->web.getEngine().executeScript("window.latestConfiguration.submitted")));
-            assertEquals("cloze-once",fx(()->web.getEngine().executeScript("window.previewToken")));
-        } finally {fx(()->{root.setCenter(null);stage.close();return null;});}
-    }
     @Test void failedPreviewCanRetryWhenItsResourceBecomesAvailable() throws Exception {
         var session=new ContentEditSession(new TextContent(""),List.of(),QuestionResourceInput.NONE);
         var content=session.stageDocument("{\"version\":\"1.0.4\",\"data\":{\"main\":[{\"value\":\"recovered article\"}]},\"options\":{}}","recovered article");
@@ -238,14 +181,14 @@ class CanvasDocumentSafetyTest {
         QuestionResourceInput input=resource->{reads.add(resource.id());return new java.io.ByteArrayInputStream(png);};
         var rich=new io.quizforge.core.question.content.RichContent(new io.quizforge.core.question.content.RichDocument(List.of(
                 new io.quizforge.core.question.content.BlockImageNode("used",null,null))));
-        var picture=fx(()->new CanvasDocumentView(rich,resources,input,"images-",null,null));
+        var picture=fx(()->new CanvasDocumentView(rich,resources,input,"images-"));
         var root=fx(()->new BorderPane(picture));
         var stage=fx(()->{var owned=new Stage();owned.setOpacity(0);owned.setScene(new Scene(root,850,500));owned.show();return owned;});
         try {
             awaitReady(picture);
             assertEquals(List.of("used"),fx(()->List.copyOf(reads)),"Unrelated images must not be read or decoded");
             assertTrue(fx(()->(String)((WebView)picture.getChildren().getFirst()).getEngine().executeScript("window.canvasEditor.document()")).contains("data:image/png;base64,"));
-            var plain=fx(()->{var view=new CanvasDocumentView(new TextContent("Plain article"),resources,input,"images-",null,null);root.setCenter(view);return view;});
+            var plain=fx(()->{var view=new CanvasDocumentView(new TextContent("Plain article"),resources,input,"images-");root.setCenter(view);return view;});
             awaitReady(plain);
             assertEquals(List.of("used"),fx(()->List.copyOf(reads)),"Plain text must not read any image from the bank");
         } finally {fx(()->{root.setCenter(null);stage.close();return null;});}

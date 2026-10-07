@@ -21393,201 +21393,6 @@ endobj
     window.__quizforgeCanvasFontCompatibility = true;
   }
 
-  // src/cloze-preview.js
-  var TOKEN = /\\?\{\{([1-9][0-9]*)\}\}/g;
-  var textTypes = /* @__PURE__ */ new Set([void 0, "text", "superscript", "subscript"]);
-  function transform(elements, config, groups) {
-    const result = [];
-    for (let i2 = 0; i2 < elements.length; ) {
-      if (!textTypes.has(elements[i2].type)) {
-        const element = { ...elements[i2++] };
-        if (element.valueList) element.valueList = transform(element.valueList, config, groups);
-        if (element.trList) element.trList = element.trList.map((row) => ({
-          ...row,
-          tdList: row.tdList.map((cell) => ({ ...cell, value: transform(cell.value, config, groups) }))
-        }));
-        result.push(element);
-        continue;
-      }
-      const runs = [];
-      let text = "";
-      while (i2 < elements.length && textTypes.has(elements[i2].type)) {
-        const element = elements[i2++];
-        runs.push({ start: text.length, end: text.length + element.value.length, element });
-        text += element.value;
-      }
-      const append = (start, end) => {
-        for (const run of runs) {
-          const left = Math.max(start, run.start), right = Math.min(end, run.end);
-          if (right > left) result.push({ ...run.element, value: text.slice(left, right) });
-        }
-      };
-      let position = 0;
-      for (const match of text.matchAll(TOKEN)) {
-        const blank = config.blanks.find((blank2) => blank2.number === Number(match[1]));
-        if (!blank && !match[0].startsWith("\\")) continue;
-        append(position, match.index);
-        if (match[0].startsWith("\\")) append(match.index + 1, match.index + match[0].length);
-        else {
-          const original = runs.find((run) => run.end > match.index).element;
-          const selected = blank.options.find((option) => option.id === blank.selected);
-          const group = `quizforge-cloze-${blank.number}-${groups.length}`;
-          groups.push({ id: group, blank });
-          const correct = blank.selected === blank.correct;
-          result.push({
-            ...original,
-            value: `${blank.number}.${selected ? selected.text : "_______"}`,
-            color: config.submitted ? selected ? correct ? "#26734a" : "#b14343" : "#777777" : selected ? "#715b99" : "#777777",
-            highlight: void 0,
-            underline: !!selected,
-            groupIds: [...original.groupIds || [], group]
-          });
-        }
-        position = match.index + match[0].length;
-      }
-      append(position, text.length);
-    }
-    return result;
-  }
-  function configureCloze(editor2, state2, configuration) {
-    if (!state2.clozeOriginal) state2.clozeOriginal = JSON.parse(JSON.stringify(editor2.command.getValue().data));
-    state2.clozeConfig = configuration;
-    const groups = [];
-    const data = JSON.parse(JSON.stringify(state2.clozeOriginal));
-    data.main = transform(data.main, configuration, groups);
-    state2.clozeGroups = groups;
-    const options = editor2.command.getOptions();
-    editor2.command.executeUpdateOptions({ ...options, group: { ...options.group, opacity: 0, activeOpacity: 0 } });
-    editor2.command.executeSetValue(data);
-    const paper = document.getElementById("paper");
-    let layer = document.getElementById("cloze-hit-layer");
-    if (!layer) {
-      layer = document.createElement("div");
-      layer.id = "cloze-hit-layer";
-      paper.append(layer);
-    }
-    if (state2.clozeDismiss) document.removeEventListener("pointerdown", state2.clozeDismiss, true);
-    const close = () => {
-      var _a4;
-      (_a4 = document.getElementById("cloze-options-popup")) == null ? void 0 : _a4.remove();
-    };
-    state2.clozeDismiss = (event) => {
-      if (!event.target.closest("#cloze-options-popup,.cloze-hit")) close();
-    };
-    document.addEventListener("pointerdown", state2.clozeDismiss, true);
-    const open = (blank, rect) => {
-      var _a4;
-      close();
-      if (configuration.readonly || configuration.submitted) return;
-      const menu = document.createElement("div");
-      menu.id = "cloze-options-popup";
-      menu.setAttribute("role", "group");
-      const title = document.createElement("strong");
-      title.textContent = `\u7B2C ${blank.number} \u7A7A`;
-      menu.append(title);
-      blank.options.forEach((option, index) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "cloze-popup-option";
-        button.textContent = `${String.fromCharCode(65 + index)}. ${option.text}`;
-        button.setAttribute("aria-pressed", String(option.id === blank.selected));
-        button.classList.toggle("selected", option.id === blank.selected);
-        button.onclick = () => {
-          var _a5;
-          close();
-          (_a5 = window.quizforgeHost) == null ? void 0 : _a5.clozeSelected(blank.number, option.id);
-        };
-        menu.append(button);
-      });
-      const height = paper.clientHeight, gap = 4;
-      Object.assign(menu.style, { top: "0px", left: "0px", maxHeight: `${Math.max(1, height - gap * 2)}px` });
-      paper.append(menu);
-      menu.style.left = `${Math.max(0, Math.min(rect.x, paper.clientWidth - menu.offsetWidth))}px`;
-      const below = rect.y + rect.height + gap;
-      const preferred = below + menu.offsetHeight <= height - gap ? below : rect.y - menu.offsetHeight - gap;
-      menu.style.top = `${Math.max(0, Math.min(preferred, height - menu.offsetHeight))}px`;
-      (_a4 = menu.querySelector('button[aria-pressed="true"]')) == null ? void 0 : _a4.focus();
-    };
-    state2.clozeDraw = () => {
-      layer.replaceChildren();
-      groups.forEach((group) => {
-        var _a4;
-        for (const rect of editor2.command.getGroupRectList(group.id) || []) {
-          const hit = document.createElement("button");
-          hit.type = "button";
-          hit.className = "cloze-hit";
-          hit.dataset.blank = String(group.blank.number);
-          hit.setAttribute("aria-label", `\u7B2C ${group.blank.number} \u7A7A\uFF0C${((_a4 = group.blank.options.find((o2) => o2.id === group.blank.selected)) == null ? void 0 : _a4.text) || "\u672A\u4F5C\u7B54"}`);
-          hit.disabled = !!(configuration.readonly || configuration.submitted);
-          Object.assign(hit.style, { left: `${rect.x}px`, top: `${rect.y}px`, width: `${Math.max(1, rect.width)}px`, height: `${rect.height}px` });
-          hit.onclick = (event) => {
-            event.stopPropagation();
-            open(group.blank, rect);
-          };
-          layer.append(hit);
-        }
-      });
-    };
-    close();
-    state2.clozeDraw();
-    requestAnimationFrame(state2.clozeDraw);
-  }
-
-  // src/translation-preview.js
-  var TOKEN2 = /\\?\{\{([\s\S]+?)\}\}/g;
-  var textTypes2 = /* @__PURE__ */ new Set([void 0, "text", "superscript", "subscript"]);
-  function transform2(elements, sequence) {
-    const result = [];
-    for (let i2 = 0; i2 < elements.length; ) {
-      if (!textTypes2.has(elements[i2].type)) {
-        const element = { ...elements[i2++] };
-        if (element.valueList) element.valueList = transform2(element.valueList, sequence);
-        if (element.trList) element.trList = element.trList.map((row) => ({
-          ...row,
-          tdList: row.tdList.map((cell) => ({ ...cell, value: transform2(cell.value, sequence) }))
-        }));
-        result.push(element);
-        continue;
-      }
-      const runs = [];
-      let text = "";
-      while (i2 < elements.length && textTypes2.has(elements[i2].type)) {
-        const element = elements[i2++];
-        runs.push({ start: text.length, end: text.length + element.value.length, element });
-        text += element.value;
-      }
-      const append = (start, end, marked = false) => {
-        for (const run of runs) {
-          const left = Math.max(start, run.start), right = Math.min(end, run.end);
-          if (right > left) result.push({
-            ...run.element,
-            value: text.slice(left, right),
-            ...marked ? { underline: true } : {}
-          });
-        }
-      };
-      let position = 0;
-      for (const match of text.matchAll(TOKEN2)) {
-        append(position, match.index);
-        if (match[0].startsWith("\\")) append(match.index + 1, match.index + match[0].length);
-        else {
-          const original = runs.find((run) => run.end > match.index).element;
-          result.push({ ...original, value: `(${sequence.number++}) `, underline: false });
-          append(match.index + 2, match.index + match[0].length - 2, true);
-        }
-        position = match.index + match[0].length;
-      }
-      append(position, text.length);
-    }
-    return result;
-  }
-  function configureTranslation(editor2, state2) {
-    if (!state2.translationOriginal) state2.translationOriginal = JSON.parse(JSON.stringify(editor2.command.getValue().data));
-    const data = JSON.parse(JSON.stringify(state2.translationOriginal));
-    data.main = transform2(data.main, { number: 1 });
-    editor2.command.executeSetValue(data);
-  }
-
   // raw-svg:C:\Users\wangg\OneDrive\Desktop\QuizForge\quizforge_V2\quizforge-desktop-app\editor-web\canvas\src\icons\undo.svg
   var undo_default = '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M6 2.763v7.544l-4.29-3.73zM13 14v-3a4 4 0 00-4-4H6V6h3a5 5 0 015 5v3h-1z" fill="#3D4757"/></svg>';
 
@@ -21977,7 +21782,6 @@ endobj
       editor.listener.contentChange = () => {
         state.changed++;
         reportHeight();
-        if (state.clozeDraw) requestAnimationFrame(state.clozeDraw);
         const fingerprint = JSON.stringify(editor.command.getValue().data);
         if (fingerprint === state.answerFingerprint) return;
         state.answerFingerprint = fingerprint;
@@ -22092,7 +21896,6 @@ endobj
     const scale = Math.min(1, width / (CONTENT_WIDTH + 2));
     if (Math.abs(editor.command.getOptions().scale - scale) > 1e-6) editor.command.executePageScale(scale);
     syncPaperLayout();
-    if (state.clozeDraw) requestAnimationFrame(state.clozeDraw);
     reportHeight();
   }
   function syncPaperLayout(center = false) {
@@ -22139,16 +21942,12 @@ endobj
     changed: () => state.changed,
     configuration: () => JSON.stringify({ paperWidth: PAPER_WIDTH, margin: SIDE_MARGIN, contentWidth: CONTENT_WIDTH, pageMode: "continuity" }),
     load: (json) => {
-      state.clozeOriginal = null;
-      state.translationOriginal = null;
       if (PREVIEW) editor.command.executeUpdateOptions(previewOptions());
       editor.command.executeSetValue(JSON.parse(json));
       focusDocument();
       state.answerFingerprint = JSON.stringify(editor.command.getValue().data);
     },
     loadDocument: (json) => {
-      state.clozeOriginal = null;
-      state.translationOriginal = null;
       const document2 = JSON.parse(json);
       editor.command.executeUpdateOptions({ ...document2.options, mode: PREVIEW ? "readonly" : "edit", magnifier: { disabled: true }, ...PREVIEW ? previewOptions() : {} });
       editor.command.executeSetValue(document2.data);
@@ -22161,12 +21960,6 @@ endobj
     value: () => JSON.stringify(editor.command.getValue().data),
     mode: (value) => {
       editor.command.executeMode(value);
-    },
-    cloze: (json) => {
-      if (PREVIEW) configureCloze(editor, state, JSON.parse(json));
-    },
-    translation: () => {
-      if (PREVIEW) configureTranslation(editor, state);
     },
     insertImage: (json) => {
       insertNativeImage(JSON.parse(json));

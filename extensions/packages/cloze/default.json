@@ -1,0 +1,146 @@
+{
+  "id": "q_template",
+  "type": "CLOZE",
+  "stimulusRefs": [],
+  "prompt": {
+    "kind": "TEXT",
+    "text": "Read the following text and choose the best word for each blank.\nLearning takes patience. {{1}}, regular practice makes progress possible. Mistakes are useful. {{2}}, we can learn from them. {{3}}, sharing ideas helps us think clearly."
+  },
+  "payload": {
+    "kind": "EXTENSION",
+    "data": {
+      "blanks": [
+        {
+          "id": "blank_cloze_1",
+          "number": 1,
+          "options": [
+            {
+              "id": "opt_cloze_1_1",
+              "content": {
+                "kind": "TEXT",
+                "text": "However"
+              }
+            },
+            {
+              "id": "opt_cloze_1_2",
+              "content": {
+                "kind": "TEXT",
+                "text": "Therefore"
+              }
+            },
+            {
+              "id": "opt_cloze_1_3",
+              "content": {
+                "kind": "TEXT",
+                "text": "Instead"
+              }
+            },
+            {
+              "id": "opt_cloze_1_4",
+              "content": {
+                "kind": "TEXT",
+                "text": "Meanwhile"
+              }
+            }
+          ]
+        },
+        {
+          "id": "blank_cloze_2",
+          "number": 2,
+          "options": [
+            {
+              "id": "opt_cloze_2_1",
+              "content": {
+                "kind": "TEXT",
+                "text": "However"
+              }
+            },
+            {
+              "id": "opt_cloze_2_2",
+              "content": {
+                "kind": "TEXT",
+                "text": "Therefore"
+              }
+            },
+            {
+              "id": "opt_cloze_2_3",
+              "content": {
+                "kind": "TEXT",
+                "text": "Instead"
+              }
+            },
+            {
+              "id": "opt_cloze_2_4",
+              "content": {
+                "kind": "TEXT",
+                "text": "Meanwhile"
+              }
+            }
+          ]
+        },
+        {
+          "id": "blank_cloze_3",
+          "number": 3,
+          "options": [
+            {
+              "id": "opt_cloze_3_1",
+              "content": {
+                "kind": "TEXT",
+                "text": "However"
+              }
+            },
+            {
+              "id": "opt_cloze_3_2",
+              "content": {
+                "kind": "TEXT",
+                "text": "Therefore"
+              }
+            },
+            {
+              "id": "opt_cloze_3_3",
+              "content": {
+                "kind": "TEXT",
+                "text": "Instead"
+              }
+            },
+            {
+              "id": "opt_cloze_3_4",
+              "content": {
+                "kind": "TEXT",
+                "text": "Meanwhile"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "answerSpec": {
+    "kind": "EXTENSION",
+    "data": {
+      "answers": [
+        {
+          "blankId": "blank_cloze_1",
+          "correctOptionId": "opt_cloze_1_1"
+        },
+        {
+          "blankId": "blank_cloze_2",
+          "correctOptionId": "opt_cloze_2_1"
+        },
+        {
+          "blankId": "blank_cloze_3",
+          "correctOptionId": "opt_cloze_3_1"
+        }
+      ]
+    }
+  },
+  "scoreSpec": {
+    "defaultMaxScore": 0.5
+  },
+  "evaluationSpec": null,
+  "analysis": {
+    "kind": "TEXT",
+    "text": "请根据上下文的转折、因果和递进关系选择合适的连接词。"
+  },
+  "sourceRefs": []
+}

@@ -24,8 +24,9 @@ import io.quizforge.core.question.model.QuestionBank;
 import io.quizforge.core.question.resource.QBankResource;
 import io.quizforge.core.question.resource.ResourceKind;
 import io.quizforge.core.question.service.QuestionBankEditorModel;
-import io.quizforge.core.question.compat.essay.EssayAnswerSpec;
-import io.quizforge.core.question.compat.essay.EssayPayload;
+import io.quizforge.core.question.model.extension.ExtensionAnswerSpec;
+import io.quizforge.core.question.content.QuestionContentData;
+import io.quizforge.core.question.model.extension.ExtensionPayload;
 import io.quizforge.infrastructure.filesystem.qbank.QBankImageImporter;
 import io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader;
 import io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter;
@@ -51,56 +52,26 @@ class EssayQuestionIntegrationTest {
     @Test void payloadAnswerAndExactScoreRoundTrip() {
         var restored=codec.parse(codec.write(bank));assertEquals(bank,restored);
         assertEquals(new BigDecimal("20.25"),restored.questions().getFirst().scoreSpec().defaultMaxScore());
-        assertInstanceOf(EssayPayload.class,restored.questions().getFirst().payload());
-        assertInstanceOf(EssayAnswerSpec.class,restored.questions().getFirst().answerSpec());
+        assertInstanceOf(ExtensionPayload.class,restored.questions().getFirst().payload());
+        assertInstanceOf(ExtensionAnswerSpec.class,restored.questions().getFirst().answerSpec());
     }
-    @Test void optionalNullAndMissingHaveIdenticalDomainAndContentId() throws Exception {
+    @ParameterizedTest @ValueSource(strings={"ESSAY","CLOZE","READING","MATCHING","TRANSLATION"})
+    void removedLegacyStorageKindsAreRejected(String kind) throws Exception {
         var root=(ObjectNode)json.readTree(codec.write(bank));
-        var q=(ObjectNode)root.path("questions").get(1);
-        assertFalse(q.path("payload").has("minWords"));assertFalse(q.path("payload").has("maxWords"));
-        assertFalse(q.path("payload").has("placeholder"));assertFalse(q.path("answerSpec").has("referenceAnswer"));
-        var missing=codec.parse(root.toString());
-        ((ObjectNode)q.get("payload")).putNull("placeholder");
-        ((ObjectNode)q.get("answerSpec")).putNull("referenceAnswer");
-        var nulls=codec.parse(root.toString());assertEquals(missing,nulls);assertEquals(codec.contentId(missing),codec.contentId(nulls));
+        var question=(ObjectNode)root.path("questions").get(0);
+        question.set("payload",json.valueToTree(Map.of("kind",kind)));
+        question.set("answerSpec",json.valueToTree(Map.of("kind",kind)));
+        assertThrows(QuizForgeException.class,()->codec.parse(root.toString()));
     }
     @Test void rejectsInvalidDiscriminatorPairing() {
         var old=bank.questions().getFirst();
-        var invalid=new Question(old.id(),"SINGLE_CHOICE",List.of(),old.prompt(),old.payload(),old.answerSpec(),old.scoreSpec(),null,null,List.of());
-        assertThrows(QuizForgeException.class,()->codec.validate(with(invalid,List.of())));
-    }
-    @Test void obsoleteWordLimitsAreIgnoredWithoutIgnoringOtherUnknownFields() throws Exception {
-        for(String fields:List.of("{\"minWords\":160,\"maxWords\":200}",
-                "{\"minWords\":null,\"maxWords\":null}","{\"minWords\":-1,\"maxWords\":0}")) {
-            var root=(ObjectNode)json.readTree(codec.write(bank));
-            ((ObjectNode)root.path("questions").get(0).path("payload")).setAll((ObjectNode)json.readTree(fields));
-            var normalized=codec.parse(root.toString());
-            assertEquals(bank,normalized);assertEquals(codec.contentId(bank),codec.contentId(normalized));
-            assertFalse(codec.write(normalized).contains("minWords"));assertFalse(codec.write(normalized).contains("maxWords"));
-        }
-        var root=(ObjectNode)json.readTree(codec.write(bank));
-        ((ObjectNode)root.path("questions").get(0).path("payload")).put("unknownSetting",true);
-        assertThrows(QuizForgeException.class,()->codec.parse(root.toString()));
-    }
-    @Test void existingPackageWordLimitsDisappearOnSaveWithoutChangingRemainingContent() throws Exception {
-        Path file=temp.resolve("old-word-limits.qbank");
-        new QBankPackageWriter().write(file,bank);
-        var entries=QBankTestPackageBuilder.entries(file);
-        var body=(ObjectNode)json.readTree(entries.get("bank.json"));
-        ((ObjectNode)body.path("questions").get(0).path("payload")).put("minWords",160).put("maxWords",200);
-        entries.put("bank.json",json.writeValueAsBytes(body));QBankTestPackageBuilder.zip(file,entries);
-        var restored=new QBankPackageReader().read(file);
-        assertEquals(bank,restored);assertEquals(codec.contentId(bank),codec.contentId(restored));
-        new QBankPackageWriter().write(file,restored);
-        var saved=json.readTree(QBankTestPackageBuilder.entries(file).get("bank.json"));
-        assertFalse(saved.path("questions").get(0).path("payload").has("minWords"));
-        assertFalse(saved.path("questions").get(0).path("payload").has("maxWords"));
-        assertEquals(bank,new QBankPackageReader().read(file));
+        var invalid=new Question(old.id(),"SINGLE_CHOICE",List.of(),old.prompt(),new io.quizforge.core.question.model.choice.ChoicePayload(List.of()),old.answerSpec(),old.scoreSpec(),null,null,List.of());
+        assertThrows(RuntimeException.class,()->codec.validate(with(invalid,List.of())));
     }
     @Test void richReferenceEvaluationSnapshotRoundTrip() {
         var old=bank.questions().getFirst();var reference=new RichContent(new RichDocument(List.of(new ParagraphNode(List.of(new InlineTextNode("Rich sample"))))));
         var evaluation=new EvaluationSpec(List.of(new EvaluationCriterion("content","Content",new BigDecimal("0.6")),new EvaluationCriterion("language","Language",new BigDecimal("0.4"))),"Assess fairly.");
-        var q=new Question(old.id(),old.type(),List.of(),old.prompt(),old.payload(),new EssayAnswerSpec(reference),old.scoreSpec(),evaluation,null,List.of());
+        var q=new Question(old.id(),old.type(),List.of(),old.prompt(),old.payload(),new ExtensionAnswerSpec(Map.of("referenceAnswer",QuestionContentData.encode(reference))),old.scoreSpec(),evaluation,null,List.of());
         var expected=with(q,List.of());assertEquals(expected,codec.parse(codec.write(expected)));
     }
     @Test void editorRichNodesRoundTripThroughCodecAndPackage() throws Exception {
@@ -144,7 +115,7 @@ class EssayQuestionIntegrationTest {
         assertTrue(metadata.id().startsWith("res_"));assertEquals(ResourceKind.IMAGE,metadata.kind());
         assertEquals(format.equals("png")?"image/png":"image/jpeg",metadata.mediaType());
         assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)),metadata.sha256());
-        var q=EssayTestBanks.essay("q_essay",EssayTestBanks.prompt(metadata.id()),new EssayPayload(null),null);
+        var q=EssayTestBanks.essay("q_essay",EssayTestBanks.prompt(metadata.id()),null,null);
         var original=with(q,List.of(metadata));Path file=temp.resolve("essay.qbank");
         new QBankPackageWriter().write(file,original,r->imported.open());
         assertEquals(original,new QBankPackageReader().read(file));
@@ -166,13 +137,20 @@ class EssayQuestionIntegrationTest {
             assertThrows(RuntimeException.class,()->new QBankImageImporter().read(local));
         }
     }
-    @Test void deletionReplacementAndSharedImageUsageAreTracked() throws Exception {
+    @Test void opaqueExtensionDataKeepsResourcesDuringEditing() throws Exception {
+        var type=new io.quizforge.core.question.type.extension.ExternalQuestionTypeDefinition("ESSAY","Essay",
+            io.quizforge.core.question.type.QuestionTypeDefinition.Family.SUBJECTIVE,"test",(operation,input)->
+                operation.equals("duplicate")?io.quizforge.core.question.type.extension.ExternalQuestionTypeDefinition.object(input.get("question")):Map.of("errors",List.of()));
+        io.quizforge.core.question.type.QuestionTypes.register(type);
+        try {
         Path local=temp.resolve("image.png");Files.write(local,EssayTestBanks.image("png"));
         var a=new QBankImageImporter().read(local);var b=new QBankImageImporter().read(local);
-        var model=new QuestionBankEditorModel(with(EssayTestBanks.essay("q_essay",EssayTestBanks.prompt(a.resource().id()),new EssayPayload(null),null),List.of(a.resource())));
+        var model=new QuestionBankEditorModel(with(EssayTestBanks.essay("q_essay",EssayTestBanks.prompt(a.resource().id()),null,null),List.of(a.resource())));
         model.addResource(b.resource());model.setPrompt(0,EssayTestBanks.prompt(b.resource().id()));
-        assertEquals(List.of(b.resource()),model.bank().resources());
-        model.duplicateQuestion(0);model.setPrompt(0,new TextContent("No picture"));assertEquals(1,model.bank().resources().size());
-        model.deleteQuestion(1);assertTrue(model.bank().resources().isEmpty());
+        // Extension data can refer to either resource; the host cannot infer its private structure.
+        assertEquals(List.of(a.resource(),b.resource()),model.bank().resources());
+        model.duplicateQuestion(0);model.setPrompt(0,new TextContent("No picture"));assertEquals(2,model.bank().resources().size());
+        model.deleteQuestion(1);assertEquals(2,model.bank().resources().size());
+        }finally{io.quizforge.core.question.type.QuestionTypes.unregister("ESSAY");}
     }
 }

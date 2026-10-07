@@ -17,7 +17,6 @@ public final class CanvasEditorImageHost {
     private final BiPredicate<String,String> clipboardWriter;
     private java.util.function.DoubleConsumer heightListener;
     private Runnable changeListener;
-    private java.util.function.BiConsumer<Integer,String> clozeListener;
 
     public CanvasEditorImageHost(Runnable chooseImage) {
         this(chooseImage, () -> {});
@@ -63,9 +62,4 @@ public final class CanvasEditorImageHost {
     public void contentHeight(double height) { if(heightListener!=null && Double.isFinite(height))heightListener.accept(height); }
     void onChange(Runnable listener) { changeListener=listener; }
     public void contentChanged() { if(changeListener!=null)changeListener.run(); }
-    void onCloze(java.util.function.BiConsumer<Integer,String> listener){clozeListener=listener;}
-    public void clozeSelected(int number,String optionId){
-        var listener=clozeListener;
-        if(listener!=null)Platform.runLater(()->{if(clozeListener==listener)listener.accept(number,optionId);});
-    }
 }

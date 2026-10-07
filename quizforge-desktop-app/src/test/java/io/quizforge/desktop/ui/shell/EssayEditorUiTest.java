@@ -37,7 +37,7 @@ class EssayEditorUiTest extends WorkspaceUiTestSupport {
             shell.refresh();open("题库/PracticeMove.qbank");
             var provider=fixture.context.getBean(io.quizforge.core.port.PracticeRuntimeProvider.class);
             var runtime=provider.open(fixture.alpha.id(),original);String archivedId=runtime.sessionId();
-            runtime.goTo(1);ExtensionPracticeTestAnswers.select(runtime,((io.quizforge.core.question.compat.reading.ReadingPayload)original.questions().get(1).payload()).items().getFirst().options().getFirst().id());
+            runtime.goTo(1);ExtensionPracticeTestAnswers.select(runtime,(String)((java.util.Map<?,?>)((java.util.List<?>)((java.util.Map<?,?>)((java.util.List<?>)((io.quizforge.core.question.model.extension.ExtensionPayload)original.questions().get(1).payload()).data().get("items")).getFirst()).get("options")).getFirst()).get("id"));
             runtime.submit();runtime.restart();
             var archived=provider.history(fixture.alpha.id()).loadArchivedSessionDetail(original.assetId(),archivedId);
             String activeId=runtime.sessionId();

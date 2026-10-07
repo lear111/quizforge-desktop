@@ -10,6 +10,7 @@ public final class ExtensionPermissions {
     public static final Map<String,String> LABELS = Map.ofEntries(
         Map.entry("question.edit","编辑当前题目及富文本"), Map.entry("bank.save","保存当前题库"),
         Map.entry("bank.add","新增题卡"), Map.entry("bank.duplicate","复制题卡"), Map.entry("bank.delete","删除题卡"),
+        Map.entry("bank.move","调整当前整题顺序"),
         Map.entry("answer.write","填写当前答案"), Map.entry("practice.submit","提交当前答案"), Map.entry("practice.retry","重试当前题目"),
         Map.entry("navigation","切换题卡"), Map.entry("sources.open","打开当前题目的引用来源"), Map.entry("sources.manage","添加或移除引用来源"),
         Map.entry("learning.mode","切换练习与草稿模式"), Map.entry("whiteboard.tools","切换白板工具"),

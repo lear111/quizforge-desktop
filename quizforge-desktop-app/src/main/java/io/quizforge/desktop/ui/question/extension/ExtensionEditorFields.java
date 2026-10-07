@@ -269,7 +269,7 @@ public final class ExtensionEditorFields {
                     commandBusy = true;
                     try {
                         var request = JSON.readValue(encoded, new TypeReference<java.util.Map<String,Object>>() { });
-                        if (!(request.get("action") instanceof String action) || !java.util.Set.of("save","navigate","add","duplicate","delete","source.add","source.remove","source.open").contains(action))
+                        if (!(request.get("action") instanceof String action) || !java.util.Set.of("save","navigate","add","duplicate","delete","move","source.add","source.remove","source.open").contains(action))
                             throw new IllegalArgumentException("不支持的编辑操作");
                         String questionId = context.model().bank().questions().isEmpty() ? "" : context.model().bank().questions().get(context.index()).id();
                         if (!questionId.equals(request.get("questionId"))) throw new IllegalArgumentException("题目已切换，请重新操作");

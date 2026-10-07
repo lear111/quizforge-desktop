@@ -3,7 +3,7 @@ import { registerQuestionExtension, QuestionRendererRegistry } from '../shared/r
 import { element, RendererMode } from '../shared/renderer/contract.js';
 import { readContent, renderContent } from '../shared/renderer/content.js';
 import { resultSection } from '../shared/renderer/result.js';
-import {createHtmlRenderer,createHtmlEditor} from './html-ui.js';
+import {createHtmlRenderer,createHtmlEditor,requireSimplePage} from './html-ui.js';
 import {isolatedRules} from './isolated-rules.js';
 import {replaceChildrenRetainingFrames} from './protocol.js';
 import {stageEditor} from './editor-transition.js';
@@ -29,6 +29,8 @@ export function compileQuestionExtension(value,sharedPolicies=null) {
   requireCompatibleManifest(manifest);
   if (!Array.isArray(manifest.types) || !manifest.types.length)
     throw new TypeError('Unsupported question extension manifest: HTML SDK 2 required');
+  // Fail before starting rule/schema workers or replacing an installed page.
+  manifest.types.forEach(requireSimplePage);
   const assets = bundle.assets || manifest.types.map(type => ({ typeId: type.id, ...bundle }));
   const renderers = [], editors = [], checks=[], permissionPolicies=new Map(), validators=new Map(), rules = typeof window==='undefined'?globalThis.QuestionRules.createRegistry():isolatedRules({...bundle,assets}), types = new Set();
   const QF = Object.freeze({ defineQuestionType: definition => rules.defineQuestionType(definition),
@@ -55,7 +57,12 @@ export function compileQuestionExtension(value,sharedPolicies=null) {
     const granted=readPermissions(bundle.grantedPermissions?.[type.id]);
     const policy=sharedPolicies?.get(type.id)||createPermissionPolicy(type.permissions,granted);
     permissionPolicies.set(type.id,policy);
-    renderers.push(createHtmlRenderer(type, asset,granted,policy,validation)); editors.push(createHtmlEditor(type, asset,granted,policy,validation));
+    const renderer=createHtmlRenderer(type, asset,granted,policy,validation);
+    renderer.snapshotQuestion=question=>{
+      const value=checked.invoke(type.id,'snapshot',JSON.stringify({question}));
+      return value?.then?value.then(encoded=>JSON.parse(encoded)):JSON.parse(value);
+    };
+    renderers.push(renderer); editors.push(createHtmlEditor(type, asset,granted,policy,validation));
   }}catch(error){rules.destroy?.();for(const validation of validators.values())validation.destroy?.();throw error;}
   const checked=checkedRules(rules,validators);
   const ready=checks.length?Promise.all(checks).catch(error=>{checked.destroy();throw error;}):null;

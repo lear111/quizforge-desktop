@@ -3,7 +3,7 @@
   "sdkApiMajor": 2,
   "id": "quizforge.types.multiple-choice",
   "name": "多选题",
-  "version": "2.1.2",
+  "version": "2.3.2",
   "types": [
     {
       "id": "MULTIPLE_CHOICE",
@@ -45,8 +45,17 @@
         "whiteboard.clear",
         "whiteboard.appearance",
         "whiteboard.zoom"
+      ],
+      "pageApi": "simple",
+      "examples": [
+        {
+          "id": "basic",
+          "title": "多选题基础示例",
+          "description": "可预览、可复制导入的完整题库；与默认新建模板独立。",
+          "path": "examples/basic.qbank"
+        }
       ]
     }
   ],
-  "minSdkApiMinor": 1
+  "minSdkApiMinor": 3
 }

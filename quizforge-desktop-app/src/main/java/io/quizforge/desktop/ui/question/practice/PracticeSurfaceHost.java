@@ -18,13 +18,13 @@ import javafx.scene.layout.StackPane;
 /** One tab-owned learning surface; mode changes capabilities, never the Renderer or WebView. */
 public final class PracticeSurfaceHost extends StackPane {
     private final PersistentPracticeRuntime runtime;
+    private final java.util.function.Supplier<io.quizforge.desktop.browser.PracticeLearningSurface> surfaceFactory;
     private final Runnable onChanged;
     private final StackPane transitional = new StackPane();
     private final javafx.scene.layout.BorderPane learningFrame = new javafx.scene.layout.BorderPane();
     // Keep the visible browser in place while a different, same-size browser prepares off screen.
     // IsVisible stays true so WebView2 can finish animation-frame/layout barriers normally.
     private final StackPane preparation = new StackPane();
-    private final StackPane replayWarmup=new StackPane();
     private java.util.Map<String,Boolean> preparedPreferences;
     private CompletionStage<Void> summaryReady=CompletableFuture.completedFuture(null);
     private final Label error = UiTheme.label("", "incorrect");
@@ -43,7 +43,12 @@ public final class PracticeSurfaceHost extends StackPane {
     public void onUiChange(java.util.function.Consumer<java.util.Map<String,Boolean>> listener){onUiChange=listener;listener.accept(uiPreferences);}
 
     public PracticeSurfaceHost(PersistentPracticeRuntime runtime, Runnable onChanged, Runnable previousAction, Runnable nextAction) {
+        this(runtime,onChanged,previousAction,nextAction,null);
+    }
+    PracticeSurfaceHost(PersistentPracticeRuntime runtime, Runnable onChanged, Runnable previousAction, Runnable nextAction,
+            java.util.function.Supplier<io.quizforge.desktop.browser.PracticeLearningSurface> surfaceFactory) {
         this.runtime = runtime; this.onChanged = onChanged;
+        this.surfaceFactory = surfaceFactory;
         setId("practice-surface-host"); setMinSize(0, 0);
         getStyleClass().add("practice-surface-host");
 toggle = UiTheme.button("草稿", "book-pen", "", this::toggle); toggle.setId("practice-draft-toggle");
@@ -70,8 +75,7 @@ toggle = UiTheme.button("草稿", "book-pen", "", this::toggle); toggle.setId("p
         for(var button:java.util.List.of(previous,next,previousAttempt,nextAttempt))StackPane.setMargin(button,new javafx.geometry.Insets(12));
         error.setId("practice-surface-error"); error.setWrapText(true); StackPane.setAlignment(error, Pos.BOTTOM_CENTER);
         preparation.setTranslateX(100000);preparation.setMouseTransparent(true);preparation.setVisible(false);preparation.setManaged(false);
-        replayWarmup.setTranslateX(100000);replayWarmup.setMouseTransparent(true);replayWarmup.setVisible(false);replayWarmup.setManaged(false);
-        getChildren().addAll(replayWarmup,preparation,learningFrame, transitional, previous, next,previousAttempt,nextAttempt,attempts, error); ensureShared();
+        getChildren().addAll(preparation,learningFrame, transitional, previous, next,previousAttempt,nextAttempt,attempts, error); ensureShared();
         updateChrome();
     }
     public boolean unified() { return true; }
@@ -115,17 +119,17 @@ toggle = UiTheme.button("草稿", "book-pen", "", this::toggle); toggle.setId("p
     private void applySourceUi(){var source=learningFrame.getBottom();if(source!=null){boolean visible=uiPreferences.getOrDefault("sources",true);source.setVisible(visible);source.setManaged(visible);}}
     private void ensureShared() {
         if (shared != null || !supportsCurrent() || destroyed) return;
-        shared = io.quizforge.desktop.browser.webview2.WebView2LearningSurface.enabled()
+        shared = surfaceFactory != null ? surfaceFactory.get() : io.quizforge.desktop.browser.webview2.WebView2LearningSurface.enabled()
             ? new io.quizforge.desktop.browser.webview2.WebView2LearningSurface(runtime,onChanged)
             : new SharedPracticeCanvasWebView(new SharedPracticeAdapter(runtime), onChanged);
         shared.configurePageActions(this::pageState,this::pageCommand);
         shared.onUiChange(preferences->{if(shared.view().getParent()==preparation){preparedPreferences=preferences;return;}if(!reviewingAttempt()){uiPreferences=preferences;applySourceUi();updateChrome();onUiChange.accept(preferences);}});
         shared.view().setId("shared-learning-webview"); learningFrame.setCenter(shared.view());
         boolean ownsBusy=!busy;busy=true;
-        if(ownsBusy)finish(shared.ready(), () -> shared.setLearningMode(mode)).thenRun(this::warmReplay);
+        if(ownsBusy)finish(shared.ready(), () -> shared.setLearningMode(mode));
         else shared.ready().thenRun(()->shared.setLearningMode(mode));
     }
-    public void refreshChrome() { applySourceUi();updateChrome();warmReplay(); }
+    public void refreshChrome() { applySourceUi();updateChrome(); }
     private void ensureReplay(){
         if(replay!=null)return;
         replay=io.quizforge.desktop.browser.webview2.WebView2LearningSurface.enabled()
@@ -134,12 +138,6 @@ toggle = UiTheme.button("草稿", "book-pen", "", this::toggle); toggle.setId("p
         replay.configurePageActions(this::pageState,this::pageCommand);
         replay.onUiChange(preferences->{if(replay.view().getParent()==preparation){preparedPreferences=preferences;return;}if(reviewingAttempt()){uiPreferences=preferences;applySourceUi();updateChrome();onUiChange.accept(preferences);}});
     }
-    private void warmReplay(){
-        if(destroyed||busy||replay!=null||shared==null||!shared.nativeSurface()||!supportsCurrent()||currentRow().attempts().isEmpty())return;
-        ensureReplay();replayWarmup.getChildren().setAll(replay.view());replay.view().setVisible(true);replay.view().setManaged(true);
-        replayWarmup.setVisible(true);replayWarmup.setManaged(true);
-        replay.ready().whenComplete((v,e)->Platform.runLater(()->{replayWarmup.setVisible(false);replayWarmup.setManaged(false);}));
-    }
     private void updateChrome() {
         updateAttempts();
         toggle.setText(mode == SharedLearningSurfaceMode.DRAFT ? "返回练习" : "草稿"); toggle.setAccessibleText(toggle.getText());
@@ -147,7 +145,7 @@ toggle = UiTheme.button("草稿", "book-pen", "", this::toggle); toggle.setId("p
         transitional.setVisible(showingTransitional); transitional.setManaged(showingTransitional);
         learningFrame.setVisible(!showingTransitional); learningFrame.setManaged(!showingTransitional);
         if (shared != null) { boolean show=shared.view().getParent()==preparation||!showingTransitional&&!reviewingAttempt();shared.view().setVisible(show);shared.view().setManaged(show); }
-        if (replay != null) { boolean show=replay.view().getParent()==replayWarmup||replay.view().getParent()==preparation||!showingTransitional&&reviewingAttempt();replay.view().setVisible(show);replay.view().setManaged(show); }
+        if (replay != null) { boolean show=replay.view().getParent()==preparation||!showingTransitional&&reviewingAttempt();replay.view().setVisible(show);replay.view().setManaged(show); }
         previous.setVisible(showingSummary || !showingTransitional && runtime.session().index() > 0); previous.setManaged(previous.isVisible());
         next.setVisible(!showingTransitional&&!showingSummary); next.setManaged(next.isVisible()); previous.setDisable(busy); next.setDisable(busy);
         next.setAccessibleText(runtime.session().index() == runtime.session().bank().questions().size() - 1 ? "查看本次练习" : "下一题");
@@ -184,19 +182,36 @@ toggle = UiTheme.button("草稿", "book-pen", "", this::toggle); toggle.setId("p
     public CompletionStage<Void> navigate(Runnable action, String targetId) {
         if (busy || destroyed) return CompletableFuture.failedFuture(new IllegalStateException("练习操作进行中"));
         busy = true; error.setText(""); updateChrome();
+        var unloaded = new java.util.concurrent.atomic.AtomicBoolean();
+        var replacing = new java.util.concurrent.atomic.AtomicBoolean();
+        String previousQuestionId = runtime.session().current().id();
         var flush = shared == null || showingTransitional || reviewingAttempt() ? CompletableFuture.<Void>completedFuture(null) : shared.flushPendingDraft();
         var reloaded=flush.thenCompose(ignored -> {
-            if (shared != null) shared.unloadCurrent();
+            if (shared != null) { shared.unloadCurrent(); unloaded.set(true); }
             replayAttemptId=null;if(replay!=null)replay.clear();
             if(shared!=null)learningFrame.setCenter(shared.view());
             action.run();
             if (supportsCurrent()) {
                 showingTransitional = false; ensureShared();
-                return shared.ready().thenCompose(v -> shared.reloadCurrent());
+                return shared.ready().thenCompose(v -> { replacing.set(true); return shared.reloadCurrent(); });
             }
             return showingSummary?summaryReady:CompletableFuture.<Void>completedFuture(null);
         });
-        return finish(reloaded,()->{
+        // A failed navigation must not leave the business queue suspended: it would
+        // drop every later save intent while the next flush waited for its reply.
+        var recoverable = reloaded.exceptionallyCompose(failure -> {
+            if (!unloaded.get() || destroyed || shared == null || !supportsCurrent())
+                return CompletableFuture.failedFuture(failure);
+            // If Core advanced before the callback failed, restore that authoritative
+            // question instead of unlocking the retained page for a different identity.
+            var recovery = !replacing.get() && !previousQuestionId.equals(runtime.session().current().id())
+                    ? shared.reloadCurrent() : shared.resumeCurrent();
+            return recovery.handle((ignored, recoveryFailure) -> {
+                if (recoveryFailure != null) failure.addSuppressed(recoveryFailure);
+                throw new java.util.concurrent.CompletionException(failure);
+            });
+        });
+        return finish(recoverable,()->{
             if(supportsCurrent()){shared.setLearningMode(mode);if(targetId!=null)shared.focusTarget(targetId);}
         });
     }
@@ -248,7 +263,7 @@ toggle = UiTheme.button("草稿", "book-pen", "", this::toggle); toggle.setId("p
                 shared.setLearningMode(mode);
                 return shared.resumeCurrent();
             }else{
-                ensureReplay();replayWarmup.getChildren().remove(replay.view());
+                ensureReplay();
                 prepareSurface(replay.view());
                 var attemptId=currentRow().attempts().get(index).id();
                 var card=SharedPracticeViewModel.from(runtime.snapshot(),attemptId);
@@ -289,16 +304,21 @@ toggle = UiTheme.button("草稿", "book-pen", "", this::toggle); toggle.setId("p
         var questions=runtime.snapshot().questions().stream().map(entry->{var q=entry.sessionQuestion();return java.util.Map.<String,Object>of(
                 "index",q.questionOrder(),"id",q.questionId(),"type",q.snapshot().questionType(),"state",q.practiceState().name());}).toList();
         var sources=learningFrame.getBottom() instanceof io.quizforge.desktop.ui.question.source.QuestionSourceListView list?list.pageSources():java.util.List.of();
-        return java.util.Map.of("index",runtime.session().index(),"count",questions.size(),"questions",questions,"sources",sources,"learningMode",mode.name());
+        return java.util.Map.of("index",runtime.session().index(),"count",questions.size(),"questions",questions,"sources",sources,"learningMode",mode.name(),
+                "attemptNavigation",java.util.Map.of("canPrevious",displayedAttemptIndex()>0,"canNext",displayedAttemptIndex()<currentAttemptIndex(),"isCurrent",!reviewingAttempt()),
+                "targets",io.quizforge.desktop.ui.question.shared.QuestionTargetNumbers.current(runtime.session().bank().questions().stream().map(runtime.session()::outlineTargets).toList(),runtime.session().index()));
     }
     private CompletionStage<Void> pageCommand(String action,Object argument){
         if(busy||destroyed)throw new IllegalStateException("练习操作进行中");
         switch(action){
             case "navigate" -> {
-                int target=io.quizforge.desktop.ui.question.shared.QuestionPageActions.index(argument,runtime.session().bank().questions().size());
+                int target=io.quizforge.desktop.ui.question.shared.QuestionPageActions.index(argument,runtime.session().bank().questions().size()+1);
                 if(target==runtime.session().index())return CompletableFuture.completedFuture(null);
-                return navigate(()->{runtime.goTo(target);onChanged.run();});
+                return navigate(()->{if(target==runtime.session().bank().questions().size())runtime.next();else runtime.goTo(target);onChanged.run();});
             }
+            case "attempt.previous" -> { return selectAttempt(displayedAttemptIndex()-1); }
+            case "attempt.next" -> { return selectAttempt(displayedAttemptIndex()+1); }
+            case "attempt.current" -> { return selectAttempt(currentAttemptIndex()); }
             case "learning.mode" -> {
                 if(!(argument instanceof String value))throw new IllegalArgumentException("模式无效");
                 return changeMode(SharedLearningSurfaceMode.valueOf(value));

@@ -1,0 +1,362 @@
+{
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "prompt",
+    "payload",
+    "answerSpec",
+    "scoreSpec"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "type": {
+      "const": "ESSAY"
+    },
+    "prompt": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "text"
+          ],
+          "properties": {
+            "kind": {
+              "const": "TEXT"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 67108864
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "resourceId",
+            "text"
+          ],
+          "properties": {
+            "kind": {
+              "const": "DOCUMENT"
+            },
+            "resourceId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 67108864
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "document"
+          ],
+          "properties": {
+            "kind": {
+              "const": "RICH"
+            },
+            "document": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "payload": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "data"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "EXTENSION"
+            },
+            "data": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "placeholder": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 10000
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ESSAY"
+            },
+            "placeholder": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 10000
+            }
+          }
+        }
+      ]
+    },
+    "answerSpec": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "data"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "EXTENSION"
+            },
+            "data": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "referenceAnswer": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "text"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "TEXT"
+                            },
+                            "text": {
+                              "type": "string",
+                              "maxLength": 67108864
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "resourceId",
+                            "text"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "DOCUMENT"
+                            },
+                            "resourceId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "text": {
+                              "type": "string",
+                              "maxLength": 67108864
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "document"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "RICH"
+                            },
+                            "document": {
+                              "type": "object"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ESSAY"
+            },
+            "referenceAnswer": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "text"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "TEXT"
+                        },
+                        "text": {
+                          "type": "string",
+                          "maxLength": 67108864
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "resourceId",
+                        "text"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "DOCUMENT"
+                        },
+                        "resourceId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "text": {
+                          "type": "string",
+                          "maxLength": 67108864
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "document"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "RICH"
+                        },
+                        "document": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "scoreSpec": {
+      "type": "object",
+      "required": [
+        "defaultMaxScore"
+      ],
+      "properties": {
+        "defaultMaxScore": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "analysis": {
+      "anyOf": [
+        {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "text"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "TEXT"
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 67108864
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "resourceId",
+                "text"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "DOCUMENT"
+                },
+                "resourceId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 67108864
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "document"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "RICH"
+                },
+                "document": {
+                  "type": "object"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

@@ -93,7 +93,7 @@ public final class WebView2HistorySurface implements HistoryLearningSurface {
             if(actionBusy)throw new IllegalStateException("历史操作正在完成");
             if(questionId==null||pageCommand==null||!questionId.equals(message.path("questionId").asText()))throw new IllegalStateException("历史题目已切换");
             String action=message.path("action").asText();
-            if(!Set.of("navigate","learning.mode","source.open").contains(action))throw new IllegalArgumentException("历史页不支持此操作");
+            if(!Set.of("navigate","learning.mode","source.open","attempt.previous","attempt.next","attempt.current").contains(action))throw new IllegalArgumentException("历史页不支持此操作");
             actionBusy=true;
             pageCommand.apply(action,DocumentJson.mapper().convertValue(message.path("argument"),Object.class)).whenComplete((v,e)->Platform.runLater(()->{actionBusy=false;reply(id,e);}));
         }catch(Exception failure){actionBusy=false;reply(id,failure);}

@@ -33,7 +33,7 @@ public final class QuestionPageActions {
             if(busy){reply(id,error("BUSY","宿主操作正在完成"));return;}
             try {
                 check(questionId);
-                if(!Set.of("navigate","learning.mode","source.open").contains(action))throw new IllegalArgumentException("不支持的页面操作");
+                if(!Set.of("navigate","learning.mode","source.open","attempt.previous","attempt.next","attempt.current").contains(action))throw new IllegalArgumentException("不支持的页面操作");
                 Object value=DocumentJson.mapper().readValue(argument,new TypeReference<Object>() { });
                 busy=true;
                 command.apply(action,value).whenComplete((ignored,failure)->{

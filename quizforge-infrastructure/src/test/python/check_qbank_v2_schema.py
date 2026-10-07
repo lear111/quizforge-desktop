@@ -21,9 +21,8 @@ def logical_bank(relative):
                           for resource in manifest["resources"]], **body}
 
 
-packages = ("examples/step7-practice/Java集合练习.qbank", "examples/qbank-v2/rich-foundation.qbank",
-            "examples/qbank-v2/cloze-first-version.qbank", "examples/qbank-v2/reading-first-version.qbank",
-            "examples/qbank-v2/matching-first-version.qbank", "examples/qbank-v2/translation-first-version.qbank")
+packages = tuple(f"extensions/packages/{slug}/examples/basic.qbank" for slug in
+                 ("single-choice", "multiple-choice", "true-false", "cloze", "reading", "matching", "translation", "essay"))
 for relative in packages:
     validator.validate(logical_bank(relative))
 
@@ -92,7 +91,6 @@ expected_optional = {
     ("evaluation", "evaluatorGuidance"), ("inlineImage", "alt"),
     ("blockImage", "alt"), ("blockImage", "caption"),
     ("source", "documentTitle"), ("source", "sectionTitle"),
-    ("essayPayload", "placeholder"), ("essayAnswer", "referenceAnswer"),
     ("paragraph", "alignment"), ("heading", "alignment"),
     ("inlineText", "marks"), ("blockImage", "widthPercent"), ("blockImage", "alignment"),
 }
@@ -103,37 +101,16 @@ actual_optional = {
     if field not in definition.get("required", [])
 }
 assert actual_optional == expected_optional, "Audit optional fields when the model changes"
-essay = deepcopy(fixture)
-essay_question = essay["questions"][0]
-essay_question.update(type="ESSAY", stimulusRefs=[], payload={"kind": "ESSAY"}, answerSpec={"kind": "ESSAY"})
-validator.validate(essay)
-for field, value in (("placeholder", "Write here"),
-                     ("referenceAnswer", {"kind": "TEXT", "text": "Sample"})):
-    owner = "answerSpec" if field == "referenceAnswer" else "payload"
-    for tested in (None, value):
-        candidate = deepcopy(essay)
-        candidate["questions"][0][owner][field] = tested
-        validator.validate(candidate)
-        cases += 1
-    for wrong in ([], True, 1.5):
-        invalid = deepcopy(essay)
-        invalid["questions"][0][owner][field] = wrong
-        assert not validator.is_valid(invalid), f"Invalid essay optional accepted: {field}"
-        cases += 1
-for field, wrong in (("minWords", 160), ("maxWords", 200)):
-    invalid = deepcopy(essay)
-    invalid["questions"][0]["payload"][field] = wrong
-    assert not validator.is_valid(invalid)
+# The host only understands common envelopes; private data is checked by package Schema.
+for kind in ("ESSAY", "CLOZE", "READING", "MATCHING", "TRANSLATION"):
+    invalid = deepcopy(fixture)
+    invalid["questions"][0].update(type=kind, payload={"kind": kind}, answerSpec={"kind": kind})
+    assert not validator.is_valid(invalid), f"Removed legacy envelope accepted: {kind}"
     cases += 1
-for wrong_type in ("SINGLE_CHOICE", "MULTIPLE_CHOICE"):
-    invalid = deepcopy(essay)
-    invalid["questions"][0]["type"] = wrong_type
-    assert not validator.is_valid(invalid), "Question type and payload must agree"
+for payload_kind, answer_kind in (("CHOICE", "EXTENSION"), ("EXTENSION", "CHOICE")):
+    invalid = deepcopy(fixture)
+    invalid["questions"][0]["payload"] = ({"kind": "EXTENSION", "data": {}} if payload_kind == "EXTENSION" else fixture["questions"][0]["payload"])
+    invalid["questions"][0]["answerSpec"] = ({"kind": "EXTENSION", "data": {}} if answer_kind == "EXTENSION" else fixture["questions"][0]["answerSpec"])
+    assert not validator.is_valid(invalid), "Mismatched data envelopes accepted"
     cases += 1
-for relative, expected_type in zip(packages[2:], ("CLOZE", "READING", "MATCHING", "TRANSLATION")):
-    candidate = logical_bank(relative)
-    index = next(i for i, item in enumerate(candidate["questions"]) if item["type"] == expected_type)
-    candidate["questions"][index]["type"] = "ESSAY"
-    assert not validator.is_valid(candidate), f"Mismatched {expected_type} payload accepted as ESSAY"
-    cases += 1
-print(f"PASS: Draft 2020-12 schema, {len(packages)} packages and essay fixture, {cases} contract cases, all {len(expected_optional)} optional fields")
+print(f"PASS: Draft 2020-12 schema, {len(packages)} extension examples, {cases} contract cases, all {len(expected_optional)} optional fields")

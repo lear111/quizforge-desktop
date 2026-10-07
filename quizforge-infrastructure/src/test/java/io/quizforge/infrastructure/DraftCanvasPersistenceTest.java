@@ -4,7 +4,6 @@ import io.quizforge.core.practice.*;
 import io.quizforge.core.practice.draft.*;
 import io.quizforge.core.question.model.*;
 import io.quizforge.core.question.service.QuestionBankEditorModel;
-import io.quizforge.core.question.compat.matching.*;
 import io.quizforge.infrastructure.filesystem.qbank.QuestionBankV2Codec;
 import io.quizforge.infrastructure.persistence.SqliteDatabase;
 import io.quizforge.infrastructure.persistence.practice.*;

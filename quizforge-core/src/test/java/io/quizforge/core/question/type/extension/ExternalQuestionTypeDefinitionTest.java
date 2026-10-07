@@ -66,6 +66,42 @@ class ExternalQuestionTypeDefinitionTest {
         assertThrows(IllegalStateException.class, () -> type.grade(snapshot, null));
     }
 
+    @Test void privateTemplatesDelegateCustomIdentityAllocationAndPublicProjectionToRules() {
+        var template=Map.<String,Object>of("id","q_template","type",TYPE,
+            "prompt",Map.of("kind","TEXT","text","A custom composite"),
+            "payload",Map.of("kind","EXTENSION","data",Map.of("node",Map.of("id","custom_original"))),
+            "answerSpec",Map.of("kind","EXTENSION","data",Map.of("correct","custom_original")),
+            "scoreSpec",Map.of("defaultMaxScore",2));
+        var calls=new ArrayList<String>();
+        var external=new ExternalQuestionTypeDefinition(TYPE,"Composite",type.family(),"1.0.0",TYPE,1,(operation,input)->{
+            calls.add(operation);
+            if(operation.equals("createDraft")||operation.equals("duplicate")) {
+                var ids=ExternalQuestionTypeDefinition.object(input.get("ids"));
+                var allocated=new LinkedHashMap<>(template);allocated.put("id",ids.get("question"));
+                var custom="custom_"+ids.get("question");
+                allocated.put("payload",Map.of("kind","EXTENSION","data",Map.of("node",Map.of("id",custom))));
+                allocated.put("answerSpec",Map.of("kind","EXTENSION","data",Map.of("correct",custom)));
+                return allocated;
+            }
+            if(operation.equals("snapshot"))return Map.of("maxScore",6,"targets",List.of(Map.of("id","one"),Map.of("id","two"),Map.of("id","three")),
+                "publicPayload",Map.of("kind","EXTENSION","data",Map.of("hint","given")));
+            return invoke(operation,input);
+        },template);
+        var original=external.createDraft(prefix->prefix+sequence.incrementAndGet(),List.of());
+        var duplicate=external.duplicate(original,prefix->prefix+sequence.incrementAndGet());
+        assertEquals(List.of("createDraft","duplicate"),calls);
+        assertNotEquals(original.payload(),duplicate.payload());
+        var data=((ExtensionPayload)duplicate.payload()).data();
+        assertEquals(ExternalQuestionTypeDefinition.object(data.get("node")).get("id"),
+            ((io.quizforge.core.question.model.extension.ExtensionAnswerSpec)duplicate.answerSpec()).data().get("correct"));
+        var snapshot=external.snapshot(original);
+        var presentation=ExternalQuestionTypeDefinition.object(ExternalQuestionTypeDefinition.object(snapshot.correctAnswer().value()).get("extensionPresentation"));
+        var publicQuestion=ExternalQuestionTypeDefinition.object(presentation.get("question"));
+        assertFalse(publicQuestion.containsKey("answerSpec"));
+        assertEquals(Map.of("kind","EXTENSION","data",Map.of("hint","given")),publicQuestion.get("payload"));
+        assertEquals(new BigDecimal("6"),publicQuestion.get("maxScore"));
+    }
+
     @Test void opaqueDataRemainsReadableWithoutInstalledTypeButCannotExecute() {
         var question = draft();
         new QuestionBankValidator().validate(bank(question));

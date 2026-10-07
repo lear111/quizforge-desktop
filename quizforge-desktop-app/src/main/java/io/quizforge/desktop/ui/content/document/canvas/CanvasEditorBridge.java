@@ -29,8 +29,6 @@ final class CanvasEditorBridge {
     private boolean pageStarted;
     private String savedValue;
     private final boolean preview;
-    private Map<String,Object> cloze;
-    private boolean translation;
 
     CanvasEditorBridge(QuestionContent initial,ContentEditSession session,Consumer<String> errors,Runnable chooseImage) {
         this(initial,session,errors,chooseImage,false);
@@ -62,9 +60,6 @@ final class CanvasEditorBridge {
             }catch(RuntimeException failed){api=null;this.errors.accept("Canvas Editor 初始化失败："+failed.getMessage());}
         });
         if(preview)web.addEventFilter(javafx.scene.input.ScrollEvent.SCROLL,event->{
-            // A bounded cloze menu scrolls independently; the document still scrolls with its parent.
-            if(cloze!=null && ready() && Boolean.TRUE.equals(engine.executeScript(
-                    "!!document.elementFromPoint("+event.getX()+","+event.getY()+")?.closest('#cloze-options-popup')")))return;
             // Preview is part of the surrounding page, not an independent viewport.
             if(!event.isControlDown() && web.getParent()!=null)
                 javafx.event.Event.fireEvent(web.getParent(),event.copyFor(web.getParent(),web.getParent()));
@@ -106,8 +101,7 @@ final class CanvasEditorBridge {
     }
     void parkPreview(){
         if(!preview || !ready())throw new IllegalStateException("Only loaded readonly previews can be cached");
-        host.onCloze(null);errors=ignored->{};session=null;
-        web.getEngine().executeScript("document.getElementById('cloze-options-popup')?.remove()");
+        errors=ignored->{};session=null;
     }
     boolean ready(){return api!=null && !closed;}
     void onContentChanged(Runnable listener){host.onChange(()->{if(ready() && !loading && !preview)listener.run();});}
@@ -120,19 +114,11 @@ final class CanvasEditorBridge {
             if(content instanceof DocumentContent document)call("loadDocument",session.document(document));
             else call("load",CanvasEditorAdapter.toCanvasJson(content,imageData(session,QuestionContentData.resourceIds(content))));
             if(preview)call("mode","readonly");
-            if(cloze!=null)call("cloze",ContentJson.write(cloze));
-            if(translation)call("translation");
             // Readonly previews never need a second serialized document for dirty tracking.
             if(!preview)checkpoint();
             if(preview)web.setOpacity(1);
         }finally{loading=false;}
     }
-    void cloze(Map<String,Object> configuration,java.util.function.BiConsumer<Integer,String> choose){
-        boolean changed=!Objects.equals(cloze,configuration);
-        cloze=configuration;host.onCloze(choose);
-        if(changed && ready())call("cloze",ContentJson.write(cloze));
-    }
-    void translation(){translation=true;if(ready())call("translation");}
     QuestionContent getContent(){
         requireReady();
         if(Boolean.TRUE.equals(call("empty")))return new TextContent("");
@@ -144,8 +130,8 @@ final class CanvasEditorBridge {
         if(closed)return;
         try{if(api!=null)call("destroy");}
         finally{
-            closed=true;api=null;session=null;initial=null;cloze=null;savedValue=null;
-            host.onCloze(null);host.onChange(null);errors=ignored->{};
+            closed=true;api=null;session=null;initial=null;savedValue=null;
+            host.onChange(null);errors=ignored->{};
             web.getEngine().loadContent("");
         }
     }

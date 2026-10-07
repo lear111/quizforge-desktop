@@ -21,17 +21,15 @@ export function validateArguments(args) {
 
 /** Arity and primitive shapes are checked before any native capability executes. */
 export function validateMethodArguments(method, args) {
-  const objects=new Set(['editor.update','answer.update','content.resolve','content.edit','ui.configure','layout.configure','whiteboard.setAppearance']);
-  const strings=new Set(['bank.addQuestion','sources.add','learning.setMode','whiteboard.setTool']);
+  const objects=new Set(['page.save','page.action','page.add','page.move','editor.update','answer.update','content.resolve','content.edit','ui.configure','layout.configure']);
+  const strings=new Set(['page.attempt','sources.add','learning.setMode']);
   const indices=new Set(['navigation.goTo','sources.remove','sources.open']);
-  const numbers=new Set(['whiteboard.setZoom','whiteboard.zoomBy']);
-  const single=objects.has(method)||strings.has(method)||indices.has(method)||numbers.has(method);
+  const single=objects.has(method)||strings.has(method)||indices.has(method);
   if(args.length!==(single?1:0))throw new TypeError('接口参数数量不匹配：'+method);
   const value=args[0];
   if(objects.has(method)&&(!value||typeof value!=='object'||Array.isArray(value)))throw new TypeError('接口需要 JSON 对象：'+method);
   if(strings.has(method)&&(typeof value!=='string'||!value.trim()))throw new TypeError('接口需要非空文本：'+method);
   if(indices.has(method)&&(!Number.isSafeInteger(value)||value<0))throw new TypeError('索引必须为非负整数');
-  if(numbers.has(method)&&(!Number.isFinite(value)||value<=0))throw new TypeError('缩放参数必须为正数');
 }
 
 /** Leave a revoked frame connected only until its accepted operation reply is delivered. */

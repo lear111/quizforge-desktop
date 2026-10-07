@@ -639,7 +639,7 @@ class PersistentPracticeRuntimeIntegrationTest {
         assertEquals(List.of("q_essay","q_one", "q_two"), restored.session().bank().questions().stream().map(Question::id).toList());
         restored.goTo(2); ExtensionPracticeTestAnswers.select(restored,"opt_d"); ExtensionPracticeTestAnswers.select(restored,"opt_e");
         var editedEssay = io.quizforge.infrastructure.testing.EssayTestBanks.essay(essay.id(),
-                new TextContent("Edited essay only"), essay.essayPayload(), null);
+                new TextContent("Edited essay only"), (String)((io.quizforge.core.question.model.extension.ExtensionPayload)essay.payload()).data().get("placeholder"), null);
         var edited = new QuestionBank(bank.assetId(), bank.title(), List.of(),
                 List.of(editedEssay, bank.questions().get(0), bank.questions().get(1)), List.of());
         new io.quizforge.infrastructure.filesystem.qbank.QBankPackageWriter().write(paths.workspaceRoot(workspace.id()).resolve("question-banks/review.qbank"),edited);

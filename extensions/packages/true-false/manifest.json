@@ -3,7 +3,7 @@
   "sdkApiMajor": 2,
   "id": "quizforge.types.true-false",
   "name": "判断题",
-  "version": "2.1.2",
+  "version": "2.3.2",
   "types": [
     {
       "id": "TRUE_FALSE",
@@ -45,8 +45,17 @@
         "whiteboard.clear",
         "whiteboard.appearance",
         "whiteboard.zoom"
+      ],
+      "pageApi": "simple",
+      "examples": [
+        {
+          "id": "basic",
+          "title": "判断题基础示例",
+          "description": "可预览、可复制导入的完整题库；与默认新建模板独立。",
+          "path": "examples/basic.qbank"
+        }
       ]
     }
   ],
-  "minSdkApiMinor": 1
+  "minSdkApiMinor": 3
 }

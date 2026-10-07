@@ -6,7 +6,7 @@
   <!-- 题干是数据，通过 textContent 填入；HTML 中只写固定 UI，不写真实题目或标准答案。 -->
   <div data-prompt class="qf-choice-prompt"></div>
   <p data-choice-hint class="qf-choice-hint muted"></p>
-  <!-- radio 保留原生键盘操作。用户选择通过 QF.answer.update 保存当前选项 ID。 -->
+  <!-- radio 保留原生键盘操作。用户选择通过 QF.save(draft) 保存当前选项 ID。 -->
   <div class="qf-judgment-options" role="radiogroup" aria-label="判断结果">
     <label class="qf-choice-option"><input type="radio" name="judgment-answer" data-answer-true><span class="qf-judgment-symbol" aria-hidden="true">✓</span><span class="qf-option-text">正确</span><span class="qf-option-feedback" hidden></span></label>
     <label class="qf-choice-option"><input type="radio" name="judgment-answer" data-answer-false><span class="qf-judgment-symbol" aria-hidden="true">×</span><span class="qf-option-text">错误</span><span class="qf-option-feedback" hidden></span></label>
@@ -16,12 +16,12 @@
     <button type="button" data-submit-answer class="primary" hidden>提交答案</button><button type="button" data-retry-answer
       hidden>↻ 重新作答</button>
   </div>
-  <!-- 本例自行确认，不使用宿主默认确认面板。点击确认才调用 practice.submit。 -->
+  <!-- 本例自行确认，不使用宿主默认确认面板。点击确认才调用 QF.save(submit)。 -->
   <section data-answer-confirm class="qf-inline-confirm" hidden>
     <span>确认提交这道题的答案吗？</span><button type="button" data-cancel-answer>继续作答</button><button type="button"
       data-confirm-answer class="primary">确认提交</button>
   </section>
-  <!-- 提交后或历史中才显示：从 getResult 读取得分、reference 和解析，不在页面判分。 -->
+  <!-- 提交后或历史中才显示：从 onLoad 的 attempt.result 读结果，不在页面判分。 -->
   <section data-result class="qf-result-panel" hidden>
     <div class="qf-result-heading">
       <p data-verdict></p>

@@ -232,6 +232,16 @@ public final class QuestionOutlineView extends VBox {
 
     public int currentIndex() { return session.index(); }
 
+    /** Practice uses the frozen, hydrated targets, never re-executes editor rules on a UI refresh. */
+    public void showPractice(IntConsumer practiceJump) {
+        boolean changed = editing || questions != session.bank().questions();
+        editing = false;
+        questions = session.bank().questions();
+        jump = practiceJump;
+        if (changed) rebuild();
+        refresh();
+    }
+
     public void showEditor(QuestionBank bank, int selected, IntConsumer editorJump) {
         editing=true;
         List<Question> edited = bank.questions();

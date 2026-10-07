@@ -14,9 +14,6 @@ import io.quizforge.core.question.type.QuestionTypes;
 import io.quizforge.core.question.model.choice.ChoiceAnswerSpec;
 import io.quizforge.core.question.model.choice.ChoiceOption;
 import io.quizforge.core.question.model.choice.ChoicePayload;
-import io.quizforge.core.question.compat.essay.EssayAnswerSpec;
-import io.quizforge.core.question.compat.reading.*;
-import io.quizforge.core.question.compat.translation.*;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -251,11 +248,7 @@ public final class QuestionBankEditorModel {
         if (q.payload() instanceof io.quizforge.core.question.model.extension.ExtensionPayload)
             bank.resources().forEach(resource -> resources.add(resource.id()));
         resources.addAll(QuestionContentData.resourceIds(q.analysis()));
-        if (q.answerSpec() instanceof EssayAnswerSpec e) resources.addAll(QuestionContentData.resourceIds(e.referenceAnswer()));
-        if (q.answerSpec() instanceof TranslationAnswerSpec t)
-            t.referenceAnswers().values().forEach(reference -> resources.addAll(QuestionContentData.resourceIds(reference)));
         if (q.payload() instanceof ChoicePayload c) c.options().forEach(o -> resources.addAll(QuestionContentData.resourceIds(o.content())));
-        if (q.payload() instanceof ReadingPayload r) r.items().forEach(item -> resources.addAll(QuestionContentData.resourceIds(item.prompt())));
         return resources;
     }
 }

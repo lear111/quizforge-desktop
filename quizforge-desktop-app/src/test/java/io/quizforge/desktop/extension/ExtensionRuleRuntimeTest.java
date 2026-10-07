@@ -40,12 +40,36 @@ class ExtensionRuleRuntimeTest {
     private static Map<String,Object> grade(boolean loop, boolean fail) {
         return Map.of("question",Map.of(),"answer",Map.of("loop",loop,"fail",fail),"maxScore",2);
     }
+    @Test void lazyRulesStartOnlyOnUseAndClosingAnUnusedRuntimeNeverStartsAWorker() {
+        try(var unused=ExtensionRuleRuntime.lazy("while(true){}",Map.of())) {
+            assertEquals(-1,unused.workerPid());
+        }
+        try(var lazy=ExtensionRuleRuntime.lazy(SOURCE,Map.of())) {
+            assertEquals(-1,lazy.workerPid());
+            assertEquals(2,lazy.invoke("test.isolated","grade",grade(false,false)).get("score"));
+            long first=lazy.workerPid();assertTrue(first>0);
+            assertEquals(2,lazy.invoke("test.isolated","grade",grade(false,false)).get("score"));
+            assertEquals(first,lazy.workerPid());
+        }
+    }
     @Test void normalRulesAreIsolatedAndPageSyntaxIsNeverExecuted() throws Exception {
         try(var runtime=runtime(SOURCE)) {
             assertTrue(runtime.hasRules("test.isolated")); assertNotEquals(ProcessHandle.current().pid(),runtime.workerPid());
             runtime.validatePageScripts(List.of("while(true){}", "const value=await QF.editor.getData();"));
             assertEquals(2,runtime.invoke("test.isolated","grade",grade(false,false)).get("score"));
             assertFalse(runtime.hasRules("not.registered"));
+        }
+    }
+    @Test void failedColdStartCanBeRetriedOnTheSameInstalledRuntime() throws Exception {
+        try(var runtime=ExtensionRuleRuntime.lazy(SOURCE,Map.of())) {
+            var first=runtime.ready().toCompletableFuture();
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(40);
+            while(runtime.workerPid()<0&&!first.isDone()&&System.nanoTime()<deadline)Thread.sleep(20);
+            long firstPid=runtime.workerPid();assertTrue(firstPid>0,"Worker must exist before the injected startup failure");
+            ProcessHandle.of(firstPid).orElseThrow().destroyForcibly();
+            assertThrows(java.util.concurrent.ExecutionException.class,()->first.get(10,TimeUnit.SECONDS));
+            assertEquals(2,runtime.invoke("test.isolated","grade",grade(false,false)).get("score"));
+            assertNotEquals(firstPid,runtime.workerPid());
         }
     }
     @Test void infiniteRuleIsKilledAndRetryStartsAPinnedFreshWorker() throws Exception {
@@ -64,7 +88,8 @@ class ExtensionRuleRuntimeTest {
             var error=assertThrows(ExtensionExecutionException.class,()->runtime.invoke("test.isolated","grade",grade(false,true)));
             assertEquals("EXTENSION_FAILED",error.code());assertEquals(-1,runtime.workerPid());
             assertEquals(2,runtime.invoke("test.isolated","grade",grade(false,false)).get("score"));
-            ProcessHandle.of(runtime.workerPid()).orElseThrow().destroyForcibly();
+            var crashed=ProcessHandle.of(runtime.workerPid()).orElseThrow();
+            crashed.destroyForcibly();crashed.onExit().get(5,TimeUnit.SECONDS);
             assertEquals("EXTENSION_FAILED",assertThrows(ExtensionExecutionException.class,
                     ()->runtime.invoke("test.isolated","grade",grade(false,false))).code());
             assertEquals(2,runtime.invoke("test.isolated","grade",grade(false,false)).get("score"));
@@ -89,8 +114,8 @@ class ExtensionRuleRuntimeTest {
         template.put("type",type);
         String rules=Files.readString(source.resolve("type.js")).replace("SINGLE_CHOICE",type).replace("grade(ctx) {",
                 "grade(ctx) { if(ctx.answer.selectedOptionIds[0]===ctx.question.payload.options[1].id)while(true){} ");
-        try(var runtime=new ExtensionRuleRuntime(rules,Map.of(type,template),Duration.ofSeconds(15),Duration.ofMillis(600))) {
-            runtime.ready().toCompletableFuture().get(20,TimeUnit.SECONDS);
+        try(var runtime=new ExtensionRuleRuntime(rules,Map.of(type,template),ExtensionRuleRuntime.STARTUP_TIMEOUT,Duration.ofMillis(600))) {
+            runtime.ready().toCompletableFuture().get(ExtensionRuleRuntime.STARTUP_TIMEOUT.plusSeconds(5).toMillis(),TimeUnit.MILLISECONDS);
             var definition=new ExternalQuestionTypeDefinition(type,"Test",QuestionTypeDefinition.Family.OBJECTIVE,
                     "99.0.0","quizforge.types.single-choice",1,runtime.rules(type),template);
             QuestionTypes.registerVersion(definition);

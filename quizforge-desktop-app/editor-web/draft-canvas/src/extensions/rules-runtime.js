@@ -46,20 +46,21 @@
         const type = definition.type;
         if (typeof type !== 'string' || typeof definition.grade !== 'function') throw new TypeError('Type and grade are required');
         const targets = q => definition.targets ? definition.targets(q) : [{ id: q.id, number: 1, label: '', locked: false, gradable: true }];
-        const maximum = q => q.scoreSpec?.defaultMaxScore ?? q.maxScore ?? null;
+        const maximum = q => definition.maxScore ? definition.maxScore(clone(q)) : q.scoreSpec?.defaultMaxScore ?? q.maxScore ?? null;
+        const allocateQuestion = (question, ids) => definition.allocateQuestion ? definition.allocateQuestion(clone(question), clone(ids)) : allocate(question, ids);
         registry.register(type, {
           createDraft({ ids }) {
             if (!templates[type]) throw new TypeError(`Missing default.json for ${type}`);
-            return allocate(templates[type], ids);
+            return allocateQuestion(templates[type], ids);
           },
-          duplicate({ question, ids }) { return allocate(question, ids); },
+          duplicate({ question, ids }) { return allocateQuestion(question, ids); },
           validate({ question }) { return { errors: definition.validate?.(clone(question)) || [] }; },
           validateAnswer({ question, answer }) {
             const result = definition.validateAnswer?.(clone(question), clone(answer || {}));
             return result || { errors: [], empty: !Object.keys(answer || {}).length };
           },
           targets({ question }) { return { targets: targets(question) }; },
-          snapshot({ question }) { return { targets: targets(question), maxScore: maximum(question) }; },
+          snapshot({ question }) { return { targets: targets(question), maxScore: maximum(question), ...(definition.publicPayload?{publicPayload:definition.publicPayload(clone(question))}:{}) }; },
           grade(input) {
             const maxScore = input.maxScore ?? maximum(input.question);
             let reported = null, active = true;

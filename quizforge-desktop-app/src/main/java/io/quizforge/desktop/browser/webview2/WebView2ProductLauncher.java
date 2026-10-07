@@ -45,7 +45,8 @@ public final class WebView2ProductLauncher extends Application {
             host.ready().whenComplete((v,error)->Platform.runLater(()->{
                 if(error!=null){System.err.println("PRODUCT_BACKEND_FAILED "+error);if(getParameters().getRaw().contains("--verify"))stage.hide();return;}
                 if(getParameters().getRaw().contains("--verify")) {
-                    if(getParameters().getRaw().contains("--true-false"))WebView2Verification.runTrueFalse(host,stage,directory);
+                    if(getParameters().getRaw().contains("--navigation-only"))WebView2Verification.runNavigation(host,runtime,stage,directory);
+                    else if(getParameters().getRaw().contains("--true-false"))WebView2Verification.runTrueFalse(host,stage,directory);
                     else WebView2Verification.runProduct(host,stage,directory,root,()->host.navigate(()->{runtime.next();host.showQuestion();}),()->host.navigate(()->{runtime.previous();host.showQuestion();}));
                 }
             }));

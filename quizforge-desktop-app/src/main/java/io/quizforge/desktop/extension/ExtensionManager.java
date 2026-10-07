@@ -26,7 +26,6 @@ public final class ExtensionManager implements AutoCloseable {
     private final Map<String, InstalledExtension> active = new LinkedHashMap<>();
     private final Map<String, ExtensionRuleRuntime> runtimes = new LinkedHashMap<>();
     private final Map<String, Map<String,Object>> scriptPackages = new LinkedHashMap<>();
-    private final Set<ExtensionRuleRuntime> pendingRuntimes = new java.util.HashSet<>();
     private final List<String> failures = new ArrayList<>();
     private final Map<Path, ExtensionLiveDevelopment> development = new LinkedHashMap<>();
     private final Map<String, Map<String,Object>> developmentPackages = new LinkedHashMap<>();
@@ -48,17 +47,22 @@ public final class ExtensionManager implements AutoCloseable {
         close(); failures.clear();
         store = new ExtensionPackageStore(root, Set.of());
         permissions = new io.quizforge.infrastructure.extension.ExtensionPermissionStore(root);
-        try {
-            var scan = store.scanInstalled(); failures.addAll(scan.failures());
-            long startupGeneration = generation;
-            CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-            // Each installed version owns a rules runtime. Active authoring still selects the newest successful one.
-            for (var extension : scan.installed()) chain = chain.thenCompose(nothing -> startupGeneration != generation
-                    ? CompletableFuture.completedFuture(null) : activate(extension).exceptionally(failure -> {
-                failures.add(extension.manifest().id() + ": " + failure.getMessage()); return null;
-            }));
-            return chain;
-        } catch (IOException failure) { failures.add(failure.getMessage()); return CompletableFuture.completedFuture(null); }
+        var startupStore=store;long startupGeneration=generation;
+        // File integrity/sample checks run off the UI thread. Register every pinned
+        // version, but do not start its isolated JVM until a rule is actually used.
+        return CompletableFuture.supplyAsync(()->{
+            try{return startupStore.scanInstalled();}
+            catch(IOException failure){throw new java.util.concurrent.CompletionException(failure);}
+        }).handleAsync((scan,failure)->{
+            if(startupGeneration!=generation)return null;
+            if(failure!=null){failures.add(failure.getMessage());return null;}
+            failures.addAll(scan.failures());
+            for(var extension:scan.installed()) {
+                try{activate(extension);}
+                catch(IOException|RuntimeException problem){failures.add(extension.manifest().id()+": "+problem.getMessage());}
+            }
+            return (Void)null;
+        },Platform::runLater);
     }
     public CompletionStage<InstalledExtension> install(Path qfext) {
         requireFx(); if (store == null) throw new IllegalStateException("Initialize the extension manager first");
@@ -111,43 +115,36 @@ public final class ExtensionManager implements AutoCloseable {
             } finally {if(window!=null)try{window.removeMember("__quizforgePermissions");}catch(RuntimeException ignored){}}
         }
     }
-    private CompletionStage<Void> activate(InstalledExtension installed) {
+    private void activate(InstalledExtension installed) throws IOException {
         requireFx();
-        String id = installed.manifest().id();
-        if (runtimes.containsKey(key(installed))) return CompletableFuture.completedFuture(null);
+        String id=installed.manifest().id();
+        if(runtimes.containsKey(key(installed)))return;
+        var assets=store.loadAssets(installed);
+        String sources=assets.stream().map(ExtensionPackageStore.TypeAssets::rulesSource).distinct().collect(java.util.stream.Collectors.joining("\n;\n"));
+        Map<String,Map<String,Object>> templates=new LinkedHashMap<>();
+        Map<String,io.quizforge.infrastructure.extension.ExtensionSchemaValidator> validators=new LinkedHashMap<>();
+        for(var asset:assets)templates.put(asset.type().id(),json.readValue(asset.defaultQuestionSource(),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>() {}));
+        for(var asset:assets)validators.put(asset.type().id(),new io.quizforge.infrastructure.extension.ExtensionSchemaValidator(asset.type().id(),asset.questionSchemaSource(),asset.answerSchemaSource()));
+        ExtensionRuleRuntime runtime=ExtensionRuleRuntime.lazy(sources,templates);
+        List<String> registered=new ArrayList<>();
         try {
-            var assets = store.loadAssets(installed);
-            String sources = assets.stream().map(ExtensionPackageStore.TypeAssets::rulesSource).distinct().collect(java.util.stream.Collectors.joining("\n;\n"));
-            Map<String,Map<String,Object>> templates = new LinkedHashMap<>();
-            Map<String,io.quizforge.infrastructure.extension.ExtensionSchemaValidator> validators = new LinkedHashMap<>();
-            for (var asset : assets) templates.put(asset.type().id(), json.readValue(asset.defaultQuestionSource(),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>() { }));
-            for (var asset : assets) validators.put(asset.type().id(), new io.quizforge.infrastructure.extension.ExtensionSchemaValidator(asset.type().id(), asset.questionSchemaSource(), asset.answerSchemaSource()));
-            ExtensionRuleRuntime runtime = new ExtensionRuleRuntime(sources,templates);
-            pendingRuntimes.add(runtime); long expectedGeneration = generation;
-            return runtime.ready().thenAcceptAsync(nothing -> {
-                List<String> registered = new ArrayList<>();
-                try {
-                    if (expectedGeneration != generation) throw new IllegalStateException("Extension loading was cancelled");
-                    List<ExternalQuestionTypeDefinition> definitions = new ArrayList<>();
-                    for (var type : installed.manifest().types()) {
-                        if (!runtime.hasRules(type.id())) throw new IllegalArgumentException("Extension rules were not registered: " + type.id());
-                        definitions.add(new ExternalQuestionTypeDefinition(type.id(),type.label(),
-                                QuestionTypeDefinition.Family.valueOf(type.family()), installed.manifest().version(), installed.manifest().id(),
-                                type.dataVersion(), runtime.rules(type.id()),templates.get(type.id()),validators.get(type.id())));
-                    }
-                    for (var definition : definitions) { QuestionTypes.registerVersion(definition); registered.add(definition.id()); }
-                    runtimes.put(key(installed), runtime);
-                    var previous = active.get(id);
-                    if (previous == null || compareVersions(installed.manifest().version(), previous.manifest().version()) > 0)
-                        active.put(id, installed);
-                    scriptPackages.put(key(installed), bundle(installed, assets));
-                } catch (RuntimeException failure) {
-                    for (String type : registered) QuestionTypes.unregisterVersion(type, installed.manifest().version());
-                    scriptPackages.remove(key(installed)); runtime.close(); throw failure;
-                }
-            }, Platform::runLater).whenCompleteAsync((nothing,failure) -> { pendingRuntimes.remove(runtime); if (failure != null) runtime.close(); }, Platform::runLater);
-        } catch (IOException failure) { return CompletableFuture.failedFuture(failure); }
+            List<ExternalQuestionTypeDefinition> definitions=new ArrayList<>();
+            for(var type:installed.manifest().types())definitions.add(new ExternalQuestionTypeDefinition(type.id(),type.label(),
+                    QuestionTypeDefinition.Family.valueOf(type.family()),installed.manifest().version(),installed.manifest().id(),
+                    type.dataVersion(),runtime.rules(type.id()),templates.get(type.id()),validators.get(type.id())));
+            var pageBundle=bundle(installed,assets);
+            for(var definition:definitions){QuestionTypes.registerVersion(definition);registered.add(definition.id());}
+            runtimes.put(key(installed),runtime);
+            var previous=active.get(id);
+            if(previous==null||compareVersions(installed.manifest().version(),previous.manifest().version())>0)active.put(id,installed);
+            scriptPackages.put(key(installed),pageBundle);
+        }catch(RuntimeException failure){
+            for(String type:registered)QuestionTypes.unregisterVersion(type,installed.manifest().version());
+            runtime.close();throw failure;
+        }
     }
+    /** Host diagnostics for startup/lazy-loading verification; not exposed to extension pages. */
+    int runningRuleRuntimeCount(){requireFx();return (int)runtimes.values().stream().filter(runtime->runtime.workerPid()>0).count();}
     public List<InstalledExtension> loaded() { return List.copyOf(active.values()); }
     public List<InstalledExtension> diskInstalled() throws IOException { return store == null ? List.of() : store.listInstalled(); }
     public List<String> failures() { return List.copyOf(failures); }
@@ -272,7 +269,6 @@ public final class ExtensionManager implements AutoCloseable {
         publishMessage(Map.of("kind","stop"));messagePages.clear();
         ExtensionPageBridge.closeAll();
         development.values().forEach(ExtensionLiveDevelopment::close); development.clear(); developmentPackages.clear(); developmentOwners.clear(); pages.clear(); developmentStatus.set("");
-        for (var runtime : List.copyOf(pendingRuntimes)) runtime.close(); pendingRuntimes.clear();
         for (var runtime : runtimes.values()) runtime.close();
         for (var bundle : scriptPackages.values()) {
             var manifest = (io.quizforge.infrastructure.extension.ExtensionManifest) bundle.get("manifest");

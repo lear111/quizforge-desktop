@@ -3,26 +3,43 @@ package io.quizforge.core.practice;
 import io.quizforge.core.question.type.QuestionTypes;
 import io.quizforge.core.question.type.QuestionTarget;
 import io.quizforge.core.question.type.extension.ExternalQuestionTypeDefinition;
+import io.quizforge.core.question.model.Question;
+import io.quizforge.core.question.model.QuestionBank;
+import io.quizforge.core.question.type.QuestionTypeDefinition;
 import java.util.*;
 
 /** Hydrates shared navigation state; question-specific answer decoding belongs to extensions. */
 public final class PracticeRuntimeMapper {
+    private final Map<String, Expected> expectedSnapshots = new HashMap<>();
+    private QuestionBank cachedBank;
+    private record Expected(Question question, QuestionTypeDefinition definition,
+            PracticeSessionQuestion.Snapshot logical) { }
+    private PracticeSessionQuestion.Snapshot expected(Question question, String version) {
+        // Resolve on every restore so an unloaded/replaced extension cannot reuse an old cache entry.
+        var definition = QuestionTypes.isExtension(question.type()) && version != null
+                ? QuestionTypes.requireVersion(question.type(), version) : QuestionTypes.forData(question);
+        var old = expectedSnapshots.get(question.id());
+        if (old != null && old.definition() == definition && old.question().equals(question)) return old.logical();
+        var mapper = new PracticeQuestionSnapshotMapper();
+        var logical = PracticeQuestionSnapshotMapper.logical(version != null ? mapper.map(question, version) : mapper.map(question));
+        expectedSnapshots.put(question.id(), new Expected(question, definition, logical));
+        return logical;
+    }
     public void hydrate(QuestionBankPracticeSession runtime, ActivePracticeSnapshot snapshot) {
         if (!runtime.bank().assetId().equals(snapshot.session().questionBankAssetId())
                 || snapshot.questions().size() != runtime.bank().questions().size())
             throw new IllegalStateException("Practice snapshot does not match the bank");
+        if (cachedBank != runtime.bank()) { expectedSnapshots.clear(); cachedBank = runtime.bank(); }
         Map<Integer,Boolean> submitted=new HashMap<>();
         Map<Integer,QuestionBankPracticeSession.State> states=new HashMap<>();
         Map<String,List<QuestionTarget>> targets=new HashMap<>();
-        var mapper=new PracticeQuestionSnapshotMapper();
         int current=-1;
         for(int index=0;index<snapshot.questions().size();index++) {
             var row=snapshot.questions().get(index);var stored=row.sessionQuestion();var q=runtime.bank().questions().get(index);
             var fields=ExternalQuestionTypeDefinition.object(stored.snapshot().correctAnswer().value());
             var frozen=fields.containsKey("extension") ? ExternalQuestionTypeDefinition.object(fields.get("extension")) : Map.<String,Object>of();
-            var expected=QuestionTypes.isExtension(q.type()) && frozen.get("version") instanceof String version
-                    ? mapper.map(q,version) : mapper.map(q);
-            if(!stored.questionId().equals(q.id()) || !PracticeQuestionSnapshotMapper.logical(stored.snapshot()).equals(PracticeQuestionSnapshotMapper.logical(expected)))
+            var expected=expected(q,frozen.get("version") instanceof String version?version:null);
+            if(!stored.questionId().equals(q.id()) || !PracticeQuestionSnapshotMapper.logical(stored.snapshot()).equals(expected))
                 throw new IllegalStateException("Practice snapshot has a different revision");
             if(stored.questionId().equals(snapshot.session().currentQuestionId()))current=index;
             var presentation=ExternalQuestionTypeDefinition.object(fields.get("extensionPresentation"));

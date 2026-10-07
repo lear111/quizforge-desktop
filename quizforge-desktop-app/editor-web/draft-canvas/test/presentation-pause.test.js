@@ -20,7 +20,7 @@ async function fixture(readOnly=false){
   let allowed=true,mutations=0,request=0;
   const permissions=['answer.write','practice.submit','practice.retry'],policy=createPermissionPolicy(permissions,permissions);
   const initial={state:'UNANSWERED',presentation:{question:{id:'q'},answer:{}}};
-  const definition=createHtmlRenderer({id:'TEST',permissions},{rendererHtml:'<p>Question</p>',stylesSource:'',rendererSource:''},permissions,policy,
+  const definition=createHtmlRenderer({id:'TEST',pageApi:'simple',dataVersion:1,permissions},{rendererHtml:'<p>Question</p>',stylesSource:'',rendererSource:''},permissions,policy,
     {answer:async()=>{},question:async()=>{},retain(){},release(){}});
   const renderer=definition.mount(new Node('div'),initial,{mode:readOnly?RendererMode.READ_ONLY_HISTORY:RendererMode.ACTIVE,
     canInteract:()=>allowed,pageState:()=>({ok:true,data:{}}),requestSubmit:()=>mutations++,answerChanged:()=>mutations++,requestRetry:()=>mutations++,
@@ -36,6 +36,10 @@ async function fixture(readOnly=false){
       await listeners.get('message')({source:node.contentWindow,data:{channel:'qf-type-frame',session,kind:'reply-ack',id}});
       return reply;
     },
+    async save(purpose){
+      const loaded=await this.call('page.load');
+      return this.call('page.save',[{requestId:'save-'+request,contextId:loaded.data.contextId,revision:loaded.data.revision,purpose,data:{answer:{selectedOptionIds:[]}}}]);
+    },
     async destroy(){await renderer.destroy();Object.assign(globalThis,saved);}
   };
   function nodesFrame(){return rootFrame;}
@@ -43,32 +47,41 @@ async function fixture(readOnly=false){
 
 test('retained card keeps its displayed capabilities while actual writes stay locked',async()=>{
   const f=await fixture();try{
-    assert.equal((await f.call('host.getContext')).data.capabilities.submit,true);
+    assert.equal((await f.call('page.load')).data.permissions.submit,true);
     f.renderer.suspendPresentation();const notifications=f.posted.filter(m=>m.kind==='state').length;
     f.lock();f.renderer.update(f.initial);
     assert.equal(f.posted.filter(m=>m.kind==='state').length,notifications);
-    assert.equal((await f.call('host.getContext')).data.capabilities.submit,true);
-    for(const [method,args] of [['answer.update',[{selectedOptionIds:[]}]],['practice.submit',[]]]){
-      assert.equal((await f.call(method,args)).error.code,'READ_ONLY');
+    assert.equal((await f.call('page.load')).data.permissions.submit,true);
+    for(const purpose of ['draft','submit']){
+      assert.equal((await f.save(purpose)).error.code,'READ_ONLY');
     }
     assert.equal(f.mutations,0);
-    f.renderer.resumePresentation();assert.equal((await f.call('host.getContext')).data.capabilities.submit,false);
-    f.unlock();assert.equal((await f.call('host.getContext')).data.capabilities.submit,true);
+    f.renderer.resumePresentation();assert.equal((await f.call('page.load')).data.permissions.submit,false);
+    f.unlock();assert.equal((await f.call('page.load')).data.permissions.submit,true);
   }finally{await f.destroy();}
 });
 
 test('presentation suspension cannot preserve revoked permissions',async()=>{
   const f=await fixture();try{
     f.renderer.suspendPresentation();f.lock();f.policy.update([]);
-    assert.equal((await f.call('host.getContext')).data.capabilities.submit,false);
-    assert.equal((await f.call('practice.submit')).error.code,'PERMISSION_DENIED');assert.equal(f.mutations,0);
+    assert.equal((await f.call('page.load')).data.permissions.submit,false);
+    assert.equal((await f.save('submit')).error.code,'PERMISSION_DENIED');assert.equal(f.mutations,0);
   }finally{await f.destroy();}
 });
 
 test('history presentation suspension never upgrades readonly capabilities',async()=>{
   const f=await fixture(true);try{
     f.renderer.suspendPresentation();f.lock();
-    assert.equal((await f.call('host.getContext')).data.capabilities.submit,false);
-    assert.equal((await f.call('answer.update',[{}])).error.code,'READ_ONLY');assert.equal(f.mutations,0);
+    assert.equal((await f.call('page.load')).data.permissions.submit,false);
+    assert.equal((await f.save('draft')).error.code,'READ_ONLY');assert.equal(f.mutations,0);
+  }finally{await f.destroy();}
+});
+
+test('forged requests cannot reach private host services or removed APIs',async()=>{
+  const f=await fixture();try{
+    for(const method of ['answer.update','editor.update','practice.submit','page.add','page.attempt','host.getContext','whiteboard.clear']){
+      assert.equal((await f.call(method,[{}])).error.code,'UNKNOWN_METHOD',method);
+    }
+    assert.equal(f.mutations,0);
   }finally{await f.destroy();}
 });

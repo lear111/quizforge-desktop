@@ -7,18 +7,12 @@ import io.quizforge.core.question.model.*;
 import io.quizforge.core.question.model.extension.ExtensionPayload;
 import io.quizforge.core.question.model.extension.ExtensionAnswerSpec;
 import io.quizforge.core.question.model.choice.*;
-import io.quizforge.core.question.compat.cloze.*;
-import io.quizforge.core.question.compat.reading.*;
-import io.quizforge.core.question.compat.matching.*;
-import io.quizforge.core.question.compat.essay.*;
-import io.quizforge.core.question.compat.translation.*;
 import java.math.BigDecimal;
 import java.util.*;
 
 /**
  * Question JSON bridge used by extension pages, templates and frozen snapshots.
- * CHOICE is shared by current extensions; other typed formats are storage
- * compatibility data. Editing legacy formats is not supported here.
+ * Stores only the shared CHOICE contract and opaque EXTENSION data.
  */
 public final class QuestionDataCodec {
     private QuestionDataCodec() { }
@@ -53,11 +47,6 @@ public final class QuestionDataCodec {
         var answer = new LinkedHashMap<>(object(data.get("answerSpec")));
         String kind = switch(question.payload()) {
             case ChoicePayload ignored -> "CHOICE";
-            case ClozePayload ignored -> "CLOZE";
-            case ReadingPayload ignored -> "READING";
-            case MatchingPayload ignored -> "MATCHING";
-            case TranslationPayload ignored -> "TRANSLATION";
-            case EssayPayload ignored -> "ESSAY";
             case ExtensionPayload ignored -> "EXTENSION";
             default -> throw new IllegalArgumentException("Unknown stored payload");
         };
@@ -96,31 +85,12 @@ public final class QuestionDataCodec {
     private static Map<String, Object> payload(QuestionPayload value) {
         return switch (value) {
             case ChoicePayload choice -> Map.of("options", encodeOptions(choice.options()));
-            case ClozePayload cloze -> Map.of("blanks", cloze.blanks().stream().map(blank ->
-                    fields("id", blank.id(), "number", blank.number(), "options", encodeOptions(blank.options()))).toList());
-            case ReadingPayload reading -> Map.of("items", reading.items().stream().map(item ->
-                    fields("id", item.id(), "number", item.number(), "prompt", content(item.prompt()), "options", encodeOptions(item.options()))).toList());
-            case MatchingPayload matching -> Map.of("blanks", matching.blanks().stream().map(blank ->
-                    fields("id", blank.id(), "number", blank.number(), "locked", blank.locked())).toList(),
-                    "options", matching.options().stream().map(option -> fields("id", option.id(), "label", option.label())).toList());
-            case TranslationPayload translation -> Map.of("items", translation.items().stream().map(item ->
-                    fields("id", item.id(), "number", item.number(), "text", item.text())).toList());
-            case EssayPayload essay -> fields("placeholder", essay.placeholder());
             default -> throw new IllegalArgumentException("Unknown stored payload");
         };
     }
     private static Map<String, Object> answer(QuestionAnswerSpec value) {
         return switch (value) {
             case ChoiceAnswerSpec choice -> Map.of("correctOptionIds", choice.correctOptionIds());
-            case ClozeAnswerSpec cloze -> Map.of("answers", cloze.answers().stream().map(answer ->
-                    fields("blankId", answer.blankId(), "correctOptionId", answer.correctOptionId())).toList());
-            case ReadingAnswerSpec reading -> Map.of("answers", reading.answers().stream().map(answer ->
-                    fields("itemId", answer.itemId(), "correctOptionId", answer.correctOptionId())).toList());
-            case MatchingAnswerSpec matching -> Map.of("answers", matching.answers().stream().map(answer ->
-                    fields("blankId", answer.blankId(), "correctOptionId", answer.correctOptionId())).toList());
-            case TranslationAnswerSpec translation -> Map.of("answers", translation.answers().stream().map(answer ->
-                    fields("itemId", answer.itemId(), "referenceAnswer", content(answer.referenceAnswer()))).toList());
-            case EssayAnswerSpec essay -> fields("referenceAnswer", content(essay.referenceAnswer()));
             default -> throw new IllegalArgumentException("Unknown stored answer specification");
         };
     }

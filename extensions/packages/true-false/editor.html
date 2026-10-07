@@ -1,6 +1,6 @@
 <!-- 编辑页片段：宿主按 manifest 加载 editor.js 和 style.css；data-* 是脚本查询的绑定点。 -->
 <section class="qf-judgment-editor">
-  <!-- 自定义题库管理 UI，对应 QF.bank；独立开发预览没有正式题库操作时由 JS 隐藏。 -->
+  <!-- 自定义题库管理 UI，使用 QF.save / QF.requestAction；无管理能力时隐藏。 -->
   <header class="qf-type-heading qf-editor-heading">
     <div class="qf-heading-copy"><span class="qf-eyebrow">题目编辑</span><strong data-type-title>判断题编辑</strong></div>
     <span data-bank-position class="muted"></span><button type="button" data-bank-save class="primary"
@@ -16,7 +16,7 @@
     <span>删除当前整张题卡？</span><button type="button" data-delete-cancel>取消</button><button type="button" data-delete-accept
       class="danger">确认删除</button>
   </section>
-  <!-- 题干为普通文本；editor.js 使用 textarea.value 与 QF.editor.update 绑定。 -->
+  <!-- 题干为普通文本；editor.js 使用 textarea.value 与 QF.save(editDraft) 绑定。 -->
   <section class="qf-editor-section">
     <label class="qf-field"><span class="qf-field-title">题干</span><textarea data-prompt rows="4"
         placeholder="输入题目内容…"></textarea></label>
@@ -38,10 +38,10 @@
   </section>
   <section class="qf-editor-section">
     <div class="qf-section-heading"><strong>答案与解析</strong><span class="muted">支持富文本</span></div>
-    <!-- 公共富文本编辑器挂载点；内容变化仍需要 editor.update 才能进入保存流程。 -->
+    <!-- 公共富文本编辑器挂载点；onChange 通过 QF.save(editDraft) 保存内容。 -->
     <div data-analysis class="qf-analysis-editor"></div>
   </section>
-  <!-- 引用来源由宿主解析和打开，页面仅绑定 sources 接口。 -->
+  <!-- 引用来源由宿主解析和打开，页面仅请求对应的 QF.requestAction。 -->
   <section data-source-section class="qf-type-sources" hidden>
     <strong>引用来源</strong>
     <div data-sources></div>

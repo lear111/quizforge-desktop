@@ -39,13 +39,71 @@ class ExtensionPackageStoreTest {
         return result;
     }
     private Path zip(Map<String,String> entries) throws Exception {
+        return zip(entries,Map.of());
+    }
+    private Path zip(Map<String,String> entries,Map<String,byte[]> binary) throws Exception {
         Path file = Files.createTempFile(temp,"extension-",".qfext");
         try (var output = new ZipOutputStream(Files.newOutputStream(file))) {
             for (var entry : entries.entrySet()) {
                 output.putNextEntry(new ZipEntry(entry.getKey())); output.write(entry.getValue().getBytes(StandardCharsets.UTF_8)); output.closeEntry();
             }
+            for(var entry:binary.entrySet()){
+                output.putNextEntry(new ZipEntry(entry.getKey()));output.write(entry.getValue());output.closeEntry();
+            }
         }
         return file;
+    }
+    @Test void candidateExamplesUseCandidateSchemaWithoutRunningInstalledRules() throws Exception {
+        String type="UPGRADE_EXAMPLE";var store=new ExtensionPackageStore(temp.resolve("upgrade"),Set.of());
+        store.install(zip(entries("test.upgrade","1.0.0",type)));
+        var candidate=entries("test.upgrade","2.0.0",type);var json=new ObjectMapper();
+        var manifest=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree(candidate.get("manifest.json"));
+        manifest.put("minSdkApiMinor",3);
+        var declared=(com.fasterxml.jackson.databind.node.ObjectNode)manifest.path("types").get(0);declared.put("pageApi","simple");
+        declared.putArray("examples").addObject().put("id","basic").put("title","Example").put("path","examples/basic.qbank");
+        candidate.put("manifest.json",json.writeValueAsString(manifest));
+        var question=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree(candidate.get("default.json"));question.put("id","q_example");
+        question.putArray("stimulusRefs");question.putArray("sourceRefs");
+        question.set("payload",json.valueToTree(Map.of("kind","EXTENSION","data",Map.of("newField",true))));
+        question.set("answerSpec",json.valueToTree(Map.of("kind","EXTENSION","data",Map.of())));
+        candidate.put("default.json",json.writeValueAsString(question));
+        candidate.put("schema/question.json","{\"type\":\"object\",\"properties\":{\"payload\":{\"properties\":{\"data\":{\"required\":[\"newField\"]}}}}}");
+        Path sample=temp.resolve("sample.qbank");
+        io.quizforge.infrastructure.testing.QBankTestPackageBuilder.zip(sample,Map.of(
+            "manifest.json",json.writeValueAsBytes(Map.of("format","quizforge-question-bank","schemaVersion","2.0","assetId","qb_example","title","Example","resources",List.of())),
+            "bank.json",json.writeValueAsBytes(Map.of("stimuli",List.of(),"questions",List.of(question)))));
+        var calls=new java.util.concurrent.atomic.AtomicInteger();
+        var old=new io.quizforge.core.question.type.extension.ExternalQuestionTypeDefinition(type,"Old",
+            io.quizforge.core.question.type.QuestionTypeDefinition.Family.OBJECTIVE,"1.0.0",(operation,input)->{
+                calls.incrementAndGet();return Map.of("errors",List.of("Old rules reject newField"));
+            });
+        io.quizforge.core.question.type.QuestionTypes.register(old);
+        try{
+            var file=zip(candidate,Map.of("examples/basic.qbank",Files.readAllBytes(sample)));
+            assertNotNull(store.inspect(file));assertEquals("2.0.0",store.install(file).manifest().version());
+            assertEquals(0,calls.get());assertSame(old,io.quizforge.core.question.type.QuestionTypes.require(type));
+            // Ordinary reads still invoke installed rules; the exception applies only to candidate examples.
+            assertThrows(RuntimeException.class,()->new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader().read(sample));
+            assertTrue(calls.get()>0);
+            var body=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree(io.quizforge.infrastructure.testing.QBankTestPackageBuilder.entries(sample).get("bank.json"));
+            ((com.fasterxml.jackson.databind.node.ObjectNode)body.path("questions").get(0).path("payload").path("data")).remove("newField");
+            io.quizforge.infrastructure.testing.QBankTestPackageBuilder.zip(sample,Map.of("manifest.json",json.writeValueAsBytes(Map.of("format","quizforge-question-bank","schemaVersion","2.0","assetId","qb_example","title","Example","resources",List.of())),"bank.json",json.writeValueAsBytes(body)));
+            assertThrows(IOException.class,()->store.inspect(zip(candidate,Map.of("examples/basic.qbank",Files.readAllBytes(sample)))));
+        }finally{io.quizforge.core.question.type.QuestionTypes.unregister(type);}
+    }
+    @Test void compactPackagesContainReadableSchemaValidatedExampleBanks() throws Exception {
+        var samples=new ExtensionPackageStore(temp.resolve("examples-installed"),Set.of());
+        for(var slug:List.of("single-choice","multiple-choice","true-false","cloze","reading","matching","translation","essay")){
+            var sourceManifest=new ObjectMapper().readTree(Files.readString(Path.of("../extensions/packages/"+slug+"/manifest.json")));
+            Path file=Path.of("../extensions/dist/"+sourceManifest.path("id").asText()+"-"+sourceManifest.path("version").asText()+".qfext");
+            var inspection=samples.inspect(file);assertEquals(3,inspection.manifest().minSdkApiMinor());
+            var installed=samples.install(file);var type=installed.manifest().types().getFirst();
+            assertEquals("simple",type.pageApi());assertEquals(1,type.examples().size());
+            var bank=new io.quizforge.infrastructure.filesystem.qbank.QBankPackageReader().read(installed.directory().resolve(type.examples().getFirst().path()));
+            assertFalse(bank.questions().isEmpty());assertTrue(bank.questions().stream().allMatch(q->q.type().equals(type.id())));
+            assertNotEquals("q_template",bank.questions().getFirst().id());
+        }
+        assertEquals(8,samples.listInstalled().size());
     }
     @Test void installsIdempotentlyAndPreservesMultipleVersionsAndAssets() throws Exception {
         var store = store(); Path first = zip(entries("test.example","1.0.0","EXAMPLE"));
@@ -78,12 +136,12 @@ class ExtensionPackageStoreTest {
     }
     @Test void sdkCompatibilityReportsUpgradeDirectionAndRejectsMalformedMinorVersions() throws Exception {
         var store=store();
-        for(int minor:List.of(0,1)) {
+        for(int minor:List.of(0,1,2,3)) {
             var entries=entries("test.example","1.0.0","EXAMPLE");
             entries.put("manifest.json",entries.get("manifest.json").replace("\"sdkApiMajor\":2","\"sdkApiMajor\":2,\"minSdkApiMinor\":"+minor));
             assertNotNull(store.inspect(zip(entries)));
         }
-        for(var change:Map.of("\"sdkApiMajor\":3","请更新应用","\"sdkApiMajor\":1","请更新扩展","\"sdkApiMajor\":2,\"minSdkApiMinor\":2","SDK 2.2").entrySet()) {
+        for(var change:Map.of("\"sdkApiMajor\":3","请更新应用","\"sdkApiMajor\":1","请更新扩展","\"sdkApiMajor\":2,\"minSdkApiMinor\":4","SDK 2.4").entrySet()) {
             var entries=entries("test.example","1.0.0","EXAMPLE");
             entries.put("manifest.json",entries.get("manifest.json").replace("\"sdkApiMajor\":2",change.getKey()));
             var failure=assertThrows(IOException.class,()->store.inspect(zip(entries)));assertTrue(failure.getMessage().contains(change.getValue()),failure.getMessage());

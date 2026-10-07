@@ -32,6 +32,11 @@ import java.util.*;
 
 /** Logical-bank validation includes references; resource bytes remain outside this contract. */
 public final class QuestionBankValidator {
+    private final java.util.function.Function<Question,io.quizforge.core.question.type.QuestionTypeDefinition> resolveType;
+    public QuestionBankValidator(){this(io.quizforge.core.question.type.QuestionTypes::forData);}
+    public QuestionBankValidator(java.util.function.Function<Question,io.quizforge.core.question.type.QuestionTypeDefinition> resolveType){
+        this.resolveType=Objects.requireNonNull(resolveType);
+    }
     public void validate(QuestionBank bank) { validate(bank, false); }
     public void validateEmptyDraft(QuestionBank bank) { validate(bank, true); }
     private void validate(QuestionBank bank, boolean draft) {
@@ -56,7 +61,7 @@ public final class QuestionBankValidator {
         Map<String,String> revisions = new HashMap<>();
         for (var question : bank.questions()) {
             if (!id(question.id(), "q_") || !questionIds.add(question.id())) fail("Invalid question id");
-            var type=io.quizforge.core.question.type.QuestionTypes.forData(question);
+            var type=resolveType.apply(question);
             Set<String> usedStimuli = new HashSet<>();
             for (String ref : question.stimulusRefs())
                 if (!stimuli.contains(ref) || !usedStimuli.add(ref)) fail("Invalid stimulusRef");

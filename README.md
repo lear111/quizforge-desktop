@@ -1,6 +1,6 @@
 # QuizForge Desktop V2
 
-> 当前阶段（2026-10-06）：HTML SDK 2，示例扩展为单选、多选、判断题，需用户导入并授权；Windows 正式练习、草稿、题目编辑与历史题卡使用 WebView2。当前包职责及业务入口见 [代码地图](docs/code-guide.md)。
+> 当前阶段（2026-10-07）：HTML SDK 2.3，提供单选、多选、判断、完形、阅读、排序、翻译、作文八种外部示例包，需用户导入并授权。新页面使用精简加载、保存、操作接口；Windows 正式练习、草稿、题目编辑与历史题卡使用 WebView2。当前接口见 [SDK 2.3 参考](extensions/SIMPLE_PAGE_API.md)，业务入口见 [代码地图](docs/code-guide.md)。
 
 Java 21 + JavaFX 本地桌面题库应用，独立于 V1。支持工作区文件管理、Markdown 编辑与命名来源引用；题目的编辑与练习由安装的 HTML 扩展提供。宿主管理作答保存、公共白板、提交确认、重做和归档历史，统计统一使用得分。AI 仅保留设置、凭据和连接测试。
 
@@ -30,11 +30,11 @@ Set-Location ../../..
 
 LiveUi 合并 Java、CSS 与 Vite 更新，需要支持增强类重定义的 JBR 21。普通 JDK 21 可用于 Maven 编译与普通启动。详见 [开发热更新说明](docs/development-live-update.md)。
 
-正式练习与草稿共用 HTML 扩展题卡，草稿在练习页上叠加公共白板。单选、多选、判断题需安装对应外部包后执行；原题型没有新版扩展时显示缺失提示，底层题库及资源保留。提交冻结、重试清空、历史与统计由宿主管理。
+正式练习与草稿共用 HTML 扩展页面，草稿在练习页上叠加公共白板。八种题型均需安装对应外部包后执行；缺少对应包时显示提示，底层题库及资源保留。题卡样式由扩展决定，提交冻结、重试、历史与统计由宿主管理。练习保留白板背景及已有笔迹，首次纸张为纯白无纹理。
 
 历史详情按当前 Attempt 显示“草稿 / 返回结果”，冻结题目、答案和笔迹一起回放。只读白板的平移缩放不写库；无快照的旧历史保留原结果。当前调用链见 [代码地图](docs/code-guide.md)，早期契约见 [History Replay](quizforge-desktop-app/editor-web/draft-canvas/HISTORY_DRAFT_REPLAY.md)。
 
-HTML SDK 2 已接入单选、多选和判断题外部包：独立 editor.html、practice.html、default.json、页面脚本和同步题型逻辑。两个页面复用公共富文本、题库保存、白板和历史宿主。题型源码位于 `extensions/packages/`。应用不包含题型包，需要手动导入和授权；完整空配置流程见 [外部拓展测试](extensions/README.md)。详细开发、独立打包和热预览见 [SDK 2 开发说明](extensions/SDK_README.md)。
+HTML SDK 2.3 使用 `QF.page.register` 加载、`QF.save` 保存、`QF.requestAction` 请求操作，公共内容、DOM、UI 和布局保留为辅助能力。八种扩展各含独立 editor/practice 页面、default.json、Schema、同步规则和真实样例题库。源码位于 `extensions/packages/`；判断题 2.3.1 为 11 文件手写模板，另外七型 2.3.0 使用源码构建流程。完整空配置流程见 [外部拓展测试](extensions/README.md)，开发见 [指南](extensions/DEVELOPMENT_GUIDE.md)，具体契约见 [接口参考](extensions/SIMPLE_PAGE_API.md)。
 
 ## 模块与目录
 
@@ -62,7 +62,7 @@ HTML SDK 2 已接入单选、多选和判断题外部包：独立 editor.html、
 
 ## 开发文档
 
-新增题型从独立 HTML 扩展模板开始，不需要为题型增加 Java 页面分支。原七种题型的产品要求见题型设计说明；对应新版扩展未提供时只能保留数据，不能按旧组件编辑或作答。人工/AI 评分流程仍未实现。
+新增题型从独立 HTML 扩展模板开始，不需要为题型增加 Java 页面分支。各题型的产品要求见题型设计说明；缺少已安装扩展时只保留数据，不回退到旧组件。人工/AI 评分、页面直传分数和独立图片/视频公共接口仍未实现。
 
 完整目录见 [开发文档导航](docs/README.md)。新人先读 [运行与接入指南](docs/new-developer-guide.md)，再沿 [代码地图与五条业务链路](docs/code-guide.md) 阅读实现。开发新题型使用 [五步模板](docs/templates/new-question-type.md)。题库协议统一维护在 [文件格式与内容资源](docs/qbank-format.md)，验证按新人指南选择与改动对应的入口。
 

@@ -1,8 +1,6 @@
 import './editor.css';
 import Editor, {createDomFromElementList, getElementListByHTML, getTextFromElementList, splitText} from '@hufe921/canvas-editor';
 import {installCanvasFontCompatibility} from './canvas-webview-compat';
-import {configureCloze} from './cloze-preview';
-import {configureTranslation} from './translation-preview';
 import undo from './icons/undo.svg?raw';
 import redo from './icons/redo.svg?raw';
 import format from './icons/format.svg?raw';
@@ -260,7 +258,6 @@ function initialize() {
     if (PREVIEW) editor.command.executeUpdateOptions(previewOptions());
     editor.listener.contentChange = () => {
       state.changed++; reportHeight();
-      if(state.clozeDraw)requestAnimationFrame(state.clozeDraw);
       const fingerprint = JSON.stringify(editor.command.getValue().data);
       if (fingerprint === state.answerFingerprint) return;
       state.answerFingerprint = fingerprint;
@@ -362,7 +359,6 @@ function fitPreview() {
   const scale=Math.min(1,width/(CONTENT_WIDTH+2));
   if(Math.abs(editor.command.getOptions().scale-scale)>0.000001)editor.command.executePageScale(scale);
   syncPaperLayout();
-  if(state.clozeDraw)requestAnimationFrame(state.clozeDraw);
   reportHeight();
 }
 function syncPaperLayout(center = false) {
@@ -410,15 +406,11 @@ window.canvasEditor = Object.assign(window.canvasEditor || {}, {
   changed: () => state.changed,
   configuration: () => JSON.stringify({ paperWidth: PAPER_WIDTH, margin: SIDE_MARGIN, contentWidth: CONTENT_WIDTH, pageMode: 'continuity' }),
   load: json => {
-    state.clozeOriginal=null;
-    state.translationOriginal=null;
     if (PREVIEW) editor.command.executeUpdateOptions(previewOptions());
     editor.command.executeSetValue(JSON.parse(json));focusDocument();
     state.answerFingerprint = JSON.stringify(editor.command.getValue().data);
   },
   loadDocument: json => {
-    state.clozeOriginal=null;
-    state.translationOriginal=null;
     const document = JSON.parse(json);
     editor.command.executeUpdateOptions({...document.options,mode:PREVIEW?'readonly':'edit',magnifier:{disabled:true},...(PREVIEW?previewOptions():{})});
     editor.command.executeSetValue(document.data);focusDocument();
@@ -430,8 +422,6 @@ window.canvasEditor = Object.assign(window.canvasEditor || {}, {
     && !JSON.stringify(editor.command.getValue().data.main).match(/"type":"(image|latex|table)"/),
   value: () => JSON.stringify(editor.command.getValue().data),
   mode: value => { editor.command.executeMode(value); },
-  cloze: json => {if(PREVIEW)configureCloze(editor,state,JSON.parse(json));},
-  translation: () => {if(PREVIEW)configureTranslation(editor,state);},
   insertImage: json => { insertNativeImage(JSON.parse(json)); },
   insertElement: json => { editor.command.executeInsertElementList(JSON.parse(json)); },
   command: (name, value) => {

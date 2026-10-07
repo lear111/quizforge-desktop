@@ -95,7 +95,7 @@ public final class WebView2LearningSurface implements PracticeLearningSurface {
         String id=message.path("id").asText();if(!id.matches("[1-9][0-9]{0,15}"))return;
         try{
             if(closing||suspended||pageCommand==null||!identity().equals(message.path("questionId").asText()))throw new IllegalStateException("题目已切换或页面已关闭");
-            String action=message.path("action").asText();if(!Set.of("navigate","learning.mode","source.open").contains(action))throw new IllegalArgumentException("不支持的页面操作");
+            String action=message.path("action").asText();if(!Set.of("navigate","learning.mode","source.open","attempt.previous","attempt.next","attempt.current").contains(action))throw new IllegalArgumentException("不支持的页面操作");
             Object argument=DocumentJson.mapper().convertValue(message.path("argument"),Object.class);
             pageCommand.apply(action,argument).whenComplete((ignored,error)->Platform.runLater(()->reply(id,error)));
         }catch(Exception failure){reply(id,failure);}

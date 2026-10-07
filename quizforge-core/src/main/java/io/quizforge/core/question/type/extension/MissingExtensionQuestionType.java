@@ -39,10 +39,9 @@ public final class MissingExtensionQuestionType implements QuestionTypeDefinitio
     public Question createDraft(Function<String, String> ids, List<SourceRef> sources) { throw unavailable(); }
     public Question duplicate(Question question, Function<String, String> ids) { throw unavailable(); }
     private String kind() {
-        return payloadClass == ExtensionPayload.class ? "EXTENSION" : switch(id) {
-            case "SINGLE_CHOICE", "MULTIPLE_CHOICE" -> "CHOICE";
-            default -> id;
-        };
+        if(payloadClass==ExtensionPayload.class)return "EXTENSION";
+        if(payloadClass==io.quizforge.core.question.model.choice.ChoicePayload.class)return "CHOICE";
+        throw new IllegalArgumentException("Unsupported stored payload");
     }
     private static void inspect(Object value,QuestionValidationContext context) {
         if (value instanceof java.util.Map<?,?> map) {

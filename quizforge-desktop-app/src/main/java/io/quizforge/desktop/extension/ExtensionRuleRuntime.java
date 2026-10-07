@@ -22,7 +22,9 @@ public final class ExtensionRuleRuntime implements AutoCloseable {
     });
     private final AtomicReference<Worker> worker = new AtomicReference<>();
     private final AtomicLong generation = new AtomicLong();
-    private final CompletableFuture<Void> ready = new CompletableFuture<>();
+    private volatile CompletableFuture<Void> ready = new CompletableFuture<>();
+    private final Object startupLock = new Object();
+    private final java.util.concurrent.atomic.AtomicBoolean started = new java.util.concurrent.atomic.AtomicBoolean();
     private final String initialization;
     private final Duration startupTimeout, callTimeout;
     private volatile boolean closed;
@@ -32,16 +34,35 @@ public final class ExtensionRuleRuntime implements AutoCloseable {
         this(source, templates, STARTUP_TIMEOUT, CALL_TIMEOUT);
     }
     ExtensionRuleRuntime(String source, Map<String,Map<String,Object>> templates, Duration startupTimeout, Duration callTimeout) {
+        this(source,templates,startupTimeout,callTimeout,true);
+    }
+    static ExtensionRuleRuntime lazy(String source,Map<String,Map<String,Object>> templates) {
+        return new ExtensionRuleRuntime(source,templates,STARTUP_TIMEOUT,CALL_TIMEOUT,false);
+    }
+    private ExtensionRuleRuntime(String source,Map<String,Map<String,Object>> templates,Duration startupTimeout,Duration callTimeout,boolean eager) {
         this.startupTimeout = startupTimeout; this.callTimeout = callTimeout;
         try { initialization = json.writeValueAsString(Map.of("command", "initialize", "source", source, "templates", templates)); }
         catch (IOException failure) { throw new IllegalArgumentException("Invalid extension initialization", failure); }
         if (initialization.length() > ExtensionRuleProtocol.MAX_LINE) throw new IllegalArgumentException("Extension rules input is too large");
-        CompletableFuture.runAsync(() -> exchange(Map.of("command", "has", "type", "__startup_probe__"), callTimeout),
-                CompletableFuture.delayedExecutor(0, TimeUnit.MILLISECONDS)).whenComplete((value, failure) -> {
-            if (failure == null) ready.complete(null); else ready.completeExceptionally(failure);
-        });
+        if(eager)start();
     }
-    public CompletionStage<Void> ready() { return ready.minimalCompletionStage(); }
+    private CompletableFuture<Void> start() {
+        synchronized (startupLock) {
+            if (closed) return ready;
+            // A transient cold-start failure must not poison this installed version
+            // for the rest of the application's lifetime. Each retry remains bounded.
+            if (started.get() && !ready.isCompletedExceptionally()) return ready;
+            if (ready.isCompletedExceptionally()) ready = new CompletableFuture<>();
+            started.set(true);
+            var attempt = ready;
+            CompletableFuture.runAsync(() -> exchange(Map.of("command", "has", "type", "__startup_probe__"), callTimeout),
+                    CompletableFuture.delayedExecutor(0, TimeUnit.MILLISECONDS)).whenComplete((value, failure) -> {
+                if (failure == null) attempt.complete(null); else attempt.completeExceptionally(failure);
+            });
+            return attempt;
+        }
+    }
+    public CompletionStage<Void> ready() { return start().minimalCompletionStage(); }
     /** Syntax checks are performed in the worker, without evaluating the candidate page scripts. */
     public void validatePageScripts(List<String> sources) { requireReady(); exchange(Map.of("command", "parse", "sources", sources), callTimeout); }
     public boolean hasRules(String type) { requireReady(); return Boolean.TRUE.equals(exchange(Map.of("command", "has", "type", type), callTimeout).get("value")); }
@@ -54,7 +75,13 @@ public final class ExtensionRuleRuntime implements AutoCloseable {
         return result;
     }
     private void requireReady() {
-        if (closed || !ready.isDone() || ready.isCompletedExceptionally())
+        if(closed)throw new ExtensionExecutionException("EXTENSION_UNAVAILABLE", "题型规则已关闭。");
+        var attempt = start();
+        try {attempt.get(startupTimeout.plus(callTimeout).plusSeconds(1).toMillis(),TimeUnit.MILLISECONDS);}
+        catch(InterruptedException failure){Thread.currentThread().interrupt();throw failed("题型规则加载已取消。",failure);}
+        catch(TimeoutException failure){stopWorker();throw new ExtensionExecutionException("EXTENSION_TIMEOUT","题型规则加载超时，已停止运行。",failure);}
+        catch(ExecutionException failure){if(failure.getCause() instanceof ExtensionExecutionException execution)throw execution;throw failed("题型规则加载失败。",failure.getCause());}
+        if (closed || attempt.isCompletedExceptionally())
             throw new ExtensionExecutionException("EXTENSION_UNAVAILABLE", "题型规则尚未就绪或已关闭，请重新打开题型扩展。");
     }
     private synchronized Map<String,Object> exchange(Map<String,Object> request, Duration timeout) {

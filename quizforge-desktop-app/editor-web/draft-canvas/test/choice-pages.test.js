@@ -54,6 +54,18 @@ async function page(slug,mode='editor'){
     answer:{get:async()=>{if(delayedRead){const d=delayedRead;delayedRead=null;return d.promise;}return ok(answer);},update:value=>write('answer',value)},
     practice:{getQuestion:async()=>ok(question),getResult:async()=>ok(result),getState:async()=>ok({index:0,total:1,maxScore:1,state:result?'SUBMITTED':Object.keys(answer).length?'DRAFT':'UNANSWERED'})},
     content:{render(){},mountEditor(node){node.append(new Node('textarea'));}}};
+  // Run the real packaged scripts with only the compact public API available.
+  const loadContext=()=>({mode:context.mode.toLowerCase(),learningMode:'practice',question:{id:question.id,type:question.type,maxScore:1,data:clone(question)},
+    attempt:{status:result?'submitted':Object.keys(answer).length?'draft':'unanswered',answer:clone(answer),result:clone(result)},
+    navigation:{index:0,total:1,count:1,types:[],sources:[],editable:true},sources:[],types:[],
+    permissions:{...caps,writeAnswer:caps.editAnswer,manageQuestions:caps.editQuestion},grantedPermissions:context.permissions.granted});
+  let hooks;
+  QF.page={configure(){return ok({});},async register(value){hooks=value;await hooks.onLoad(loadContext());subscriptions.push(async()=>{
+    const next=loadContext();if(delayedRead){const d=delayedRead;delayedRead=null;next.attempt.answer=(await d.promise).data;}return hooks.onLoad(next);
+  });}};
+  QF.save=request=>write(request.purpose.startsWith('edit')?'editor':'answer',request.purpose.startsWith('edit')?request.data.questionData:request.data.answer);
+  QF.requestAction=async()=>ok({});
+  for(const old of ['host','bank','navigation','sources','editor','answer','practice'])delete QF[old];
   const sandbox=vm.createContext({QF,document:{createElement:tag=>new Node(tag)},Option:class extends Node{constructor(text,value){super('option');this.textContent=text;this.value=value;}}});
   await vm.runInContext(`(async()=>{${mode==='editor'?asset.editorSource:asset.rendererSource}\n})()`,sandbox);
   return {$,root,writes,notifications,caps,context,subscriptions,get question(){return question;},get answer(){return answer;},
@@ -126,4 +138,22 @@ test('multiple-choice: an intermediate write notification preserves a second uns
   inputs[1].checked=true;const second=inputs[1].fire('change');
   p.writes[0].finish();await first;await p.refresh();assert.equal(inputs[1].checked,true);
   p.writes[1].finish();await second;assert.equal(p.answer.selectedOptionIds.length,2);
+});
+
+test('handwritten true-false editor preserves rapid edits to different fields',async()=>{
+  const p=await page('true-false'),prompt=p.$('[data-prompt]'),score=p.$('[data-score]');
+  prompt.value='A new statement';const first=prompt.fire('input');
+  score.value='3';const second=score.fire('input');
+  assert.equal(p.writes[1].value.prompt.text,'A new statement');
+  p.writes[0].finish();await first;p.writes[1].finish();await second;
+  assert.equal(p.question.prompt.text,'A new statement');assert.equal(p.question.scoreSpec.defaultMaxScore,3);
+  assert.equal(p.$('[data-prompt]'),prompt);
+});
+
+test('handwritten true-false restores the accepted answer after a later write fails',async()=>{
+  const p=await page('true-false','practice'),yes=p.$('[data-answer-true]'),no=p.$('[data-answer-false]');
+  yes.checked=true;const first=yes.fire('change');no.checked=true;const second=no.fire('change');
+  p.writes[0].finish();await first;await p.refresh();assert.equal(no.checked,true);
+  p.writes[1].finish(false);await second;
+  assert.equal(yes.checked,true);assert.equal(no.checked,false);assert.deepEqual(p.notifications,['save failed']);
 });
